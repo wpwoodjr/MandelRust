@@ -1,0 +1,93 @@
+---
+swagger: "2.0"
+info:
+  description: "Does Mandelbrot computation"
+  version: "V1.0"
+  title: "Mandelbrot"
+  termsOfService: "https://www.gsk.com/en-gb/terms-of-use/"
+  contact:
+    email: "william.wood@gsk.com"
+host: "localhost:8080"
+basePath: "/v1"
+schemes:
+- "http"
+paths:
+  /mandelbrot/compute:
+    post:
+      tags:
+      - "mandelbrot"
+      summary: "Iterate over pixels to determine if each is in the Mandelbrot set"
+      description: ""
+      operationId: "computeMandelbrot"
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "mandelbrotCoords"
+        description: "Mandelbrot coordinates to compute"
+        required: true
+        schema:
+          $ref: "#/definitions/MandelbrotCoords"
+      responses:
+        200:
+          description: "successful operation"
+          schema:
+            $ref: "#/definitions/MandelbrotResults"
+        400:
+          description: "Client Error"
+          schema:
+            $ref: "#/definitions/ApiFailureResponse"
+        500:
+          description: "Server Error"
+          schema:
+            $ref: "#/definitions/ApiFailureResponse"
+      x-swagger-router-controller: "Mandelbrot"
+definitions:
+  MandelbrotCoords:
+    type: "object"
+    required:
+    - "columns"
+    - "dx"
+    - "maxIterations"
+    - "xmin"
+    - "y"
+    properties:
+      y:
+        type: "integer"
+        format: "int64"
+      xmin:
+        type: "integer"
+        format: "int64"
+      dx:
+        type: "integer"
+        format: "int64"
+      columns:
+        type: "integer"
+        format: "int64"
+      maxIterations:
+        type: "integer"
+        format: "int32"
+    example:
+      xmin: 6
+      maxIterations: 5
+      dx: 1
+      columns: 5
+      y: 0
+  MandelbrotResults:
+    type: "array"
+    items:
+      type: "integer"
+      format: "int32"
+  ApiFailureResponse:
+    type: "object"
+    properties:
+      message:
+        type: "string"
+        enum:
+        - "CLIENT ERROR"
+        - "SERVER ERROR"
+externalDocs:
+  description: "GSK Software Engineering Careers"
+  url: "https://www.gsk.com/en-gb/careers/careers-search/?q=software%20engineer"

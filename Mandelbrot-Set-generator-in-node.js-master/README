@@ -1,0 +1,17 @@
+This is a Mandelbrot Set generator, written as a web service in node.js
+
+The server part does all the rendering, including optimizations, anti-aliasing, colors etc., delivering a PNG image on demand.
+
+A small JavaScript snippet implements the client part in the browser including point and click manipulation, zooming and choice of AA options and optimization algorithms.
+
+All very experimental etc., play at your own risk.
+
+Check out the live version, running on the excellent Joyent cloud at:
+
+  http://constantin.glez.de/mandelbrot
+
+Also, check out my blog post including some background linked from the same URL (once it's finished :) ).
+
+Have fun!
+
+Constantin
