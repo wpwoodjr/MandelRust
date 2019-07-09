@@ -2,12 +2,12 @@
 swagger: "2.0"
 info:
   description: "Does Mandelbrot computation"
-  version: "V1.0"
+  version: "1.0.0"
   title: "Mandelbrot"
   termsOfService: "https://www.gsk.com/en-gb/terms-of-use/"
   contact:
     email: "william.wood@gsk.com"
-host: "localhost:8080"
+host: "localhost:8081"
 basePath: "/v1"
 schemes:
 - "http"
