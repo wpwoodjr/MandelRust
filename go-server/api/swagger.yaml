@@ -2,12 +2,12 @@
 swagger: "2.0"
 info:
   description: "Does Mandelbrot computation"
-  version: "V1.0"
+  version: "1.0.0"
   title: "Mandelbrot"
   termsOfService: "https://www.gsk.com/en-gb/terms-of-use/"
   contact:
     email: "william.wood@gsk.com"
-host: "localhost:8080"
+host: "localhost:8081"
 basePath: "/v1"
 schemes:
 - "http"
@@ -25,7 +25,7 @@ paths:
       - "application/json"
       parameters:
       - in: "body"
-        name: "MandelbrotCoords"
+        name: "mandelbrotCoords"
         description: "Mandelbrot coordinates to compute"
         required: true
         schema:
@@ -55,26 +55,26 @@ definitions:
     - "y"
     properties:
       y:
-        type: "integer"
-        format: "int64"
+        type: "number"
+        format: "f64"
       xmin:
-        type: "integer"
-        format: "int64"
+        type: "number"
+        format: "f64"
       dx:
-        type: "integer"
-        format: "int64"
+        type: "number"
+        format: "f64"
       columns:
         type: "integer"
-        format: "int64"
+        format: "int32"
       maxIterations:
         type: "integer"
         format: "int32"
     example:
-      xmin: 6
+      xmin: 6.02745618307040320615897144307382404804229736328125
       maxIterations: 5
-      dx: 1
+      dx: 1.46581298050294517310021547018550336360931396484375
       columns: 5
-      y: 0
+      y: 0.80082819046101150206595775671303272247314453125
   MandelbrotResults:
     type: "array"
     items:

@@ -1,6 +1,6 @@
 {
   "name": "mandelbrot",
-  "version": "V1.0",
+  "version": "1.0.0",
   "description": "Does_Mandelbrot_computation",
   "license": "Unlicense",
   "main": "src/index.js",
