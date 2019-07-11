@@ -911,9 +911,9 @@ Request.prototype._end = function() {
   // initiate request
   try {
     if (this.username && this.password) {
-      xhr.open(this.method, this.url, false, this.username, this.password);
+      xhr.open(this.method, this.url, true, this.username, this.password);
     } else {
-      xhr.open(this.method, this.url, false);
+      xhr.open(this.method, this.url, true);
     }
   } catch (err) {
     // see #1149
@@ -3077,15 +3077,12 @@ function compute(y, xmin, dx, columns, maxIterations) {
     let mandelbrotCoords = new Mandelbrot.MandelbrotCoords(y, xmin, dx, columns, maxIterations); // {MandelbrotCoords} Mandelbrot coordinates to compute
     //console.log(mandelbrotCoords);
 
-    let iterationCounts;
     api.computeMandelbrot(mandelbrotCoords).then(function(data) {
-      //console.log('API called successfully. Returned data: ' + data);
-      iterationCounts = data;
+      console.log('API called successfully. Returned data: ' + data);
     }, function(error) {
       console.error(error);
     });
 
-/*
     iterationCounts = [];
     let x0 = xmin;
     for (let i = 0; i < columns; i++) {
@@ -3106,7 +3103,6 @@ function compute(y, xmin, dx, columns, maxIterations) {
         iterationCounts[i] = ct;
         x0 += dx;
     }
-*/
     return iterationCounts;
 }
 
