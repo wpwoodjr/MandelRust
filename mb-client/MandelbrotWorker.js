@@ -910,10 +910,11 @@ Request.prototype._end = function() {
 
   // initiate request
   try {
+    let async = false;
     if (this.username && this.password) {
-      xhr.open(this.method, this.url, false, this.username, this.password);
+      xhr.open(this.method, this.url, async, this.username, this.password);
     } else {
-      xhr.open(this.method, this.url, false);
+      xhr.open(this.method, this.url, async);
     }
   } catch (err) {
     // see #1149
@@ -2027,7 +2028,8 @@ exports.cleanHeader = function(header, shouldStripCookie){
      * @type {String}
      * @default http://localhost:8081/v1
      */
-    this.basePath = 'http://localhost:8081/v1'.replace(/\/+$/, '');
+    //this.basePath = 'http://localhost:8081/v1'.replace(/\/+$/, '');
+    this.basePath = 'https://mandelbrot.devk8s.gsk.com/v1'.replace(/\/+$/, '');
 
     /**
      * The authentication methods to be included for all API calls.
@@ -3070,6 +3072,8 @@ var Mandelbrot = require('mandelbrot');
 
 var api = new Mandelbrot.MandelbrotApi()
 
+var iterationCounts = [];
+
 function compute(y, xmin, dx, columns, maxIterations) {
 //    console.log(y + ", " + xmin + ", " + dx + ", " + columns + ", " + maxIterations);
 // -1.1899791231732677, -2.2, 0.005008347245409015, 600, 100
@@ -3077,42 +3081,23 @@ function compute(y, xmin, dx, columns, maxIterations) {
     let mandelbrotCoords = new Mandelbrot.MandelbrotCoords(y, xmin, dx, columns, maxIterations); // {MandelbrotCoords} Mandelbrot coordinates to compute
     //console.log(mandelbrotCoords);
 
-    let iterationCounts;
     api.computeMandelbrot(mandelbrotCoords).then(function(data) {
-      //console.log('API called successfully. Returned data: ' + data);
-      iterationCounts = data;
+        iterationCounts = data;
     }, function(error) {
-      console.error(error);
+        for (let i = 0; i < columns; i++) {
+            iterationCounts[i] = -1;
+        }
+        console.error(error);
     });
 
-/*
-    iterationCounts = [];
-    let x0 = xmin;
-    for (let i = 0; i < columns; i++) {
-        let y0 = y;
-        let a = x0;
-        let b = y0;
-        let ct = 0;
-        while (a*a + b*b < 4.1) {
-            ct++;
-            if (ct > maxIterations) {
-                ct = -1;
-                break;
-            }
-            let newa = a*a - b*b + x0;
-            b = 2*a*b + y0;
-            a = newa;
-        }
-        iterationCounts[i] = ct;
-        x0 += dx;
-    }
-*/
+    //console.log(iterationCounts);
     return iterationCounts;
 }
 
 onmessage = function(msg) {
     let job = msg.data;
     counts = compute(job.y,job.xmin,job.dx,job.columns,job.maxIterations);
+    //console.log(job.jobNum, job.workerNum, job.row);
     postMessage({
         workerNum: job.workerNum,
         jobNum: job.jobNum,
