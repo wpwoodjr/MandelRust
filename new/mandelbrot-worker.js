@@ -1,15 +1,12 @@
+let /* boolean */ highPrecision;
+let /* int */ maxIterations, jobNumber, workerNumber;
 
-var /* BigDecimal */ xmin, dx, yval;
-var /* int */ columnCount, rowNumber, maxIterations;
-var /* boolean */ highPrecision;
-
-var /* int */ taskNumber, jobNumber, workerNumber;
-
-var ArrayType = this.Uint32Array || Array;
+let ArrayType = this.Uint32Array || Array;
+let url = "http://localhost:8081/v1/mandelbrot/compute";
 
 function fetchIterationCounts(coords) {
     let client = new XMLHttpRequest();
-    client.open("POST", "http://localhost:8080/v1/mandelbrot/compute", false);
+    client.open("POST", url, false);
     client.setRequestHeader("Content-Type", "application/json");
     client.setRequestHeader("Accept", "application/json");
     client.send(JSON.stringify(coords));
@@ -34,28 +31,25 @@ onmessage = function(msg) {
         highPrecision = data[3];
         workerNumber = data[4];
     } else if ( data[0] == "task" ) {
-        taskNumber = data[1];
-        columnCount = data[2];
+        let taskNumber = data[1];
+        let columnCount = data[2];
+        let xmin = data[3];
+        let dx = data[4];
+        let yval = data[5];
         let iterationCounts;
         if (highPrecision) {
             iterationCounts = new Array(columnCount);
-            xmin = data[3];
-            dx = data[4];
-            yval = data[5];
-            createHPData();
+            createHPData(xmin, dx, columnCount);
             for (let i = 0; i < columnCount; i++)
                 iterationCounts[i] = countIterationsHP(xs[i], yval);
         } else {
-            var xmin_d = data[3];
-            var dx_d = data[4];
-            var yval_d = data[5];
             iterationCounts = fetchIterationCounts({
-                y: yval_d, xmin: xmin_d, dx: dx_d, columns: columnCount, maxIterations: maxIterations
+                highPrecision: highPrecision, y: yval, xmin: xmin, dx: dx, columns: columnCount, maxIterations: maxIterations
             });
             /*
             iterationCounts = new Array(columnCount);
             for (let i = 0; i < columnCount; i++)
-                iterationCounts[i] = countIterations(xmin_d + dx_d*i, yval_d);
+                iterationCounts[i] = countIterations(xmin + dx*i, yval);
             */
         }
         let returnData = [ jobNumber, taskNumber, iterationCounts, workerNumber ];
@@ -124,7 +118,7 @@ var /* int */ chunks;
 
 var /* double */ log2of10 = Math.log(10)/Math.log(2);
 
-function createHPData() {
+function createHPData(xmin, dx, columnCount) {
     chunks = xmin.length - 1;
     y = new ArrayType(chunks+1);
     xs = new Array(columnCount);

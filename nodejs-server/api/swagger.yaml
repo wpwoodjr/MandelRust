@@ -7,7 +7,7 @@ info:
   termsOfService: "https://www.gsk.com/en-gb/terms-of-use/"
   contact:
     email: "william.wood@gsk.com"
-host: "localhost:8080"
+host: "localhost:8081"
 basePath: "/v1"
 schemes:
 - "http"
@@ -50,10 +50,13 @@ definitions:
     required:
     - "columns"
     - "dx"
+    - "highPrecision"
     - "maxIterations"
     - "xmin"
     - "y"
     properties:
+      highPrecision:
+        type: "boolean"
       y:
         type: "number"
         format: "f64"
@@ -75,6 +78,7 @@ definitions:
       dx: 0.1499999999999999944488848768742172978818416595458984375
       columns: 20
       y: -0.59999999999999997779553950749686919152736663818359375
+      highPrecision: true
   MandelbrotResults:
     type: "array"
     items:

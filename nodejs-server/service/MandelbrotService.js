@@ -15,6 +15,7 @@ exports.computeMandelbrot = function(mandelbrotCoords) {
         let dx = mandelbrotCoords.dx;
         let columns = mandelbrotCoords.columns;
         let maxIterations = mandelbrotCoords.maxIterations;
+        let highPrecision = mandelbrotCoords.highPrecision;
 
         let iterationCounts = new Array(columns);
         for (let i = 0; i < columns; i++) {
