@@ -102,6 +102,7 @@
    }
    
    function stopJob() {
+       //console.log("stop job, running = " + running + ", jobNum = ", jobNum);
        if (running) {
           jobNum++;
           running = false;
@@ -113,6 +114,7 @@
    }
    
    function startJob() {
+       //console.log("start job, running = " + running + ", jobNum = ", jobNum);
        if (running)
           stopJob();
        graphics.fillRect(0,0,canvas.width,canvas.height);
@@ -123,7 +125,7 @@
        var rows = canvas.height;
        var columns = canvas.width;
        for ( var row = 0; row < rows; row++) {
-          jobs[rows - 1- row] = {
+          jobs[rows - 1 - row] = {
               jobNum: jobNum,
               row: row,
               maxIterations: maxIterations,
@@ -147,31 +149,32 @@
     
     function jobFinished(msg) {
         job = msg.data;
+        //console.log("job.jobNum, jobNum = " + job.jobNum + " " + jobNum);
         if (job.jobNum != jobNum)
-          return;
-       var iterationCounts = job.iterationCounts;
-       var row = job.row;
-       var columns = canvas.width;
-       for (var col = 0; col < columns; col++) {
-          var ct = iterationCounts[col];
-          var paletteIndex;
-          if (ct < 0)
-             OSG.fillStyle = "#000";
-          else {
-             paletteIndex = iterationCounts[col] % paletteLength;
-             OSG.fillStyle = palette[paletteIndex];
-          }
-          OSG.fillRect(col,row,1,1);
-       }
-       jobsCompleted++;
-       if (jobsCompleted == canvas.height)
-          stopJob();
-       else if (jobs.length > 0) {
-          var worker = workers[job.workerNum];
-          var j = jobs.pop();
-          j.workerNum = job.workerNum;
-          worker.postMessage(j);
-       }
+            return;
+        var iterationCounts = job.iterationCounts;
+        var row = job.row;
+        var columns = canvas.width;
+        for (var col = 0; col < columns; col++) {
+            var ct = iterationCounts[col];
+            var paletteIndex;
+            if (ct < 0)
+                OSG.fillStyle = "#000";
+            else {
+                paletteIndex = iterationCounts[col] % paletteLength;
+                OSG.fillStyle = palette[paletteIndex];
+            }
+            OSG.fillRect(col,row,1,1);
+        }
+        jobsCompleted++;
+        if (jobsCompleted == canvas.height)
+            stopJob();
+        else if (jobs.length > 0) {
+            var worker = workers[job.workerNum];
+            var j = jobs.pop();
+            j.workerNum = job.workerNum;
+            worker.postMessage(j);
+        }
     }
    
    function setDefaults() {
@@ -473,7 +476,7 @@
    <p id="message" style="color: #A00; font-weight: bold">&nbsp;</p>
    
    <div style="float:left;">
-   <canvas id="mbcanvas" width=600 height=480 style="background-color:rgb(230,230,255)"></canvas>
+   <canvas id="mbcanvas" width=800 height=600 style="background-color:rgb(230,230,255)"></canvas>
    </div>
    <div style="float:left; margin-left:30px;">
       <p><button id="restoreButton">Restore Defaults</button></p>

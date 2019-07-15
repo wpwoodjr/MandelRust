@@ -7,7 +7,7 @@ info:
   termsOfService: "https://www.gsk.com/en-gb/terms-of-use/"
   contact:
     email: "william.wood@gsk.com"
-host: "localhost:8081"
+host: "localhost:8080"
 basePath: "/v1"
 schemes:
 - "http"

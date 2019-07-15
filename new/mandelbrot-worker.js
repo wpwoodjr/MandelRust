@@ -5,42 +5,62 @@ var /* boolean */ highPrecision;
 
 var /* int */ taskNumber, jobNumber, workerNumber;
 
-var /* int[] */ iterationCounts;
-
 var ArrayType = this.Uint32Array || Array;
 
+function fetchIterationCounts(coords) {
+    let client = new XMLHttpRequest();
+    client.open("POST", "http://localhost:8080/v1/mandelbrot/compute", false);
+    client.setRequestHeader("Content-Type", "application/json");
+    client.setRequestHeader("Accept", "application/json");
+    client.send(JSON.stringify(coords));
 
+    if (client.status == 200) {
+        return JSON.parse(client.response);
+    } else {
+        console.error(client);
+        let iterationCounts = [];
+        for (let i = 0; i < coords.columns; i++) {
+            iterationCounts[i] = -1;
+        }
+        return iterationCounts;
+    }
+}
 
 onmessage = function(msg) {
-   var data = msg.data;
-   if ( data[0] == "setup" ) {
-       jobNumber = data[1];
-       maxIterations = data[2];
-       highPrecision = data[3];
-       workerNumber = data[4];
-   }
-   else if ( data[0] == "task" ) {
-       taskNumber = data[1];
-       columnCount = data[2];
-       iterationCounts = new Array(columnCount);
-       if (highPrecision) {
-           xmin = data[3];
-           dx = data[4];
-           yval = data[5];
-           createHPData();
-           for (var i = 0; i < columnCount; i++)
-               iterationCounts[i] = countIterationsHP(xs[i], yval);
-       }
-       else {
-           var xmin_d = data[3];
-           var dx_d = data[4];
-           var yval_d = data[5];
-           for (var i = 0; i < columnCount; i++)
+    let data = msg.data;
+    if ( data[0] == "setup" ) {
+        jobNumber = data[1];
+        maxIterations = data[2];
+        highPrecision = data[3];
+        workerNumber = data[4];
+    } else if ( data[0] == "task" ) {
+        taskNumber = data[1];
+        columnCount = data[2];
+        let iterationCounts;
+        if (highPrecision) {
+            iterationCounts = new Array(columnCount);
+            xmin = data[3];
+            dx = data[4];
+            yval = data[5];
+            createHPData();
+            for (let i = 0; i < columnCount; i++)
+                iterationCounts[i] = countIterationsHP(xs[i], yval);
+        } else {
+            var xmin_d = data[3];
+            var dx_d = data[4];
+            var yval_d = data[5];
+            iterationCounts = fetchIterationCounts({
+                y: yval_d, xmin: xmin_d, dx: dx_d, columns: columnCount, maxIterations: maxIterations
+            });
+            /*
+            iterationCounts = new Array(columnCount);
+            for (let i = 0; i < columnCount; i++)
                 iterationCounts[i] = countIterations(xmin_d + dx_d*i, yval_d);
-       }
-       var returnData = [ jobNumber, taskNumber, iterationCounts, workerNumber ];
-       postMessage(returnData);
-   }
+            */
+        }
+        let returnData = [ jobNumber, taskNumber, iterationCounts, workerNumber ];
+        postMessage(returnData);
+    }
 }
 
 
