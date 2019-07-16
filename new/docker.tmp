@@ -1,0 +1,5 @@
+docker build --tag harbor.gsk.com/sdi/mandelbrot-client:1.0 .
+docker run -p 8082:80 --rm harbor.gsk.com/sdi/mandelbrot-client:1.0
+pass show docker-credential-helpers/docker-pass-initialized-check
+docker login harbor.gsk.com
+docker push harbor.gsk.com/sdi/mandelbrot-client:1.0

@@ -2,29 +2,53 @@ let /* boolean */ highPrecision;
 let /* int */ maxIterations, jobNumber, workerNumber;
 
 //let url = "http://localhost:8081/v1/mandelbrot/compute";
-let url = "https://mandelbrot.devk8s.gsk.com/v1/mandelbrot/compute";
+let url = "https://mandelbrot.stagek8s.gsk.com/v1/mandelbrot/compute";
+let retryLimit = 5;
 
-function fetchIterationCounts(coords, url) {
-    let client = new XMLHttpRequest();
-    client.open("POST", url, false);
-    client.setRequestHeader("Content-Type", "application/json");
-    client.setRequestHeader("Accept", "application/json");
-    if (highPrecision) {
-        coords.y = Array.from(coords.y);
-        coords.xmin = Array.from(coords.xmin);
-        coords.dx = Array.from(coords.dx);
-    }
-    client.send(JSON.stringify(coords));
-
-    if (client.status == 200) {
-        return JSON.parse(client.response);
-    } else {
-        console.error(client);
-        let iterationCounts = [];
-        for (let i = 0; i < coords.columns; i++) {
-            iterationCounts[i] = -1;
+function fetchIterationCounts(coords, url, taskNumber, retryCount) {
+    try {
+        let client = new XMLHttpRequest();
+        client.open("POST", url, false);
+        client.setRequestHeader("Content-Type", "application/json");
+        client.setRequestHeader("Accept", "application/json");
+        if (highPrecision) {
+            coords.y = Array.from(coords.y);
+            coords.xmin = Array.from(coords.xmin);
+            coords.dx = Array.from(coords.dx);
         }
-        return iterationCounts;
+        client.send(JSON.stringify(coords));
+
+        if (client.status == 200) {
+            return JSON.parse(client.response);
+        } else {
+            console.log(client);
+            let iterationCounts = [];
+            for (let i = 0; i < coords.columns; i++) {
+                iterationCounts[i] = -1;
+            }
+            return iterationCounts;
+        }
+    } catch(err) {
+        if (retryCount < retryLimit) {
+            retryCount++;
+            console.log("XMLHttpRequest failure, retrying " + retryCount + " of " + retryLimit + "...\n" + err);
+            setTimeout(function() {
+                    let iterationCounts = fetchIterationCounts(coords, url, taskNumber, retryCount);
+                    if (iterationCounts.length > 0) {
+                        let returnData = [ jobNumber, taskNumber, iterationCounts, workerNumber ];
+                        postMessage(returnData);
+                    }
+                },
+                retryCount*1000);
+            return [];
+        } else {
+            console.log("XMLHttpRequest failure, retry limit exceeded!\n" + err);
+            let iterationCounts = [];
+            for (let i = 0; i < coords.columns; i++) {
+                iterationCounts[i] = -1;
+            }
+            return iterationCounts;
+        }
     }
 }
 
@@ -46,9 +70,13 @@ onmessage = function(msg) {
         let iterationCounts = fetchIterationCounts({
                 y: y, xmin: xmin, dx: dx, columns: columns, maxIterations: maxIterations
             },
-            highPrecision ? url + "HP" : url);
+            highPrecision ? url + "HP" : url,
+            taskNumber,
+            0);
 
-        let returnData = [ jobNumber, taskNumber, iterationCounts, workerNumber ];
-        postMessage(returnData);
+        if (iterationCounts.length > 0) {
+            let returnData = [ jobNumber, taskNumber, iterationCounts, workerNumber ];
+            postMessage(returnData);
+        }
     }
 }

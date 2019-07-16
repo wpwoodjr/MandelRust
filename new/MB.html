@@ -273,17 +273,20 @@ function doDraw() {
     }
 }
 
+let rowsPerSecond;
 function repaint() {
     doDraw();
     if (running) {
+        let elapsedSecs = (Date.now() - startTime)/1000.0;
+        rowsPerSecond = (jobsCompleted/elapsedSecs).toFixed(2) + " rows per second";
        repaintTimeout = setTimeout(repaint, 500);
        var pass = state == COMPUTING_SECOND_PASS ? " second pass" : "";
        var prec = highPrecision? "high precision, " + digits + " digits" : "normal precision";
        document.getElementById("status").innerHTML =
-                "Computing" + pass + ", " + prec + "...  Completed " + jobsCompleted + " of " + canvas.height + " rows";
+                "Computing" + pass + ", " + prec + "...  Completed " + jobsCompleted + " of " + canvas.height + " rows at " + rowsPerSecond;
     }
     else {
-        document.getElementById("status").innerHTML = "Idle";
+        document.getElementById("status").innerHTML = "Idle (" + rowsPerSecond + ")";
     }
 }
 
@@ -317,6 +320,7 @@ function stopJob() {
     }
 }
 
+let startTime;
 function startJob() {
     if (running) {
        stopJob();
@@ -386,6 +390,7 @@ function startJob() {
             }
         }
     }
+    startTime = Date.now();
     jobsCompleted = 0;
     for (var i = 0; i < workerCount; i++) {
         var j = jobs.pop();
@@ -500,6 +505,7 @@ function startSecondPass() {
             yVal_d = yVal_d - dy_d;
         }
     }
+    startTime = Date.now();
     jobsCompleted = 0;
     for (var i = 0; i < workerCount; i++) {
         var j = jobs.pop();
