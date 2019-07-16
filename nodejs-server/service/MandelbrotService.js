@@ -14,19 +14,11 @@ exports.computeMandelbrot = function(mandelbrotCoords) {
         let dx = mandelbrotCoords.dx;
         let columns = mandelbrotCoords.columns;
         let maxIterations = mandelbrotCoords.maxIterations;
-        let highPrecision = mandelbrotCoords.highPrecision;
-        let iterationCounts = new Array(columns);
 
-        if (highPrecision) {
-            createHPData(x, dx, columns);
-            for (let i = 0; i < columns; i++) {
-                iterationCounts[i] = countIterationsHP(xs[i], y);
-            }
-        } else {
-            for (let i = 0; i < columns; i++) {
-                iterationCounts[i] = countIterations(x, y, maxIterations);
-                x += dx;
-            }
+        let iterationCounts = new Array(columns);
+        for (let i = 0; i < columns; i++) {
+            iterationCounts[i] = countIterations(x, y, maxIterations);
+            x += dx;
         }
 
         resolve(iterationCounts);
@@ -38,7 +30,7 @@ function countIterations( /* double */ x, /* double */ y, maxIterations) {
     let zx = x;
     let zy = y;
     while (count < maxIterations
-            && zx*zx + zy*zy <= 4) {
+            && zx*zx + zy*zy <= 4) {        // < 8 to match orig version?  Maybe HP uses 8?
         let new_zx = zx*zx - zy*zy + x;
         zy = 2*zx*zy + y;
         zx = new_zx;
@@ -47,7 +39,26 @@ function countIterations( /* double */ x, /* double */ y, maxIterations) {
     return (count < maxIterations)? count : -1 ;
 }
 
-function countIterationsHP( /* Uint32Array */ x, /* Uint32Array */ y) {
+exports.computeMandelbrotHP = function(mandelbrotCoords) {
+    return new Promise(function(resolve, reject) {
+        let y = new Uint32Array(mandelbrotCoords.y);
+        let x = new Uint32Array(mandelbrotCoords.xmin);
+        let dx = new Uint32Array(mandelbrotCoords.dx);
+        let columns = mandelbrotCoords.columns;
+        let maxIterations = mandelbrotCoords.maxIterations;
+
+        //console.log(y, x, dx, columns, maxIterations, ArrayType);
+        let iterationCounts = new Array(columns);
+        createHPData(x, dx, columns);
+        for (let i = 0; i < columns; i++) {
+            iterationCounts[i] = countIterationsHP(xs[i], y, maxIterations);
+        }
+
+        resolve(iterationCounts);
+    });
+}
+
+function countIterationsHP( /* Uint32Array */ x, /* Uint32Array */ y, maxIterations) {
     arraycopy(x,0,zx,0,chunks);
     arraycopy(y,0,zy,0,chunks);
     let count = 0;
@@ -93,7 +104,7 @@ var /* int */ chunks;
 
 var /* double */ log2of10 = Math.log(10)/Math.log(2);
 
-let ArrayType = this.Uint32Array || Array;
+let ArrayType = Uint32Array;
 
 function createHPData(xmin, dx, columnCount) {
     chunks = xmin.length - 1;

@@ -2,7 +2,7 @@
 swagger: "2.0"
 info:
   description: "Does Mandelbrot computation"
-  version: "1.0.0"
+  version: "2.0.0"
   title: "Mandelbrot"
   termsOfService: "https://www.gsk.com/en-gb/terms-of-use/"
   contact:
@@ -44,19 +44,49 @@ paths:
           schema:
             $ref: "#/definitions/ApiFailureResponse"
       x-swagger-router-controller: "Mandelbrot"
+  /mandelbrot/computeHP:
+    post:
+      tags:
+      - "mandelbrot"
+      summary: "Iterate over pixels to determine if each is in the Mandelbrot set,\
+        \ using high precision arithmetic"
+      description: ""
+      operationId: "computeMandelbrotHP"
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "mandelbrotCoords"
+        description: "Mandelbrot coordinates to compute"
+        required: true
+        schema:
+          $ref: "#/definitions/MandelbrotCoordsHP"
+      responses:
+        200:
+          description: "successful operation"
+          schema:
+            $ref: "#/definitions/MandelbrotResults"
+        400:
+          description: "Client Error"
+          schema:
+            $ref: "#/definitions/ApiFailureResponse"
+        500:
+          description: "Server Error"
+          schema:
+            $ref: "#/definitions/ApiFailureResponse"
+      x-swagger-router-controller: "Mandelbrot"
 definitions:
   MandelbrotCoords:
     type: "object"
     required:
     - "columns"
     - "dx"
-    - "highPrecision"
     - "maxIterations"
     - "xmin"
     - "y"
     properties:
-      highPrecision:
-        type: "boolean"
       y:
         type: "number"
         format: "f64"
@@ -78,12 +108,64 @@ definitions:
       dx: 0.1499999999999999944488848768742172978818416595458984375
       columns: 20
       y: -0.59999999999999997779553950749686919152736663818359375
-      highPrecision: true
+  MandelbrotCoordsHP:
+    type: "object"
+    required:
+    - "columns"
+    - "dx"
+    - "maxIterations"
+    - "xmin"
+    - "y"
+    properties:
+      y:
+        type: "array"
+        items:
+          type: "integer"
+      xmin:
+        type: "array"
+        items:
+          type: "integer"
+      dx:
+        type: "array"
+        items:
+          type: "integer"
+      columns:
+        type: "integer"
+        format: "int32"
+      maxIterations:
+        type: "integer"
+        format: "int32"
+    example:
+      xmin:
+      - 65534
+      - 53636
+      - 15149
+      - 46726
+      - 49809
+      - 60517
+      - 42557
+      maxIterations: 100
+      dx:
+      - 0
+      - 0
+      - 0
+      - 0
+      - 1154
+      - 23857
+      - 47514
+      columns: 20
+      y:
+      - 0
+      - 19775
+      - 19062
+      - 35910
+      - 16177
+      - 55345
+      - 21770
   MandelbrotResults:
     type: "array"
     items:
       type: "integer"
-      format: "int32"
   ApiFailureResponse:
     type: "object"
     properties:

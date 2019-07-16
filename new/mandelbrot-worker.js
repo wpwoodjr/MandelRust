@@ -4,11 +4,16 @@ let /* int */ maxIterations, jobNumber, workerNumber;
 //let url = "http://localhost:8081/v1/mandelbrot/compute";
 let url = "https://mandelbrot.devk8s.gsk.com/v1/mandelbrot/compute";
 
-function fetchIterationCounts(coords) {
+function fetchIterationCounts(coords, url) {
     let client = new XMLHttpRequest();
     client.open("POST", url, false);
     client.setRequestHeader("Content-Type", "application/json");
     client.setRequestHeader("Accept", "application/json");
+    if (highPrecision) {
+        coords.y = Array.from(coords.y);
+        coords.xmin = Array.from(coords.xmin);
+        coords.dx = Array.from(coords.dx);
+    }
     client.send(JSON.stringify(coords));
 
     if (client.status == 200) {
@@ -39,8 +44,10 @@ onmessage = function(msg) {
         //console.log(y,xmin,dx,columns,maxIterations,highPrecision);
 
         let iterationCounts = fetchIterationCounts({
-            highPrecision: highPrecision, y: y, xmin: xmin, dx: dx, columns: columns, maxIterations: maxIterations
-        });
+                y: y, xmin: xmin, dx: dx, columns: columns, maxIterations: maxIterations
+            },
+            highPrecision ? url + "HP" : url);
+
         let returnData = [ jobNumber, taskNumber, iterationCounts, workerNumber ];
         postMessage(returnData);
     }
