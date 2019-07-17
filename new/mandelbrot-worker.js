@@ -5,7 +5,8 @@ let /* int */ maxIterations, jobNumber, workerNumber;
 let url = "https://mandelbrot.stagek8s.gsk.com/v1/mandelbrot/compute";
 let retryLimit = 5;
 
-function fetchIterationCounts(coords, url, taskNumber, retryCount) {
+function doIterationCounts(coords, url, taskNumber, retryCount) {
+    let iterationCounts;
     try {
         let client = new XMLHttpRequest();
         client.open("POST", url, false);
@@ -19,37 +20,27 @@ function fetchIterationCounts(coords, url, taskNumber, retryCount) {
         client.send(JSON.stringify(coords));
 
         if (client.status == 200) {
-            return JSON.parse(client.response);
+            iterationCounts =  JSON.parse(client.response);
         } else {
-            console.log(client);
-            let iterationCounts = [];
-            for (let i = 0; i < coords.columns; i++) {
-                iterationCounts[i] = -1;
-            }
-            return iterationCounts;
+            console.log("Error: " + client);
+            iterationCounts = new Array(coords.columns).fill(-1);
         }
     } catch(err) {
         if (retryCount < retryLimit) {
             retryCount++;
             console.log("XMLHttpRequest failure, retrying " + retryCount + " of " + retryLimit + "...\n" + err);
             setTimeout(function() {
-                    let iterationCounts = fetchIterationCounts(coords, url, taskNumber, retryCount);
-                    if (iterationCounts.length > 0) {
-                        let returnData = [ jobNumber, taskNumber, iterationCounts, workerNumber ];
-                        postMessage(returnData);
-                    }
+                    doIterationCounts(coords, url, taskNumber, retryCount);
                 },
                 retryCount*1000);
-            return [];
+            return;
         } else {
             console.log("XMLHttpRequest failure, retry limit exceeded!\n" + err);
-            let iterationCounts = [];
-            for (let i = 0; i < coords.columns; i++) {
-                iterationCounts[i] = -1;
-            }
-            return iterationCounts;
+            iterationCounts = new Array(coords.columns).fill(-1);
         }
     }
+    let returnData = [ jobNumber, taskNumber, iterationCounts, workerNumber ];
+    postMessage(returnData);
 }
 
 onmessage = function(msg) {
@@ -67,16 +58,11 @@ onmessage = function(msg) {
         let y = data[5];
         //console.log(y,xmin,dx,columns,maxIterations,highPrecision);
 
-        let iterationCounts = fetchIterationCounts({
+        doIterationCounts({
                 y: y, xmin: xmin, dx: dx, columns: columns, maxIterations: maxIterations
             },
             highPrecision ? url + "HP" : url,
             taskNumber,
             0);
-
-        if (iterationCounts.length > 0) {
-            let returnData = [ jobNumber, taskNumber, iterationCounts, workerNumber ];
-            postMessage(returnData);
-        }
     }
 }

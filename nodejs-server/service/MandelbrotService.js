@@ -23,7 +23,7 @@ exports.computeMandelbrot = function(mandelbrotCoords) {
 
         resolve(iterationCounts);
     });
-}
+};
 
 function countIterations( /* double */ x, /* double */ y, maxIterations) {
     let count = 0;
@@ -56,7 +56,7 @@ exports.computeMandelbrotHP = function(mandelbrotCoords) {
 
         resolve(iterationCounts);
     });
-}
+};
 
 function countIterationsHP( /* Uint32Array */ x, /* Uint32Array */ y, maxIterations) {
     arraycopy(x,0,zx,0,chunks);
