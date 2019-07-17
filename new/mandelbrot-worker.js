@@ -22,7 +22,7 @@ function doIterationCounts(coords, url, taskNumber, retryCount) {
         if (client.status == 200) {
             iterationCounts =  JSON.parse(client.response);
         } else {
-            console.log("Error: " + client);
+            console.log("Error " + client.status);
             iterationCounts = new Array(coords.columns).fill(-1);
         }
     } catch(err) {
