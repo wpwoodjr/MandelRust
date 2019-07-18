@@ -284,11 +284,11 @@ function repaint() {
        let elapsedSecs = (Date.now() - startTime)/1000.0;
        if (state == COMPUTING_SECOND_PASS) {
             pass = " second pass";
-            rowsPerSecond = ((canvas.height + jobsCompleted)/elapsedSecs).toPrecision(3) + " rows per second";
+            //rowsPerSecond = ((canvas.height + jobsCompleted)/elapsedSecs).toPrecision(3) + " rows per second";
        } else {
             rowsPerSecond = (jobsCompleted/elapsedSecs).toPrecision(3) + " rows per second";
        }
-       var prec = highPrecision? "high precision, " + digits + " digits" : "normal precision";
+       let prec = highPrecision? "high precision, " + digits + " digits" : "normal precision";
        document.getElementById("status").innerHTML =
                 "Computing" + pass + ", " + prec + "...  Completed " + jobsCompleted + " of " + canvas.height + " rows at " + rowsPerSecond;
     }
@@ -396,6 +396,7 @@ function startJob() {
             }
         }
     }
+    rowsPerSecond = "many rows per second"
     startTime = Date.now();
     jobsCompleted = 0;
     for (var i = 0; i < workerCount; i++) {
@@ -1046,12 +1047,12 @@ function setImageSize(w,h) {
 function doCustomSize() {
     var width = Math.round(Number(document.getElementById("customwidth").value.trim()));
     var height = Math.round(Number(document.getElementById("customheight").value.trim()));
-    if (isNaN(width) || width < 50 || width > 2500) {
-        document.getElementById("status").innerHTML = "Illegal value for image width.  Must be an integer in the range 50 to 2500.";
+    if (isNaN(width) || width < 64 || width > 4096) {
+        document.getElementById("status").innerHTML = "Illegal value for image width.  Must be an integer in the range 64 to 4096.";
         return;
     }
-    if (isNaN(height) || height < 50 || height > 2500) {
-        document.getElementById("status").innerHTML = "Illegal value for image height.  Must be an integer in the range 50 to 2500.";
+    if (isNaN(height) || height < 64 || height > 4096) {
+        document.getElementById("status").innerHTML = "Illegal value for image height.  Must be an integer in the range 64 to 4096.";
         return;
     }
     setImageSize(width,height,true);
@@ -1416,7 +1417,7 @@ function installExampleFromXML(xmlString, recordUndo, respectSize) {
           else {
               width = Number(size[0].getAttribute("width"));
               height = Number(size[0].getAttribute("height"));
-              if (isNaN(width) || width > 2500 || width < 50 || isNaN(height) || height > 2500 || height < 50) {
+              if (isNaN(width) || width > 4096 || width < 64 || isNaN(height) || height > 4096 || height < 64) {
                    respectSize = false;
               }
           }
@@ -1627,7 +1628,7 @@ function init() {
     document.getElementById("offsetapply").onclick = doApplyCustomPaletteOffset;
     document.getElementById("standardPaletteButton").onclick = doApplyStandardPalette;
     document.getElementById("standardPaletteSelect").value = "EarthAndSky";
-    document.getElementById("secondpass").checked = true;
+    document.getElementById("secondpass").checked = false;
     document.getElementById("secondpass").onchange = changeSecondPass;
     document.getElementById("zoomInAmount").value = "0.1";
     document.getElementById("zoomOutAmount").value = "10";
@@ -1653,7 +1654,7 @@ function init() {
 
 <h2>Explore the Mandelbrot Set with GSK Tech Platforms' on-premises Kubernetes cluster</h2>
 <p><b>
-    Based on a browser-only Mandelbrot Set viewer by <a href=http://math.hws.edu/eck/index.html>David Eck</a>, this version leverages GSK's on-premises Kubernetes cluster to host a backend API which performs the calculations.<br><br>
+    Based on a browser-only Mandelbrot Set viewer by <a href=http://math.hws.edu/eck/index.html>David Eck</a>, this revised client/server version is hosted by GSK's on-premises Kubernetes cluster, which provides a scalable backend API to perform the calculations.<br><br>
 
     Double-click the image (or drag on it to draw a box) and it will zoom in.  Increase or decrease the number of workers to vary the number of Kubernetes pods being used to do the backend calculations.
 <a href="MB-info.html">Click here</a> for more info, instructions, and examples.</b></p>

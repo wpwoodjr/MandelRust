@@ -1,0 +1,18 @@
+<?xml version='1.0'?>
+<mandelbrot_settings_2>
+<limits>
+   <xmin>0.23224815716003595021</xmin>
+   <xmax>0.23225783712954698271</xmax>
+   <ymin>0.54949393122558898818</ymin>
+   <ymax>0.54950118761754836958</ymax>
+</limits>
+<palette colorType='RGB'>
+   <mirrorOutOfRangeComponents value='true'/>
+   <divisionPoint position='0.0' color='1.0;1.0;1.0'/>
+   <divisionPoint position='1.0' color='0.0;0.0;0.0'/>
+</palette>
+<mandelbrot_color r='0' g='0' b='0'/>
+<palette_mapping length='0' offset='0'/>
+<max_iterations value='250'/>
+<high_precision_enabled value='true'/>
+</mandelbrot_settings_2>

@@ -5,7 +5,7 @@ var fs = require('fs'),
     http = require('http');
 
 var app = require('connect')();
-var CORS = require('connect-cors');
+//var CORS = require('connect-cors');
 var swaggerTools = require('swagger-tools');
 var jsyaml = require('js-yaml');
 var serverPort = 8081;
@@ -22,7 +22,7 @@ var options = {
 var spec = fs.readFileSync(path.join(__dirname,'api/swagger.yaml'), 'utf8');
 var swaggerDoc = jsyaml.safeLoad(spec);
 
-app.use(CORS());
+//app.use(CORS());
 /*{
     origins: [],            // implicit same as ['*'], and null
     methods: ['POST'],      // OPTIONS is always allowed
@@ -49,11 +49,8 @@ swaggerTools.initializeMiddleware(swaggerDoc, function (middleware) {
   // Serve the Swagger documents and Swagger UI
   app.use(middleware.swaggerUi());
 
-  app.use(serveStatic('/client', { fallthrough: false }));
-  app.use('/client', function fooMiddleware(req, res, next) {
-      console.log('./client: ' + req.url);
-  });
-  
+  app.use(serveStatic('client', { fallthrough: false, index: 'MB.html' }));
+
   // Start the server
   http.createServer(app).listen(serverPort, function () {
     console.log('Your server is listening on port %d (http://localhost:%d)', serverPort, serverPort);

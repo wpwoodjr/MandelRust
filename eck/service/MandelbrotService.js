@@ -30,7 +30,7 @@ function countIterations( /* double */ x, /* double */ y, maxIterations) {
     let zx = x;
     let zy = y;
     while (count < maxIterations
-            && zx*zx + zy*zy <= 4) {        // < 8 to match orig version?  Maybe HP uses 8?
+            && zx*zx + zy*zy < 8) {        // < 8 to match orig version?  Maybe HP uses 8?
         let new_zx = zx*zx - zy*zy + x;
         zy = 2*zx*zy + y;
         zx = new_zx;

@@ -1,6 +1,6 @@
 {
   "name": "mandelbrot",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Does Mandelbrot computation",
   "main": "index.js",
   "scripts": {
@@ -15,8 +15,7 @@
   "dependencies": {
     "connect": "^3.2.0",
     "js-yaml": "^3.3.0",
-    "swagger-tools": "0.10.1",
-    "connect-cors": "0.5.6",
-    "serve-static": "1.14.1"
+    "swagger-tools": "^0.10.1",
+    "serve-static": "^1.14.1"
   }
 }

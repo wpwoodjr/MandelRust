@@ -1,0 +1,17 @@
+<?xml version='1.0'?>
+<mandelbrot_settings_2>
+<image_size width='800' height='600'/>
+<limits>
+   <xmin>-0.738872939999999998640</xmin>
+   <xmax>-0.738871761999999998640</xmax>
+   <ymin>0.207911672000000000004</ymin>
+   <ymax>0.207912556000000000004</ymax>
+</limits>
+<palette colorType='HSB'>
+   <divisionPoint position='0' color='0;1;1'/>
+   <divisionPoint position='1' color='1;1;1'/>
+</palette>
+<palette_mapping length='350' offset='70'/>
+<max_iterations value='5000'/>
+</mandelbrot_settings_2>
+

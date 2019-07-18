@@ -111,7 +111,7 @@ var graphics;  // Graphics context for on-screen canvas.
 var ArrayType = window.Uint32Array || Array;
 
 var workers;
-var wokerCount = 1;
+//var wokerCount = 1;
 var jobNum = 0;
 
 var running = false;
@@ -273,17 +273,27 @@ function doDraw() {
     }
 }
 
+let rowsPerSecond;
+let startTime;
+
 function repaint() {
     doDraw();
     if (running) {
        repaintTimeout = setTimeout(repaint, 500);
-       var pass = state == COMPUTING_SECOND_PASS ? " second pass" : "";
-       var prec = highPrecision? "high precision, " + digits + " digits" : "normal precision";
+       let pass = "";
+       let elapsedSecs = (Date.now() - startTime)/1000.0;
+       if (state == COMPUTING_SECOND_PASS) {
+            pass = " second pass";
+            //rowsPerSecond = ((canvas.height + jobsCompleted)/elapsedSecs).toPrecision(3) + " rows per second";
+       } else {
+            rowsPerSecond = (jobsCompleted/elapsedSecs).toPrecision(3) + " rows per second";
+       }
+       let prec = highPrecision? "high precision, " + digits + " digits" : "normal precision";
        document.getElementById("status").innerHTML =
-                "Computing" + pass + ", " + prec + "...  Completed " + jobsCompleted + " of " + canvas.height + " rows";
+                "Computing" + pass + ", " + prec + "...  Completed " + jobsCompleted + " of " + canvas.height + " rows at " + rowsPerSecond;
     }
     else {
-        document.getElementById("status").innerHTML = "Idle";
+        document.getElementById("status").innerHTML = "Idle (" + rowsPerSecond + ")";
     }
 }
 
@@ -386,6 +396,8 @@ function startJob() {
             }
         }
     }
+    rowsPerSecond = "many rows per second"
+    startTime = Date.now();
     jobsCompleted = 0;
     for (var i = 0; i < workerCount; i++) {
         var j = jobs.pop();
@@ -694,7 +706,7 @@ function doZoomInOnRect(x,y,width,height) {
 }
 
 function doZoomOutFromRect(x,y,width,height) {
-    var rectX = new BigDecimal("" + Math.round(x));  
+    var rectX = new BigDecimal("" + Math.round(x));
     var rectY = new BigDecimal("" + Math.round(y));
     var rectW = new BigDecimal("" + Math.round(width));
     var rectH = new BigDecimal("" + Math.round(height));
@@ -753,7 +765,7 @@ function setUpDragging() {
     var dragging = false; // for mouse only, to delay dragging until mouse moves.
     var startX, startY; // for mouse only
     dragbox = null;  // initially, the mouse is not being dragged.
-    function startDrag(clientX,clientY) {  
+    function startDrag(clientX,clientY) {
         var r = canvas.getBoundingClientRect();
         var x = clientX - r.left;
         var y = clientY - r.top;
@@ -767,7 +779,7 @@ function setUpDragging() {
         dragbox.setCorner(x,y);
         doDraw();
     }
-    function endDrag() {  
+    function endDrag() {
         dragbox.zoom(zoomin);
         dragbox = null;
     }
@@ -815,7 +827,7 @@ function setUpDragging() {
             document.removeEventListener("mouseup",doMouseUp,false);
         }
     }
-   function doTouchStart(evt){ 
+   function doTouchStart(evt){
         if (evt.touches.length != 1) {
            doTouchCancel();
            return;
@@ -826,7 +838,7 @@ function setUpDragging() {
         canvas.addEventListener("touchmove", doTouchMove);
         canvas.addEventListener("touchend", doTouchEnd);
         canvas.addEventListener("touchcancel", doTouchCancel);
-        startDrag(evt.touches[0].clientX, evt.touches[0].clientY); 
+        startDrag(evt.touches[0].clientX, evt.touches[0].clientY);
         evt.preventDefault();
     }
     function doTouchMove(evt){
@@ -836,7 +848,7 @@ function setUpDragging() {
            doTouchCancel();
            return;
         }
-        continueDrag(evt.touches[0].clientX, evt.touches[0].clientY); 
+        continueDrag(evt.touches[0].clientX, evt.touches[0].clientY);
         evt.preventDefault();
     }
     function doTouchEnd(evt) {
@@ -967,7 +979,7 @@ function changePaletteOffset() {
     else {
         var fractionOffset = Number(val);
         setPaletteOffset(fractionOffset);
-        document.getElementById("custoffset").style.display = "none";    
+        document.getElementById("custoffset").style.display = "none";
     }
 }
 function doApplyCustomPaletteOffset() {
@@ -1033,14 +1045,14 @@ function setImageSize(w,h) {
     addUndoItem("Change Image Size", oldval, [canvas.width,canvas.height]);
 }
 function doCustomSize() {
-    var width = Math.round(Number(document.getElementById("customwidth").value.trim()));   
+    var width = Math.round(Number(document.getElementById("customwidth").value.trim()));
     var height = Math.round(Number(document.getElementById("customheight").value.trim()));
-    if (isNaN(width) || width < 50 || width > 2500) {
-        document.getElementById("status").innerHTML = "Illegal value for image width.  Must be an integer in the range 50 to 2500.";
+    if (isNaN(width) || width < 64 || width > 4096) {
+        document.getElementById("status").innerHTML = "Illegal value for image width.  Must be an integer in the range 64 to 4096.";
         return;
     }
-    if (isNaN(height) || height < 50 || height > 2500) {
-        document.getElementById("status").innerHTML = "Illegal value for image height.  Must be an integer in the range 50 to 2500.";
+    if (isNaN(height) || height < 64 || height > 4096) {
+        document.getElementById("status").innerHTML = "Illegal value for image height.  Must be an integer in the range 64 to 4096.";
         return;
     }
     setImageSize(width,height,true);
@@ -1177,12 +1189,12 @@ function applyUndoItem(name, value) {
          break;
       case "Change MaxIterations":
          setMaxIterations(value);
-         if ([25,50,100,250,500,1000,2500,5000,10000,25000,50000].indexOf(value) < 0) { 
+         if ([25,50,100,250,500,1000,2500,5000,10000,25000,50000].indexOf(value) < 0) {
              document.getElementById("custommaxiter").style.display = "inline";
              document.getElementById("maxIterSelect").value = "Custom";
              document.getElementById("maxiterinput").value = "" + value;
          }
-         else { 
+         else {
              document.getElementById("custommaxiter").style.display = "none";
              document.getElementById("maxIterSelect").value = "" + value;
          }
@@ -1405,7 +1417,7 @@ function installExampleFromXML(xmlString, recordUndo, respectSize) {
           else {
               width = Number(size[0].getAttribute("width"));
               height = Number(size[0].getAttribute("height"));
-              if (isNaN(width) || width > 2500 || width < 50 || isNaN(height) || height > 2500 || height < 50) {
+              if (isNaN(width) || width > 4096 || width < 64 || isNaN(height) || height > 4096 || height < 64) {
                    respectSize = false;
               }
           }
@@ -1426,8 +1438,8 @@ function installExampleFromXML(xmlString, recordUndo, respectSize) {
       }
       iterations = Number(doc.getElementsByTagName("max_iterations").item(0).getAttribute("value"));
       xmin = new BigDecimal(xmin);
-      xmax = new BigDecimal(xmax);  
-      ymin = new BigDecimal(ymin); 
+      xmax = new BigDecimal(xmax);
+      ymin = new BigDecimal(ymin);
       ymax = new BigDecimal(ymax);
       if (isNaN(length) || isNaN(offset) || isNaN(iterations)) {
           throw "Bad number.";
@@ -1436,13 +1448,13 @@ function installExampleFromXML(xmlString, recordUndo, respectSize) {
           length = iterations;
       }
       palette = colors;
-      maxIterations = Math.round(iterations); 
-      if ([25,50,100,250,500,1000,2500,5000,10000,25000,50000].indexOf(maxIterations) < 0) { 
+      maxIterations = Math.round(iterations);
+      if ([25,50,100,250,500,1000,2500,5000,10000,25000,50000].indexOf(maxIterations) < 0) {
           document.getElementById("custommaxiter").style.display = "inline";
           document.getElementById("maxIterSelect").value = "Custom";
           document.getElementById("maxiterinput").value = "" + iterations;
       }
-      else { 
+      else {
           document.getElementById("custommaxiter").style.display = "none";
           document.getElementById("maxIterSelect").value = "" + maxIterations;
       }
@@ -1566,7 +1578,7 @@ function checkForExample() {
     if (ex) {
        stopJob();
        installExampleWithAjax(decodeURIComponent(ex[1]), false);
-    }    
+    }
 }
 
 function init() {
@@ -1616,7 +1628,7 @@ function init() {
     document.getElementById("offsetapply").onclick = doApplyCustomPaletteOffset;
     document.getElementById("standardPaletteButton").onclick = doApplyStandardPalette;
     document.getElementById("standardPaletteSelect").value = "EarthAndSky";
-    document.getElementById("secondpass").checked = true;
+    document.getElementById("secondpass").checked = false;
     document.getElementById("secondpass").onchange = changeSecondPass;
     document.getElementById("zoomInAmount").value = "0.1";
     document.getElementById("zoomOutAmount").value = "10";
@@ -1641,8 +1653,11 @@ function init() {
 <noscript><b>Sorry, this page requires JavaScript.</b></noscript>
 
 <h2>Explore the Mandelbrot Set</h2>
-<p><b>Drag on the image to draw a box, and the program will zoom in on that box.<br>
-(<a href="MB-info.html" style="font-size:120%">Click here</a> for more info, instructions, and examples.)</b></p>
+<p><b>
+    Based on a browser-only Mandelbrot Set viewer by <a href=http://math.hws.edu/eck/index.html>David Eck</a>, this revised version displays the number of rows per second.<br><br>
+
+    Double-click the image (or drag on it to draw a box) and it will zoom in.  Increase or decrease the number of workers to vary the number of Kubernetes pods being used to do the backend calculations.
+<a href="MB-info.html">Click here</a> for more info, instructions, and examples.</b></p>
 <p id="message"></p>
 
 <table border=0 cellpadding=0 cellspacing=0>
@@ -1663,6 +1678,12 @@ function init() {
           <option value="6">6</option>
           <option value="7">7</option>
           <option value="8">8</option>
+          <option value="12">12</option>
+          <option value="16">16</option>
+          <option value="24">24</option>
+          <option value="32">32</option>
+          <option value="48">48</option>
+          <option value="64">64</option>
       </select></label></p>
    </div>
    <div class="group">
@@ -1681,7 +1702,7 @@ function init() {
           <option value="425 550">425x550</option>
           <option value="850 1100">850x1100</option>
           <option value="Custom">Custom</option>
-      </select></label><span id="customsize" style="display:none"><br><input type="text" maxlength="4" size="4" id="customwidth">x<input type="text" maxlength="4" size="4" id="customheight"> <button id="applysize">Apply</button></label></span></p>
+      </select></label><span id="customsize" style="display:none"><br><input type="text" maxlength="4" size="4" id="customwidth">x<input type="text" maxlength="4" size="4" id="customheight"> <button id="applysize">Apply</button></span></p>
    </div>
    <div class="group">
       <p><label title="How many steps in the Mandelbrot iteration before giving up and coloring the pixel black.">MaxIterations: <select id="maxIterSelect">
