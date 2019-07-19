@@ -9,18 +9,24 @@
  **/
 exports.computeMandelbrot = function(mandelbrotCoords) {
     return new Promise(function(resolve, reject) {
-        let y = mandelbrotCoords.y;
         let xmin = mandelbrotCoords.xmin;
         let dx = mandelbrotCoords.dx;
         let columns = mandelbrotCoords.columns;
+        let ymin = mandelbrotCoords.ymin;
+        let dy = mandelbrotCoords.dy;
+        let rows = mandelbrotCoords.rows;
         let maxIterations = mandelbrotCoords.maxIterations;
 
-        let iterationCounts = new Array(columns);
-        for (let i = 0; i < columns; i++) {
-            iterationCounts[i] = countIterations(xmin + i*dx, y, maxIterations);
+        let returnIterations = new Array;
+        for (let i = 0; i < rows; i++) {
+            let iterationCounts = new Array(columns);
+            for (let j = 0; j < columns; j++) {
+                iterationCounts[j] = countIterations(xmin + j*dx, ymin + i*dy, maxIterations);
+            }
+            returnIterations.push(iterationCounts);
         }
 
-        resolve(iterationCounts);
+        resolve(returnIterations);
     });
 };
 
@@ -40,20 +46,22 @@ function countIterations( /* double */ x, /* double */ y, maxIterations) {
 
 exports.computeMandelbrotHP = function(mandelbrotCoords) {
     return new Promise(function(resolve, reject) {
-        let y = new Uint32Array(mandelbrotCoords.y);
-        let x = new Uint32Array(mandelbrotCoords.xmin);
+        let xmin = new Uint32Array(mandelbrotCoords.xmin);
         let dx = new Uint32Array(mandelbrotCoords.dx);
         let columns = mandelbrotCoords.columns;
+        let ymin = new Uint32Array(mandelbrotCoords.ymin);
         let maxIterations = mandelbrotCoords.maxIterations;
 
-        //console.log(y, x, dx, columns, maxIterations, ArrayType);
+        //console.log(xmin, dx, columns, ymin, maxIterations, ArrayType);
         let iterationCounts = new Array(columns);
-        createHPData(x, dx, columns);
+        createHPData(xmin, dx, columns);
         for (let i = 0; i < columns; i++) {
-            iterationCounts[i] = countIterationsHP(xs[i], y, maxIterations);
+            iterationCounts[i] = countIterationsHP(xs[i], ymin, maxIterations);
         }
 
-        resolve(iterationCounts);
+        let returnIterations = new Array;
+        returnIterations.push(iterationCounts);
+        resolve(returnIterations);
     });
 };
 

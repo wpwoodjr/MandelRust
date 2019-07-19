@@ -344,6 +344,7 @@ function startJob() {
     var yVal = ymax.add(new BigDecimal("0"));
     var rows = canvas.height;
     var columns = canvas.width;
+    let rowsPerJob = highPrecision ? 1 : 2;
     savedIterationCounts = new Array(rows);
     savedIterationCounts2ndPass = new Array(rows+1);
     if (highPrecision) {
@@ -353,7 +354,7 @@ function startJob() {
         xminArray = new ArrayType(chunks+1);
         convert(xminArray, xmin, chunks+1);
         convert(dxArray,dx,chunks+1);
-        for ( var row = 0; row < rows; row++) {
+        for ( var row = 0; row < rows; row += rowsPerJob) {
             var yValArray = new ArrayType(chunks+1);
             convert(yValArray, yVal, chunks+1);
             jobs[rows - 1- row] = {
@@ -361,7 +362,8 @@ function startJob() {
                 columns: columns,
                 xmin: xminArray,
                 dx: dxArray,
-                yVal: yValArray
+                yVal: yValArray,
+                dy: 0
             };
             yVal = yVal.subtract(dy);
         }
@@ -372,13 +374,14 @@ function startJob() {
         var dx_d = Number(dx.toString());
         var dy_d = Number(dy.toString());
         //console.log(dx_d, dy_d, xmin_d, ymax_d);
-        for ( var row = 0; row < rows; row++) {
+        for ( var row = 0; row < rows; row += rowsPerJob) {
             jobs[rows - 1- row] = {
                 row: row,
                 columns: columns,
                 xmin: xmin_d,
                 dx: dx_d,
-                yVal: ymax_d - row*dy_d     // to reduce precision errors
+                yVal: ymax_d - row*dy_d,     // to reduce precision errors
+                dy: dy_d
             };
         }
     }
@@ -401,10 +404,10 @@ function startJob() {
     for (var i = 0; i < workerCount; i++) {
         var j = jobs.pop();
         j.workerNum = i;
-        workers[i].postMessage(["setup",jobNum, maxIterations,highPrecision,i]);
+        workers[i].postMessage(["setup",jobNum, maxIterations,highPrecision,i, rowsPerJob]);
         workers[i].postMessage([
             "task", j.row, j.columns,
-            j.xmin, j.dx, j.yVal
+            j.xmin, j.dx, j.yVal, j.dy
         ]);
     }
     running = true;
@@ -427,23 +430,26 @@ function jobFinished(msg) {
        var j = jobs.pop();
        worker.postMessage([
             "task", j.row, j.columns,
-            j.xmin, j.dx, j.yVal
+            j.xmin, j.dx, j.yVal, j.dy
         ]);
     }
     timePerJob = ( (new Date().getTime()) - jobStartTime) / jobsCompleted;
     var iterationCounts = job[2];
-    var row = job[1];
-    if (state == COMPUTING_FIRST_PASS) {
-       savedIterationCounts[row] = iterationCounts;
-       putRow(row);
+    let rowsPerJob = job[4];
+    for (let i = 0; i < rowsPerJob; i++) {
+        let row = job[1] + i;
+        if (state == COMPUTING_FIRST_PASS) {
+           savedIterationCounts[row] = iterationCounts[i];
+           putRow(row);
+        }
+        else {
+           savedIterationCounts2ndPass[row] = iterationCounts[i];
+           if (row > 0) {
+               putRow(row-1);
+           }
+        }
     }
-    else {
-       savedIterationCounts2ndPass[row] = iterationCounts;
-       if (row > 0) {
-           putRow(row-1);
-       }
-    }
-    jobsCompleted++;
+    jobsCompleted += rowsPerJob;
     if (state == COMPUTING_FIRST_PASS) {
         if (jobsCompleted == canvas.height) {
           state = DONE_FIRST_PASS;
@@ -517,7 +523,7 @@ function startSecondPass() {
         workers[i].postMessage(["setup",jobNum, maxIterations,highPrecision,i]);
         workers[i].postMessage([
             "task", j.row, j.columns,
-            j.xmin, j.dx, j.yVal
+            j.xmin, j.dx, j.yVal, j.dy
         ]);
     }
     running = true;

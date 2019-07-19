@@ -2,7 +2,7 @@
 swagger: "2.0"
 info:
   description: "Does Mandelbrot computation"
-  version: "2.0.0"
+  version: "3.0.0"
   title: "Mandelbrot"
   termsOfService: "https://www.gsk.com/en-gb/terms-of-use/"
   contact:
@@ -82,12 +82,10 @@ definitions:
     - "columns"
     - "dx"
     - "maxIterations"
+    - "rows"
     - "xmin"
-    - "y"
+    - "ymin"
     properties:
-      y:
-        type: "number"
-        format: "f64"
       xmin:
         type: "number"
         format: "f64"
@@ -95,6 +93,15 @@ definitions:
         type: "number"
         format: "f64"
       columns:
+        type: "integer"
+        format: "int32"
+      ymin:
+        type: "number"
+        format: "f64"
+      dy:
+        type: "number"
+        format: "f64"
+      rows:
         type: "integer"
         format: "int32"
       maxIterations:
@@ -106,6 +113,7 @@ definitions:
       dx: 0.1499999999999999944488848768742172978818416595458984375
       columns: 20
       y: -0.59999999999999997779553950749686919152736663818359375
+      rows: 1
   MandelbrotCoordsHP:
     type: "object"
     required:
@@ -113,12 +121,8 @@ definitions:
     - "dx"
     - "maxIterations"
     - "xmin"
-    - "y"
+    - "ymin"
     properties:
-      y:
-        type: "array"
-        items:
-          type: "integer"
       xmin:
         type: "array"
         items:
@@ -130,6 +134,10 @@ definitions:
       columns:
         type: "integer"
         format: "int32"
+      ymin:
+        type: "array"
+        items:
+          type: "integer"
       maxIterations:
         type: "integer"
         format: "int32"
@@ -152,7 +160,7 @@ definitions:
       - 23857
       - 47514
       columns: 20
-      y:
+      ymin:
       - 0
       - 19775
       - 19062
@@ -163,7 +171,9 @@ definitions:
   MandelbrotResults:
     type: "array"
     items:
-      type: "integer"
+      type: "array"
+      items:
+        type: "integer"
   ApiFailureResponse:
     type: "object"
     properties:
