@@ -1,12 +1,14 @@
 let /* boolean */ highPrecision;
 let /* int */ maxIterations, jobNumber, workerNumber;
 
-let url = "http://localhost:8081/v1/mandelbrot/compute";
-//let url = "https://mandelbrot.stagek8s.gsk.com/v1/mandelbrot/compute";
+//let url = "http://localhost:8081/v1/mandelbrot/compute";
+let url = "https://mandelbrot.stagek8s.gsk.com/v1/mandelbrot/compute";
 let retryLimit = 5;
 
 function doIterationCounts(coords, url, taskNumber, retryCount) {
     let iterationCounts;
+    let error = "";
+
     try {
         let client = new XMLHttpRequest();
         client.open("POST", url, false);
@@ -22,23 +24,27 @@ function doIterationCounts(coords, url, taskNumber, retryCount) {
         if (client.status == 200) {
             iterationCounts =  JSON.parse(client.response);
         } else {
-            console.log("Error: " + client);
-            iterationCounts = array_fill(new Array(coords.columns), -1);
+            error = "XMLHttpRequest status: " + client.status;
         }
     } catch(err) {
+        error = err;
+    }
+
+    if (error != "") {
         if (retryCount < retryLimit) {
             retryCount++;
-            console.log("XMLHttpRequest failure, retrying " + retryCount + " of " + retryLimit + "...\n" + err);
+            console.log("XMLHttpRequest failure, retrying " + retryCount + " of " + retryLimit + "...\n" + error);
             setTimeout(function() {
                     doIterationCounts(coords, url, taskNumber, retryCount);
                 },
                 retryCount*1000);
             return;
         } else {
-            console.log("XMLHttpRequest failure, retry limit exceeded!\n" + err);
+            console.log("XMLHttpRequest failure, retry limit exceeded!\n" + error);
             iterationCounts = array_fill(new Array(coords.columns), -1);
         }
     }
+
     let returnData = [ jobNumber, taskNumber, iterationCounts, workerNumber ];
     postMessage(returnData);
 }
