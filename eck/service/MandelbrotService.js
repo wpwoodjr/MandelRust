@@ -10,15 +10,14 @@
 exports.computeMandelbrot = function(mandelbrotCoords) {
     return new Promise(function(resolve, reject) {
         let y = mandelbrotCoords.y;
-        let x = mandelbrotCoords.xmin;
+        let xmin = mandelbrotCoords.xmin;
         let dx = mandelbrotCoords.dx;
         let columns = mandelbrotCoords.columns;
         let maxIterations = mandelbrotCoords.maxIterations;
 
         let iterationCounts = new Array(columns);
         for (let i = 0; i < columns; i++) {
-            iterationCounts[i] = countIterations(x, y, maxIterations);
-            x += dx;
+            iterationCounts[i] = countIterations(xmin + i*dx, y, maxIterations);
         }
 
         resolve(iterationCounts);

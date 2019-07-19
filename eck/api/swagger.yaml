@@ -7,10 +7,8 @@ info:
   termsOfService: "https://www.gsk.com/en-gb/terms-of-use/"
   contact:
     email: "william.wood@gsk.com"
-host: "localhost:8081"
+host: "mandelbrot.stagek8s.gsk.com"
 basePath: "/v1"
-schemes:
-- "http"
 paths:
   /mandelbrot/compute:
     post:

@@ -371,16 +371,15 @@ function startJob() {
         var ymax_d = Number(ymax.toString());
         var dx_d = Number(dx.toString());
         var dy_d = Number(dy.toString());
-        var yVal_d = ymax_d;
+        //console.log(dx_d, dy_d, xmin_d, ymax_d);
         for ( var row = 0; row < rows; row++) {
             jobs[rows - 1- row] = {
                 row: row,
                 columns: columns,
                 xmin: xmin_d,
                 dx: dx_d,
-                yVal: yVal_d
+                yVal: ymax_d - row*dy_d     // to reduce precision errors
             };
-            yVal_d = yVal_d - dy_d;
         }
     }
     if (interlaced) {
@@ -500,16 +499,15 @@ function startSecondPass() {
         var xmin_d = Number(xStart.toString());
         var dx_d = Number(dx.toString());
         var dy_d = Number(dy.toString());
-        var yVal_d = Number(ymax.toString()) + dy_d/2;
+        var ymax_d = Number(ymax.toString()) + dy_d/2;
         for ( var row = 0; row < rows; row++) {
             jobs[rows - 1- row] = {
                 row: row,
                 columns: columns,
                 xmin: xmin_d,
                 dx: dx_d,
-                yVal: yVal_d
+                yVal: ymax_d - row*dy_d     // to reduce precision errors
             };
-            yVal_d = yVal_d - dy_d;
         }
     }
     jobsCompleted = 0;
@@ -1654,10 +1652,15 @@ function init() {
 
 <h2>Explore the Mandelbrot Set with GSK Tech Platforms' on-premises Kubernetes cluster</h2>
 <p><b>
-    Based on a browser-only Mandelbrot Set viewer by <a href=http://math.hws.edu/eck/index.html>David Eck</a>, this revised client/server version is hosted by GSK's on-premises Kubernetes cluster, which provides a scalable backend API to perform the calculations.<br><br>
-
-    Double-click the image (or drag on it to draw a box) and it will zoom in.  Increase or decrease the number of workers to vary the number of Kubernetes pods being used to do the backend calculations.
-<a href="MB-info.html">Click here</a> for more info, instructions, and examples.</b></p>
+    Based on a browser-only Mandelbrot Set viewer by <a href=http://math.hws.edu/eck/index.html>David Eck</a>,
+    this revised client/server version is hosted on GSK's on-premises Kubernetes cluster,
+    which provides a scalable backend API to perform the calculations.
+    <br><br>
+    Calculating the Mandelbrot Set is very computationally intensive.  A Kubernetes pod calculates each row of the image.
+    Increase or decrease the number of "workers" to vary the number of Kubernetes pods doing the backend calculations.
+    <br><br>
+    Double-click the image (or drag on it to draw a box) and it will zoom in.  
+    <a href="MB-info.html">Click here</a> for more info, instructions, and examples.  Works best in Chrome!</b></p>
 <p id="message"></p>
 
 <table border=0 cellpadding=0 cellspacing=0>
