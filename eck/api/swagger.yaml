@@ -84,7 +84,7 @@ definitions:
     - "maxIterations"
     - "rows"
     - "xmin"
-    - "ymin"
+    - "ymax"
     properties:
       xmin:
         type: "number"
@@ -95,7 +95,7 @@ definitions:
       columns:
         type: "integer"
         format: "int32"
-      ymin:
+      ymax:
         type: "number"
         format: "f64"
       dy:
@@ -108,12 +108,12 @@ definitions:
         type: "integer"
         format: "int32"
     example:
-      xmin: -2.20000000000000017763568394002504646778106689453125
-      maxIterations: 100
-      dx: 0.1499999999999999944488848768742172978818416595458984375
+      xmin: -2.2
+      dx: 0.15
       columns: 20
-      y: -0.59999999999999997779553950749686919152736663818359375
+      ymax: -0.6
       rows: 1
+      maxIterations: 100
   MandelbrotCoordsHP:
     type: "object"
     required:
@@ -121,7 +121,7 @@ definitions:
     - "dx"
     - "maxIterations"
     - "xmin"
-    - "ymin"
+    - "ymax"
     properties:
       xmin:
         type: "array"
@@ -134,7 +134,7 @@ definitions:
       columns:
         type: "integer"
         format: "int32"
-      ymin:
+      ymax:
         type: "array"
         items:
           type: "integer"
@@ -150,7 +150,6 @@ definitions:
       - 49809
       - 60517
       - 42557
-      maxIterations: 100
       dx:
       - 0
       - 0
@@ -160,7 +159,7 @@ definitions:
       - 23857
       - 47514
       columns: 20
-      ymin:
+      ymax:
       - 0
       - 19775
       - 19062
@@ -168,6 +167,7 @@ definitions:
       - 16177
       - 55345
       - 21770
+      maxIterations: 100
   MandelbrotResults:
     type: "array"
     items:

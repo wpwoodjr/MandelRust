@@ -1,42 +1,52 @@
-'use strict';
+let /* boolean */ highPrecision;
+let /* int */ maxIterations, jobNumber, workerNumber;
 
-/**
- * Iterate over pixels to determine if each is in the Mandelbrot set
- *
- *
- * mandelbrotCoords MandelbrotCoords Mandelbrot coordinates to compute
- * returns MandelbrotResults
- **/
-exports.computeMandelbrot = function(mandelbrotCoords) {
-    return new Promise(function(resolve, reject) {
-        let xmin = mandelbrotCoords.xmin;
-        let dx = mandelbrotCoords.dx;
-        let columns = mandelbrotCoords.columns;
-        let ymax = mandelbrotCoords.ymax;
-        let dy = mandelbrotCoords.dy;
-        let rows = mandelbrotCoords.rows;
-        let maxIterations = mandelbrotCoords.maxIterations;
+let ArrayType = this.Uint32Array || Array;
 
-        let returnIterations = new Array(rows);
-        for (let i = 0; i < rows; i++) {
-            let iterationCounts = new Array(columns);
-            for (let j = 0; j < columns; j++) {
-                iterationCounts[j] = countIterations(xmin + j*dx, ymax - i*dy, maxIterations);
+onmessage = function(msg) {
+    let data = msg.data;
+    if ( data[0] == "setup" ) {
+        jobNumber = data[1];
+        maxIterations = data[2];
+        highPrecision = data[3];
+        workerNumber = data[4];
+    } else if ( data[0] == "task" ) {
+        let firstRow = data[1];
+        let columnCount = data[2];
+        let xmin = data[3];
+        let dx = data[4];
+        let ymax = data[5];
+        let nrows = data[7];
+        if (highPrecision) {
+            //console.log(workerNumber,xmin,dx,columnCount,ymax,maxIterations,highPrecision);
+            createHPData(xmin, dx, columnCount);
+            let iterationCounts = new Array(columnCount);
+            for (var i = 0; i < columnCount; i++)
+                iterationCounts[i] = countIterationsHP(xs[i], ymax, maxIterations);
+            postMessage([ jobNumber, firstRow, [iterationCounts], workerNumber, nrows ]);
+        } else {
+            let dy = data[6];
+            let returnIterations = new Array(nrows);
+            for (let i = 0; i < nrows; i++) {
+                let iterationCounts = new Array(columnCount);
+                for (let j = 0; j < columnCount; j++) {
+                    iterationCounts[j] = countIterations(xmin + j*dx, ymax - (firstRow + i)*dy, maxIterations);
+                }
+                returnIterations[i] = iterationCounts;
             }
-            returnIterations[i] = iterationCounts;
+            postMessage([ jobNumber, firstRow, returnIterations, workerNumber, nrows ]);
         }
+    }
+}
 
-        resolve(returnIterations);
-    });
-};
 
 function countIterations( /* double */ x, /* double */ y, maxIterations) {
-    let count = 0;
-    let zx = x;
-    let zy = y;
+    var count = 0;
+    var zx = x;
+    var zy = y;
     while (count < maxIterations
-            && zx*zx + zy*zy < 8) {        // < 8 to match orig version?  Maybe HP uses 8?
-        let new_zx = zx*zx - zy*zy + x;
+            && zx*zx + zy*zy < 8) {
+        var new_zx = zx*zx - zy*zy + x;
         zy = 2*zx*zy + y;
         zx = new_zx;
         count++;
@@ -44,29 +54,10 @@ function countIterations( /* double */ x, /* double */ y, maxIterations) {
     return (count < maxIterations)? count : -1 ;
 }
 
-exports.computeMandelbrotHP = function(mandelbrotCoords) {
-    return new Promise(function(resolve, reject) {
-        let xmin = new Uint32Array(mandelbrotCoords.xmin);
-        let dx = new Uint32Array(mandelbrotCoords.dx);
-        let columns = mandelbrotCoords.columns;
-        let ymax = new Uint32Array(mandelbrotCoords.ymax);
-        let maxIterations = mandelbrotCoords.maxIterations;
-
-        //console.log(xmin, dx, columns, ymax, maxIterations, ArrayType);
-        let iterationCounts = new Array(columns);
-        createHPData(xmin, dx, columns);
-        for (let i = 0; i < columns; i++) {
-            iterationCounts[i] = countIterationsHP(xs[i], ymax, maxIterations);
-        }
-
-        resolve([iterationCounts]);
-    });
-};
-
 function countIterationsHP( /* Uint32Array */ x, /* Uint32Array */ y, maxIterations) {
     arraycopy(x,0,zx,0,chunks);
     arraycopy(y,0,zy,0,chunks);
-    let count = 0;
+    var count = 0;
     while (count < maxIterations) {
         arraycopy(zx, 0, work2, 0, chunks);
         multiply(work2,zx,chunks);  // work2 = zx*zx
@@ -91,7 +82,7 @@ function countIterationsHP( /* Uint32Array */ x, /* Uint32Array */ y, maxIterati
 }
 
 function arraycopy( sourceArray, sourceStart, destArray, destStart, count ) {
-   for (let i = 0; i < count; i++) {
+   for (var i = 0; i < count; i++) {
        destArray[destStart + i] = sourceArray[sourceStart + i];
    }
 }
@@ -109,19 +100,17 @@ var /* int */ chunks;
 
 var /* double */ log2of10 = Math.log(10)/Math.log(2);
 
-let ArrayType = Uint32Array;
-
 function createHPData(xmin, dx, columnCount) {
     chunks = xmin.length - 1;
     y = new ArrayType(chunks+1);
     xs = new Array(columnCount);
     xs[0] = xmin; // must have xs.length = chunks+1
-    for (let i = 1; i < columnCount; i++) {
+    for (var i = 1; i < columnCount; i++) {
         xs[i] = new ArrayType(chunks+1);
     }
     if (columnCount > 1) {
-        for (let i = 1; i < columnCount; i++) {
-            for (let j = 0; j <= chunks; j++) {
+        for (var i = 1; i < columnCount; i++) {
+            for (var j = 0; j <= chunks; j++) {
                 xs[i][j] = xs[i-1][j];
             }
             add(xs[i],dx,chunks+1);
@@ -135,8 +124,8 @@ function createHPData(xmin, dx, columnCount) {
 }
 
 function add( /* int[] */ x, /* int[] */ dx, /* int */ count) {
-    let carry = 0;
-    for (let i = count - 1; i >= 0; i--) {
+    var carry = 0;
+    for (var i = count - 1; i >= 0; i--) {
         x[i] += dx[i];
         x[i] += carry;
         carry = x[i] >>> 16;
@@ -145,29 +134,29 @@ function add( /* int[] */ x, /* int[] */ dx, /* int */ count) {
 }
 
 function multiply( /* int[] */ x, /* int[] */ y, /* int */ count){  // Can't allow x == y !
-    let neg1 = (x[0] & 0x8000) != 0;
+    var neg1 = (x[0] & 0x8000) != 0;
     if (neg1)
         negate(x,count);
-    let neg2 = (y[0] & 0x8000) != 0;
+    var neg2 = (y[0] & 0x8000) != 0;
     if (neg2)
         negate(y,count);
     if (x[0] == 0) {
-        for (let i = 0; i < count; i++)
+        for (var i = 0; i < count; i++)
             work3[i] = 0;
     }
     else {
-        let carry = 0;
-        for (let i = count-1; i >= 0; i--) {
+        var carry = 0;
+        for (var i = count-1; i >= 0; i--) {
             work3[i] = x[0]*y[i] + carry;
             carry = work3[i] >>> 16;
             work3[i] &= 0xFFFF;
         }
     }
-    for (let j = 1; j < count; j++) {
-        let i = count - j;
-        let carry = (x[j]*y[i]) >>> 16;
+    for (var j = 1; j < count; j++) {
+        var i = count - j;
+        var carry = (x[j]*y[i]) >>> 16;
         i--;
-        let k = count - 1;
+        var k = count - 1;
         while (i >= 0) {
             work3[k] += x[j]*y[i] + carry;
             carry = work3[k] >>> 16;
@@ -190,10 +179,10 @@ function multiply( /* int[] */ x, /* int[] */ y, /* int */ count){  // Can't all
 }
 
 function negate( /* int[] */ x, /* int */ chunks) {
-    for (let i = 0; i < chunks; i++)
+    for (var i = 0; i < chunks; i++)
         x[i] = 0xFFFF-x[i];
     ++x[chunks-1];
-    for (let i = chunks-1; i > 0 && (x[i] & 0x10000) != 0; i--) {
+    for (var i = chunks-1; i > 0 && (x[i] & 0x10000) != 0; i--) {
         x[i] &= 0xFFFF;
         ++x[i-1];
     }

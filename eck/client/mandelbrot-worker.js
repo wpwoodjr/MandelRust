@@ -1,11 +1,11 @@
 let /* boolean */ highPrecision;
-let /* int */ maxIterations, jobNumber, workerNumber, rowsPerJob;
+let /* int */ maxIterations, jobNumber, workerNumber;
 
-let url = "http://localhost:8081/v1/mandelbrot/compute";
+let url = "http://localhost:8080/v1/mandelbrot/compute";
 //let url = "https://mandelbrot.stagek8s.gsk.com/v1/mandelbrot/compute";
 let retryLimit = 5;
 
-function doIterationCounts(coords, url, taskNumber, retryCount) {
+function doIterationCounts(coords, url, firstRow, retryCount) {
     let iterationCounts;
     let error = "";
 
@@ -15,7 +15,7 @@ function doIterationCounts(coords, url, taskNumber, retryCount) {
         client.setRequestHeader("Content-Type", "application/json");
         client.setRequestHeader("Accept", "application/json");
         if (highPrecision) {
-            coords.ymin = array_from(coords.ymin);
+            coords.ymax = array_from(coords.ymax);
             coords.xmin = array_from(coords.xmin);
             coords.dx = array_from(coords.dx);
         }
@@ -30,12 +30,12 @@ function doIterationCounts(coords, url, taskNumber, retryCount) {
         error = err;
     }
 
-    if (error != "") {
+    if (error !== "") {
         if (retryCount < retryLimit) {
             retryCount++;
             console.log("XMLHttpRequest failure, retrying " + retryCount + " of " + retryLimit + "...\n" + error);
             setTimeout(function() {
-                    doIterationCounts(coords, url, taskNumber, retryCount);
+                    doIterationCounts(coords, url, firstRow, retryCount);
                 },
                 retryCount*1000);
             return;
@@ -45,7 +45,7 @@ function doIterationCounts(coords, url, taskNumber, retryCount) {
         }
     }
 
-    let returnData = [ jobNumber, taskNumber, iterationCounts, workerNumber, rowsPerJob ];
+    let returnData = [ jobNumber, firstRow, iterationCounts, workerNumber, coords.rows ];
     postMessage(returnData);
 }
 
@@ -56,21 +56,21 @@ onmessage = function(msg) {
         maxIterations = data[2];
         highPrecision = data[3];
         workerNumber = data[4];
-        rowsPerJob = data[5];
     } else if ( data[0] == "task" ) {
-        let taskNumber = data[1];
+        let firstRow = data[1];
         let columns = data[2];
         let xmin = data[3];
         let dx = data[4];
-        let ymin = data[5];
+        let ymax = data[5];
         let dy = data[6];
-        //console.log(xmin,dx,columns,ymin,dy,maxIterations,highPrecision);
+        let nrows = data[7];
+        //console.log(workerNumber,xmin,dx,columns,ymax,dy,maxIterations,highPrecision);
 
         doIterationCounts({
-                xmin: xmin, dx: dx, columns: columns, ymin: ymin, dy: dy, rows: rowsPerJob, maxIterations: maxIterations
+                xmin: xmin, dx: dx, columns: columns, ymax: ymax, dy: dy, rows: nrows, maxIterations: maxIterations
             },
             highPrecision ? url + "HP" : url,
-            taskNumber,
+            firstRow,
             0);
     }
 }

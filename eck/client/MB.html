@@ -306,7 +306,7 @@ function newWorkers(count) {
     }
     workers = [];
     for (i = 0; i < count; i++) {
-       workers[i] = new Worker("mandelbrot-worker.js");
+       workers[i] = new Worker("mandelbrot-worker-local.js");
        workers[i].onmessage = jobFinished;
     }
 }
@@ -327,6 +327,8 @@ function stopJob() {
     }
 }
 
+let maxRowsPerJob = 8;
+
 function startJob() {
     if (running) {
        stopJob();
@@ -344,7 +346,6 @@ function startJob() {
     var yVal = ymax.add(new BigDecimal("0"));
     var rows = canvas.height;
     var columns = canvas.width;
-    let rowsPerJob = highPrecision ? 1 : 2;
     savedIterationCounts = new Array(rows);
     savedIterationCounts2ndPass = new Array(rows+1);
     if (highPrecision) {
@@ -354,7 +355,7 @@ function startJob() {
         xminArray = new ArrayType(chunks+1);
         convert(xminArray, xmin, chunks+1);
         convert(dxArray,dx,chunks+1);
-        for ( var row = 0; row < rows; row += rowsPerJob) {
+        for ( var row = 0; row < rows; row++) {
             var yValArray = new ArrayType(chunks+1);
             convert(yValArray, yVal, chunks+1);
             jobs[rows - 1- row] = {
@@ -363,7 +364,8 @@ function startJob() {
                 xmin: xminArray,
                 dx: dxArray,
                 yVal: yValArray,
-                dy: 0
+                dy: 0,
+                nrows: 1
             };
             yVal = yVal.subtract(dy);
         }
@@ -374,16 +376,20 @@ function startJob() {
         var dx_d = Number(dx.toString());
         var dy_d = Number(dy.toString());
         //console.log(dx_d, dy_d, xmin_d, ymax_d);
-        for ( var row = 0; row < rows; row += rowsPerJob) {
-            jobs[rows - 1- row] = {
+
+        let rowsPerJob = Math.min(maxRowsPerJob, Math.floor(rows/workerCount));
+        for (let row = 0; row < rows; row += rowsPerJob) {
+            jobs.push({
                 row: row,
                 columns: columns,
                 xmin: xmin_d,
                 dx: dx_d,
-                yVal: ymax_d - row*dy_d,     // to reduce precision errors
-                dy: dy_d
-            };
+                yVal: ymax_d,   // to reduce error calculate y in worker as ymax_d - (row + 0..nrows)*dy_d
+                dy: dy_d,
+                nrows: Math.min(rowsPerJob, rows - row)
+            });
         }
+        jobs.reverse();     // keep original order
     }
     if (interlaced) {
         var sortedJobs = jobs;
@@ -404,10 +410,10 @@ function startJob() {
     for (var i = 0; i < workerCount; i++) {
         var j = jobs.pop();
         j.workerNum = i;
-        workers[i].postMessage(["setup",jobNum, maxIterations,highPrecision,i, rowsPerJob]);
+        workers[i].postMessage(["setup",jobNum, maxIterations,highPrecision,i]);
         workers[i].postMessage([
             "task", j.row, j.columns,
-            j.xmin, j.dx, j.yVal, j.dy
+            j.xmin, j.dx, j.yVal, j.dy, j.nrows
         ]);
     }
     running = true;
@@ -430,26 +436,27 @@ function jobFinished(msg) {
        var j = jobs.pop();
        worker.postMessage([
             "task", j.row, j.columns,
-            j.xmin, j.dx, j.yVal, j.dy
+            j.xmin, j.dx, j.yVal, j.dy, j.nrows
         ]);
     }
     timePerJob = ( (new Date().getTime()) - jobStartTime) / jobsCompleted;
     var iterationCounts = job[2];
-    let rowsPerJob = job[4];
-    for (let i = 0; i < rowsPerJob; i++) {
+    let nRows = job[4];
+    for (let i = 0; i < nRows; i++) {
         let row = job[1] + i;
         if (state == COMPUTING_FIRST_PASS) {
            savedIterationCounts[row] = iterationCounts[i];
            putRow(row);
         }
         else {
-           savedIterationCounts2ndPass[row] = iterationCounts[i];
-           if (row > 0) {
-               putRow(row-1);
-           }
+            savedIterationCounts2ndPass[row] = iterationCounts[i];
+            // all rows need to be present for averaging second pass if workerCount > 1
+            //if (row > 0) {
+            //   putRow(row-1);
+            //}
         }
     }
-    jobsCompleted += rowsPerJob;
+    jobsCompleted += nRows;
     if (state == COMPUTING_FIRST_PASS) {
         if (jobsCompleted == canvas.height) {
           state = DONE_FIRST_PASS;
@@ -461,6 +468,10 @@ function jobFinished(msg) {
     }
     else {
         if (jobsCompleted == canvas.height + 1) {
+            // all rows need to be present for averaging second pass if workerCount > 1
+            for (let row = 0; row < canvas.height; row++) {
+                putRow(row);
+            }
             state = IDLE;
             stopJob();
         }
@@ -496,7 +507,9 @@ function startSecondPass() {
                 columns: columns,
                 xmin: xminArray,
                 dx: dxArray,
-                yVal: yValArray
+                yVal: yValArray,
+                dy: 0,
+                nrows: 1
             };
             yVal = yVal.subtract(dy);
         }
@@ -506,15 +519,20 @@ function startSecondPass() {
         var dx_d = Number(dx.toString());
         var dy_d = Number(dy.toString());
         var ymax_d = Number(ymax.toString()) + dy_d/2;
-        for ( var row = 0; row < rows; row++) {
-            jobs[rows - 1- row] = {
+
+        let rowsPerJob = Math.min(maxRowsPerJob, Math.floor(rows/workerCount));
+        for (let row = 0; row < rows; row += rowsPerJob) {
+            jobs.push({
                 row: row,
                 columns: columns,
                 xmin: xmin_d,
                 dx: dx_d,
-                yVal: ymax_d - row*dy_d     // to reduce precision errors
-            };
+                yVal: ymax_d,   // to reduce error calculate y in worker as ymax_d - (row + 0..nrows)*dy_d
+                dy: dy_d,
+                nrows: Math.min(rowsPerJob, rows - row)
+            });
         }
+        //jobs.reverse();     // keep original order
     }
     jobsCompleted = 0;
     for (var i = 0; i < workerCount; i++) {
@@ -523,7 +541,7 @@ function startSecondPass() {
         workers[i].postMessage(["setup",jobNum, maxIterations,highPrecision,i]);
         workers[i].postMessage([
             "task", j.row, j.columns,
-            j.xmin, j.dx, j.yVal, j.dy
+            j.xmin, j.dx, j.yVal, j.dy, j.nrows
         ]);
     }
     running = true;
@@ -1665,7 +1683,7 @@ function init() {
     Calculating the Mandelbrot Set is very computationally intensive.  A Kubernetes pod calculates each row of the image.
     Increase or decrease the number of "workers" to vary the number of Kubernetes pods doing the backend calculations.
     <br><br>
-    Double-click the image (or drag on it to draw a box) and it will zoom in.  
+    Double-click the image (or drag on it to draw a box) and it will zoom in.
     <a href="MB-info.html">Click here</a> for more info, instructions, and examples.  Works best in Chrome!</b></p>
 <p id="message"></p>
 

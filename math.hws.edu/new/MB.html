@@ -371,16 +371,16 @@ function startJob() {
         var ymax_d = Number(ymax.toString());
         var dx_d = Number(dx.toString());
         var dy_d = Number(dy.toString());
-        var yVal_d = ymax_d;
+        //var yVal_d = ymax_d;
         for ( var row = 0; row < rows; row++) {
             jobs[rows - 1- row] = {
                 row: row,
                 columns: columns,
                 xmin: xmin_d,
                 dx: dx_d,
-                yVal: yVal_d
+                yVal: ymax_d - dy_d*row
             };
-            yVal_d = yVal_d - dy_d;
+            //yVal_d = yVal_d - dy_d;
         }
     }
     if (interlaced) {
@@ -440,9 +440,10 @@ function jobFinished(msg) {
     }
     else {
        savedIterationCounts2ndPass[row] = iterationCounts;
-       if (row > 0) {
-           putRow(row-1);
-       }
+        // all rows need to be present for averaging second pass if workerCount > 1
+        //if (row > 0) {
+        //   putRow(row-1);
+        //}
     }
     jobsCompleted++;
     if (state == COMPUTING_FIRST_PASS) {
@@ -456,6 +457,10 @@ function jobFinished(msg) {
     }
     else {
         if (jobsCompleted == canvas.height + 1) {
+            // all rows need to be present for averaging second pass if workerCount > 1
+            for (let row = 0; row < canvas.height; row++) {
+                putRow(row);
+            }
             state = IDLE;
             stopJob();
         }
@@ -500,16 +505,16 @@ function startSecondPass() {
         var xmin_d = Number(xStart.toString());
         var dx_d = Number(dx.toString());
         var dy_d = Number(dy.toString());
-        var yVal_d = Number(ymax.toString()) + dy_d/2;
+        var ymax_d = Number(ymax.toString()) + dy_d/2;
         for ( var row = 0; row < rows; row++) {
             jobs[rows - 1- row] = {
                 row: row,
                 columns: columns,
                 xmin: xmin_d,
                 dx: dx_d,
-                yVal: yVal_d
+                yVal: ymax_d - dy_d*row
             };
-            yVal_d = yVal_d - dy_d;
+            //yVal_d = yVal_d - dy_d;
         }
     }
     jobsCompleted = 0;
