@@ -14,6 +14,7 @@ exports.computeMandelbrot = function(mandelbrotCoords) {
         let columns = mandelbrotCoords.columns;
         let ymax = mandelbrotCoords.ymax;
         let dy = mandelbrotCoords.dy;
+        let firstRow = mandelbrotCoords.firstRow;
         let rows = mandelbrotCoords.rows;
         let maxIterations = mandelbrotCoords.maxIterations;
 
@@ -21,7 +22,7 @@ exports.computeMandelbrot = function(mandelbrotCoords) {
         for (let i = 0; i < rows; i++) {
             let iterationCounts = new Array(columns);
             for (let j = 0; j < columns; j++) {
-                iterationCounts[j] = countIterations(xmin + j*dx, ymax - i*dy, maxIterations);
+                iterationCounts[j] = countIterations(xmin + j*dx, ymax - (firstRow + i)*dy, maxIterations);
             }
             returnIterations[i] = iterationCounts;
         }

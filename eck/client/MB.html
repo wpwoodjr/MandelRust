@@ -306,8 +306,9 @@ function newWorkers(count) {
     }
     workers = [];
     for (i = 0; i < count; i++) {
-       workers[i] = new Worker("mandelbrot-worker-local.js");
-       workers[i].onmessage = jobFinished;
+        workers[i] = new Worker("mandelbrot-worker-remote.js");
+        //workers[i] = new Worker("mandelbrot-worker-local.js");
+        workers[i].onmessage = jobFinished;
     }
 }
 
@@ -341,7 +342,7 @@ function startJob() {
     vres = imageData.height;
     dx = xmax.subtract(xmin).divide(new BigDecimal(""+(canvas.width-1)),BigDecimal.ROUND_HALF_EVEN);
     dy = ymax.subtract(ymin).divide(new BigDecimal(""+(canvas.height-1)),BigDecimal.ROUND_HALF_EVEN);
-    highPrecision = dy.compareTo(HP_CUTOFF) < 0;
+    highPrecision = !document.getElementById("lowprecision").checked || dy.compareTo(HP_CUTOFF) < 0;
     jobs = [];
     var yVal = ymax.add(new BigDecimal("0"));
     var rows = canvas.height;
@@ -356,8 +357,9 @@ function startJob() {
         convert(xminArray, xmin, chunks+1);
         convert(dxArray,dx,chunks+1);
         for ( var row = 0; row < rows; row++) {
+            let ytmp = yVal.subtract(dx.multiply(new BigDecimal(row.toString())));
             var yValArray = new ArrayType(chunks+1);
-            convert(yValArray, yVal, chunks+1);
+            convert(yValArray, ytmp, chunks+1);
             jobs[rows - 1- row] = {
                 row: row,
                 columns: columns,
@@ -367,15 +369,15 @@ function startJob() {
                 dy: 0,
                 nrows: 1
             };
-            yVal = yVal.subtract(dy);
+            //yVal = yVal.subtract(dy);
         }
     }
     else {
         var xmin_d = Number(xmin.toString());
-        var ymax_d = Number(ymax.toString());
+        var yVal_d = Number(yVal.toString());
         var dx_d = Number(dx.toString());
         var dy_d = Number(dy.toString());
-        //console.log(dx_d, dy_d, xmin_d, ymax_d);
+        //console.log(dx_d, dy_d, xmin_d, yVal_d);
 
         let rowsPerJob = Math.min(maxRowsPerJob, Math.floor(rows/workerCount));
         for (let row = 0; row < rows; row += rowsPerJob) {
@@ -384,7 +386,7 @@ function startJob() {
                 columns: columns,
                 xmin: xmin_d,
                 dx: dx_d,
-                yVal: ymax_d,   // to reduce error calculate y in worker as ymax_d - (row + 0..nrows)*dy_d
+                yVal: yVal_d,   // to reduce error calculate y in worker as yVal_d - (row + 0..nrows)*dy_d
                 dy: dy_d,
                 nrows: Math.min(rowsPerJob, rows - row)
             });
@@ -486,7 +488,7 @@ function startSecondPass() {
     dy = ymax.subtract(ymin).divide(new BigDecimal(""+(canvas.height-1)),BigDecimal.ROUND_HALF_EVEN);
     var dxHalf = dx.divide(TWO,BigDecimal.ROUND_HALF_EVEN);
     var dyHalf = dy.divide(TWO,BigDecimal.ROUND_HALF_EVEN);
-    highPrecision = dy.compareTo(HP_CUTOFF) < 0;
+    highPrecision = !document.getElementById("lowprecision").checked || dy.compareTo(HP_CUTOFF) < 0;
     jobs = [];
     var yVal = ymax.add(dyHalf);
     var xStart = xmin.subtract(dxHalf);
@@ -500,8 +502,9 @@ function startSecondPass() {
         convert(xminArray, xStart, chunks+1);
         convert(dxArray,dx,chunks+1);
         for ( var row = 0; row < rows; row++) {
+            let ytmp = yVal.subtract(dx.multiply(new BigDecimal(row.toString())));
             var yValArray = new ArrayType(chunks+1);
-            convert(yValArray, yVal, chunks+1);
+            convert(yValArray, ytmp, chunks+1);
             jobs[rows - 1- row] = {
                 row: row,
                 columns: columns,
@@ -511,14 +514,15 @@ function startSecondPass() {
                 dy: 0,
                 nrows: 1
             };
-            yVal = yVal.subtract(dy);
+            //yVal = yVal.subtract(dy);
         }
     }
     else {
         var xmin_d = Number(xStart.toString());
+        var yVal_d = Number(yVal.toString());
         var dx_d = Number(dx.toString());
         var dy_d = Number(dy.toString());
-        var ymax_d = Number(ymax.toString()) + dy_d/2;
+        //var ymax_d = Number(ymax.toString()) + dy_d/2;
 
         let rowsPerJob = Math.min(maxRowsPerJob, Math.floor(rows/workerCount));
         for (let row = 0; row < rows; row += rowsPerJob) {
@@ -527,12 +531,12 @@ function startSecondPass() {
                 columns: columns,
                 xmin: xmin_d,
                 dx: dx_d,
-                yVal: ymax_d,   // to reduce error calculate y in worker as ymax_d - (row + 0..nrows)*dy_d
+                yVal: yVal_d,   // to reduce error calculate y in worker as yVal_d - (row + 0..nrows)*dy_d
                 dy: dy_d,
                 nrows: Math.min(rowsPerJob, rows - row)
             });
         }
-        //jobs.reverse();     // keep original order
+        //jobs.reverse();     // keep original order (don't need to since now we're waiting for all rows to finish before drawing)
     }
     jobsCompleted = 0;
     for (var i = 0; i < workerCount; i++) {
@@ -1028,7 +1032,7 @@ function setPaletteOffset(fractionOffset) {
 function changeInterlaced() {
    var checked = document.getElementById("interlaced").checked;
    if (checked == interlaced) {
-       retrun;
+       return;
    }
    interlaced = checked;
    if (running) {
@@ -1093,6 +1097,13 @@ function changeSecondPass() {
     var checked = document.getElementById("secondpass").checked;
     if (checked && !running && state == DONE_FIRST_PASS) {
         startSecondPass();
+    }
+}
+
+function changeLowPrecision() {
+    if (running) {
+        stopJob();
+        startJob();
     }
 }
 
@@ -1652,6 +1663,8 @@ function init() {
     document.getElementById("standardPaletteSelect").value = "EarthAndSky";
     document.getElementById("secondpass").checked = false;
     document.getElementById("secondpass").onchange = changeSecondPass;
+    document.getElementById("lowprecision").checked = false;
+    document.getElementById("lowprecision").onchange = changeLowPrecision;
     document.getElementById("zoomInAmount").value = "0.1";
     document.getElementById("zoomOutAmount").value = "10";
     document.getElementById("zoomin").onclick = doZoomIn;
@@ -1712,6 +1725,7 @@ function init() {
           <option value="48">48</option>
           <option value="64">64</option>
       </select></label></p>
+      <p><label title="If checked, low precision arithmetic will be used when image quality would not suffer (faster)."><input type="checkbox" id="lowprecision">Low Precision Arithmetic</label></p>
    </div>
    <div class="group">
       <p><button id="undo">Undo</button></p>

@@ -44,7 +44,7 @@ spec:
     spec:
       containers:
         - name: mandelbrot
-          image: harbor.gsk.com/sdi/mandelbrot-server:2.1
+          image: harbor.gsk.com/sdi/mandelbrot-server:3.2.1
           imagePullPolicy: Always
           ports:
             - name: http

@@ -2,7 +2,7 @@
 swagger: "2.0"
 info:
   description: "Does Mandelbrot computation"
-  version: "3.0.0"
+  version: "3.2.1"
   title: "Mandelbrot"
   termsOfService: "https://www.gsk.com/en-gb/terms-of-use/"
   contact:
@@ -81,6 +81,7 @@ definitions:
     required:
     - "columns"
     - "dx"
+    - "firstRow"
     - "maxIterations"
     - "rows"
     - "xmin"
@@ -101,6 +102,9 @@ definitions:
       dy:
         type: "number"
         format: "f64"
+      firstRow:
+        type: "integer"
+        format: "int32"
       rows:
         type: "integer"
         format: "int32"
@@ -108,10 +112,11 @@ definitions:
         type: "integer"
         format: "int32"
     example:
-      xmin: -2.2
-      dx: 0.15
+      xmin: -2.20000000000000017763568394002504646778106689453125
+      dx: 0.1499999999999999944488848768742172978818416595458984375
       columns: 20
-      ymax: -0.6
+      ymax: -0.59999999999999997779553950749686919152736663818359375
+      firstRow: 0
       rows: 1
       maxIterations: 100
   MandelbrotCoordsHP:
