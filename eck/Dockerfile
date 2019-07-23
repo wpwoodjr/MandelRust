@@ -7,7 +7,7 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 RUN npm ci
 
-EXPOSE 8081
+EXPOSE 8080
 CMD [ "npm", "start" ]
 
 # Bundle app source

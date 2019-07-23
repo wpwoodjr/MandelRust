@@ -431,7 +431,6 @@ function jobFinished(msg) {
             j.xmin, j.dx, j.yVal
         ]);
     }
-    timePerJob = ( (new Date().getTime()) - jobStartTime) / jobsCompleted;
     var iterationCounts = job[2];
     var row = job[1];
     if (state == COMPUTING_FIRST_PASS) {
@@ -446,6 +445,7 @@ function jobFinished(msg) {
         //}
     }
     jobsCompleted++;
+    timePerJob = ( (new Date().getTime()) - jobStartTime) / jobsCompleted;
     if (state == COMPUTING_FIRST_PASS) {
         if (jobsCompleted == canvas.height) {
           state = DONE_FIRST_PASS;
@@ -503,16 +503,17 @@ function startSecondPass() {
     }
     else {
         var xmin_d = Number(xStart.toString());
+        var yVal_d = Number(yVal.toString());
         var dx_d = Number(dx.toString());
         var dy_d = Number(dy.toString());
-        var ymax_d = Number(ymax.toString()) + dy_d/2;
+        //var ymax_d = Number(ymax.toString()) + dy_d/2;
         for ( var row = 0; row < rows; row++) {
             jobs[rows - 1- row] = {
                 row: row,
                 columns: columns,
                 xmin: xmin_d,
                 dx: dx_d,
-                yVal: ymax_d - dy_d*row
+                yVal: yVal_d - dy_d*row
             };
             //yVal_d = yVal_d - dy_d;
         }

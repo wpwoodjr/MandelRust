@@ -12,7 +12,7 @@
     is clicked.  All of the ideas and some of the code were ported from
     an older program that was written in java.
     
-    This file depends on the scripts mandelbrot-worker.js and Daniel Trebbien's
+    This file depends on the scripts mandelbrot-worker-remote.js and Daniel Trebbien's
     BigDecimal-all-last.min.js.
 -->
 <html>
@@ -342,7 +342,7 @@ function startJob() {
     vres = imageData.height;
     dx = xmax.subtract(xmin).divide(new BigDecimal(""+(canvas.width-1)),BigDecimal.ROUND_HALF_EVEN);
     dy = ymax.subtract(ymin).divide(new BigDecimal(""+(canvas.height-1)),BigDecimal.ROUND_HALF_EVEN);
-    highPrecision = !document.getElementById("lowprecision").checked || dy.compareTo(HP_CUTOFF) < 0;
+    highPrecision = document.getElementById("highprecision").checked || dy.compareTo(HP_CUTOFF) < 0;
     jobs = [];
     var yVal = ymax.add(new BigDecimal("0"));
     var rows = canvas.height;
@@ -441,7 +441,6 @@ function jobFinished(msg) {
             j.xmin, j.dx, j.yVal, j.dy, j.nrows
         ]);
     }
-    timePerJob = ( (new Date().getTime()) - jobStartTime) / jobsCompleted;
     var iterationCounts = job[2];
     let nRows = job[4];
     for (let i = 0; i < nRows; i++) {
@@ -459,6 +458,7 @@ function jobFinished(msg) {
         }
     }
     jobsCompleted += nRows;
+    timePerJob = ( (new Date().getTime()) - jobStartTime) / jobsCompleted;
     if (state == COMPUTING_FIRST_PASS) {
         if (jobsCompleted == canvas.height) {
           state = DONE_FIRST_PASS;
@@ -488,7 +488,7 @@ function startSecondPass() {
     dy = ymax.subtract(ymin).divide(new BigDecimal(""+(canvas.height-1)),BigDecimal.ROUND_HALF_EVEN);
     var dxHalf = dx.divide(TWO,BigDecimal.ROUND_HALF_EVEN);
     var dyHalf = dy.divide(TWO,BigDecimal.ROUND_HALF_EVEN);
-    highPrecision = !document.getElementById("lowprecision").checked || dy.compareTo(HP_CUTOFF) < 0;
+    highPrecision = document.getElementById("highprecision").checked || dy.compareTo(HP_CUTOFF) < 0;
     jobs = [];
     var yVal = ymax.add(dyHalf);
     var xStart = xmin.subtract(dxHalf);
@@ -1100,7 +1100,7 @@ function changeSecondPass() {
     }
 }
 
-function changeLowPrecision() {
+function changeHighPrecision() {
     if (running) {
         stopJob();
         startJob();
@@ -1663,8 +1663,8 @@ function init() {
     document.getElementById("standardPaletteSelect").value = "EarthAndSky";
     document.getElementById("secondpass").checked = false;
     document.getElementById("secondpass").onchange = changeSecondPass;
-    document.getElementById("lowprecision").checked = false;
-    document.getElementById("lowprecision").onchange = changeLowPrecision;
+    document.getElementById("highprecision").checked = false;
+    document.getElementById("highprecision").onchange = changeHighPrecision;
     document.getElementById("zoomInAmount").value = "0.1";
     document.getElementById("zoomOutAmount").value = "10";
     document.getElementById("zoomin").onclick = doZoomIn;
@@ -1725,7 +1725,7 @@ function init() {
           <option value="48">48</option>
           <option value="64">64</option>
       </select></label></p>
-      <p><label title="If checked, low precision arithmetic will be used when image quality would not suffer (faster)."><input type="checkbox" id="lowprecision">Low Precision Arithmetic</label></p>
+      <p><label title="If checked, high precision arithmetic will be used even when its not strictly necessary in order to to retain image quality (slower)."><input type="checkbox" id="highprecision">High Precision</label></p>
    </div>
    <div class="group">
       <p><button id="undo">Undo</button></p>
