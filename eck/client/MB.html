@@ -19,6 +19,12 @@
 <head>
 <meta charset="UTF-8">
 <title>Mandelbrot Viewer</title>
+<meta property="og:image" content="https://mandelbrot.stagek8s.gsk.com/thumbnail.png"/>
+<meta property="og:type" content="website"/>
+<meta property="og:url" content="https://mandelbrot.stagek8s.gsk.com/MB.html"/> 
+<meta property="og:title" content="Kubernetes Mandelbrot Viewer" />
+<meta property="og:description" content="This Mandelbrot viewer is hosted by GSK's on-premises Kubernetes cluster,
+    which provides a scalable backend API to perform the calculations."/>
 <style type="text/css">
    body {
        background-color: #D8D8D8;
@@ -1101,7 +1107,8 @@ function changeSecondPass() {
 }
 
 function changeHighPrecision() {
-    if (running) {
+    var checked = document.getElementById("highprecision").checked;
+    if (running && checked != highPrecision) {
         stopJob();
         startJob();
     }
@@ -1690,14 +1697,16 @@ function init() {
 <h2>Explore the Mandelbrot Set with GSK Tech Platforms' on-premises Kubernetes cluster</h2>
 <p><b>
     Based on a browser-only Mandelbrot Set viewer by <a href=http://math.hws.edu/eck/index.html>David Eck</a>,
-    this revised client/server version is hosted on GSK's on-premises Kubernetes cluster,
-    which provides a scalable backend API to perform the calculations.
+    this revised client/server viewer is hosted on GSK's on-premises Kubernetes cluster,
+    which provides a scalable backend API to perform the calculations.  
+    Double-clicking the image (or dragging on it to draw a box) will zoom it in.
     <br><br>
-    Calculating the Mandelbrot Set is very computationally intensive.  A Kubernetes pod calculates each row of the image.
-    Increase or decrease the number of "workers" to vary the number of Kubernetes pods doing the backend calculations.
-    <br><br>
-    Double-click the image (or drag on it to draw a box) and it will zoom in.
-    <a href="MB-info.html">Click here</a> for more info, instructions, and examples.  Works best in Chrome!</b></p>
+    Calculating the Mandelbrot Set can be very computationally intensive, however it is parallelizable.
+    Each "Worker" roughly corresponds to a Kubernetes pod which calculates rows of the image.
+    As more workers are added, Kubernetes automatically load balances, bringing in more pods to meet the demand and speed up the computation.
+    To see this, click on <a href="https://mandelbrot.stagek8s.gsk.com/MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>, 
+    then vary the number of "Workers" to speed it up or slow it down.
+    For more info, instructions, and examples, <a href="MB-info.html">click here</a>.</b></p>
 <p id="message"></p>
 
 <table border=0 cellpadding=0 cellspacing=0>
@@ -1709,7 +1718,7 @@ function init() {
    <div class="group">
       <p><label title="If checked, lines in image are computed out of order."><input type="checkbox" id="interlaced">Interlaced Drawing</label></p>
       <p><label title="If checked, extra computations are done that can often give the completed image a smoother look."><input type="checkbox" id="secondpass">Do a Second Pass</label></p>
-      <p><label title="Increasing this might speed up computation by using more of your computer's processing time.">Workers: <select id="threadCountSelect">
+      <p><label title="Increasing this can speed up the computation by bringing in more Kubernetes resources.">Workers: <select id="threadCountSelect">
           <option value="1">1</option>
           <option value="2">2</option>
           <option value="3">3</option>
@@ -1721,9 +1730,9 @@ function init() {
           <option value="12">12</option>
           <option value="16">16</option>
           <option value="24">24</option>
-          <option value="32">32</option>
-          <option value="48">48</option>
-          <option value="64">64</option>
+<!--          <option value="32">32</option>-->
+<!--          <option value="48">48</option>-->
+<!--          <option value="64">64</option>-->
       </select></label></p>
       <p><label title="If checked, high precision arithmetic will be used even when its not strictly necessary in order to to retain image quality (slower)."><input type="checkbox" id="highprecision">High Precision</label></p>
    </div>

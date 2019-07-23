@@ -1,8 +1,8 @@
 let /* boolean */ highPrecision;
 let /* int */ maxIterations, jobNumber, workerNumber;
 
-let url = "http://localhost:8080/v1/mandelbrot/compute";
-//let url = "https://mandelbrot.stagek8s.gsk.com/v1/mandelbrot/compute";
+//let url = "http://localhost:8080/v1/mandelbrot/compute";
+let url = "https://mandelbrot.stagek8s.gsk.com/v1/mandelbrot/compute";
 let retryLimit = 5;
 
 function doIterationCounts(coords, url, retryCount) {
