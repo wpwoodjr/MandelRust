@@ -17,4 +17,4 @@ $ ./kubepush <ver>
 ```
 
 ### Running the application
-Once the application is deployed, browse to https://<host>/MB.html, where <host> is the deployment host as defined in mandelbrot.yaml.
+Once the application is deployed, browse to https://hostname/MB.html, where hostname is the deployment host as defined in mandelbrot.yaml.
