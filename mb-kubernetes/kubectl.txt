@@ -1,7 +1,0 @@
- 2016  kubectl --kubeconfig ~/.kube/config-stage 
- 2017  kubectl --kubeconfig ~/.kube/config-stage get nodes
- 2027  kubectl --kubeconfig ~/.kube/config-stage apply -f mandelbrot_bill.yaml 
- 2028  kubectl --kubeconfig ~/.kube/config-stage get pods -n mandelbrot
- 2030  kubectl --kubeconfig ~/.kube/config-stage get deployment -n mandelbrot
- 2031  kubectl --kubeconfig ~/.kube/config-stage edit deployment mandelbrot -n mandelbrot
- 2032  history|grep kubectl >kubectl.txt
