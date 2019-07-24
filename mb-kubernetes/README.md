@@ -11,7 +11,7 @@ Create the docker container from source, replacing <ver> with the version number
 ```
 $ docker build --tag harbor.gsk.com/sdi/mandelbrot-server:<ver> .
 ```
-Then push the Docker container to Kubernetes:
+Update the version number in mandelbrot.yaml, then push the Docker container to Kubernetes:
 ```
 $ ./kubepush <ver>
 ```
