@@ -19,9 +19,9 @@
 <head>
 <meta charset="UTF-8">
 <title>Mandelbrot Viewer</title>
-<meta property="og:image" content="https://mandelbrot.stagek8s.gsk.com/thumbnail.png"/>
+<meta property="og:image" content="https://mandelbrot.gsk.com/thumbnail.png"/>
 <meta property="og:type" content="website"/>
-<meta property="og:url" content="https://mandelbrot.stagek8s.gsk.com/MB.html"/> 
+<meta property="og:url" content="https://mandelbrot.gsk.com/MB.html"/> 
 <meta property="og:title" content="Kubernetes Mandelbrot Viewer" />
 <meta property="og:description" content="This Mandelbrot viewer is hosted by GSK's on-premises Kubernetes cluster,
     which provides a scalable backend API to perform the calculations."/>
@@ -1704,7 +1704,7 @@ function init() {
     Calculating the Mandelbrot Set can be very computationally intensive, however it is parallelizable.
     Each "Worker" roughly corresponds to a Kubernetes pod which calculates rows of the image.
     As more workers are added, Kubernetes automatically load balances, bringing in more pods to meet the demand and speed up the computation.
-    To see this, click on <a href="https://mandelbrot.stagek8s.gsk.com/MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>, 
+    To see this, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>, 
     then vary the number of "Workers" to speed it up or slow it down.
     For more info, instructions, and examples, <a href="MB-info.html">click here</a>.
     The GSK github repository is <a href="https://mygithub.gsk.com/WOODB000/kubernetes-mandelbrot/tree/master/mb-kubernetes">here</a>.

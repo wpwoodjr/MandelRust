@@ -1,0 +1,7 @@
+pass show docker-credential-helpers/docker-pass-initialized-check
+docker login harbor.gsk.com
+docker build --tag harbor.gsk.com/sdi/mandelbrot-dev:$1 .
+docker push harbor.gsk.com/sdi/mandelbrot-dev:$1
+kubectl --kubeconfig ~/.kube/config-dev apply -f mandelbrot-dev.yaml
+sleep 5
+kubectl --kubeconfig ~/.kube/config-dev get pods -n mandelbrot
