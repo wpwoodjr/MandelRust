@@ -4,6 +4,15 @@ metadata:
   name: mandelbrot
 ---
 apiVersion: v1
+kind: Secret
+metadata:
+ namespace: mandelbrot
+ name: mandelbrot
+data:
+  .dockerconfigjson: ewoJImF1dGhzIjogewoJCSJoYXJib3IuZ3NrLmNvbSI6IHt9Cgl9LAoJIkh0dHBIZWFkZXJzIjogewoJCSJVc2VyLUFnZW50IjogIkRvY2tlci1DbGllbnQvMTguMDkuNyAobGludXgpIgoJfSwKCSJjcmVkc1N0b3JlIjogInBhc3MiCn0=
+type: kubernetes.io/dockerconfigjson
+---
+apiVersion: v1
 kind: Service
 metadata:
   namespace: mandelbrot
@@ -16,16 +25,7 @@ spec:
   - protocol: TCP
     port: 8080
     targetPort: 8081
-  type: NodePort
----
-apiVersion: v1
-kind: Secret
-metadata:
- namespace: mandelbrot
- name: mandelbrot
-data:
-  .dockerconfigjson: ewoJImF1dGhzIjogewoJCSJoYXJib3IuZ3NrLmNvbSI6IHt9Cgl9LAoJIkh0dHBIZWFkZXJzIjogewoJCSJVc2VyLUFnZW50IjogIkRvY2tlci1DbGllbnQvMTguMDkuNyAobGludXgpIgoJfSwKCSJjcmVkc1N0b3JlIjogInBhc3MiCn0=
-type: kubernetes.io/dockerconfigjson
+  type: ClusterIP
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -70,4 +70,3 @@ spec:
   tls:
   - hosts:
     - mandelbrot.stagek8s.gsk.com
-
