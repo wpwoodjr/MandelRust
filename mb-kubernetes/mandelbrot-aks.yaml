@@ -24,7 +24,7 @@ spec:
   selector:
     matchLabels:
       app: mandelbrot
-  replicas: 24
+  replicas: 20
   template:
     metadata:
       labels:
