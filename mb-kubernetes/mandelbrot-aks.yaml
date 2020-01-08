@@ -32,7 +32,7 @@ spec:
     spec:
       containers:
         - name: mandelbrot
-          image: harbor.gsk.com/sdi/mandelbrot:22
+          image: wpwoodjr/mandelbrot:24
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
