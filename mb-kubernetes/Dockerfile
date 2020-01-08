@@ -6,7 +6,7 @@ WORKDIR /usr/src/app
 # Install app dependencies
 COPY package*.json ./
 
-#ENV https_proxy=http://xzx61153:Kub3rn3t3s@nodecrypt.gtm.corpnet2.com:800
+ENV https_proxy=http://xzx61153:Kub3rn3t3s@nodecrypt.gtm.corpnet2.com:800
 RUN npm ci
 
 EXPOSE 8081
