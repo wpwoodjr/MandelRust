@@ -16,7 +16,6 @@ spec:
   - protocol: TCP
     port: 8080
     targetPort: 8081
-#    nodePort: null
   type: NodePort
 ---
 apiVersion: apps/v1
@@ -41,5 +40,5 @@ spec:
           ports:
             - name: http
               containerPort: 8081
-      imagePullSecrets:
-      - name: mandelbrot
+      # imagePullSecrets:
+      # - name: mandelbrot

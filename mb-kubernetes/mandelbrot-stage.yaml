@@ -4,15 +4,6 @@ metadata:
   name: mandelbrot
 ---
 apiVersion: v1
-kind: Secret
-metadata:
- namespace: mandelbrot
- name: mandelbrot
-data:
-  .dockerconfigjson: ewoJImF1dGhzIjogewoJCSJoYXJib3IuZ3NrLmNvbSI6IHt9Cgl9LAoJIkh0dHBIZWFkZXJzIjogewoJCSJVc2VyLUFnZW50IjogIkRvY2tlci1DbGllbnQvMTguMDkuNyAobGludXgpIgoJfSwKCSJjcmVkc1N0b3JlIjogInBhc3MiCn0=
-type: kubernetes.io/dockerconfigjson
----
-apiVersion: v1
 kind: Service
 metadata:
   namespace: mandelbrot
@@ -44,13 +35,13 @@ spec:
     spec:
       containers:
         - name: mandelbrot
-          image: harbor.gsk.com/sdi/mandelbrot-server:3.3.0
+          image: harbor.gsk.com/sdi/mandelbrot-dev:3.3.3
           imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 8081
-      imagePullSecrets:
-      - name: mandelbrot
+      # imagePullSecrets:
+      # - name: mandelbrot
 ---
 apiVersion: extensions/v1beta1
 kind: Ingress
