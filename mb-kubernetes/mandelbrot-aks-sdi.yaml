@@ -37,7 +37,7 @@ spec:
     spec:
       containers:
         - name: mandelbrot
-          image: wpwoodjr/mandelbrot:3.3.3
+          image: wpwoodjr/mandelbrot:3.3.4
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
