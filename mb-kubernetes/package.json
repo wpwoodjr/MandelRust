@@ -13,9 +13,9 @@
   "license": "Unlicense",
   "private": true,
   "dependencies": {
-    "connect": "^3.2.0",
-    "js-yaml": "^3.3.0",
-    "swagger-tools": "^0.10.1",
-    "serve-static": "^1.14.1"
+    "connect": ">=3.7.0",
+    "js-yaml": ">=3.13.1",
+    "swagger-tools": ">=0.10.4",
+    "serve-static": ">=1.14.1"
   }
 }
