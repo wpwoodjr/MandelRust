@@ -5,7 +5,6 @@ WORKDIR /usr/src/app
 
 # Install app dependencies
 COPY package*.json ./
-RUN env
 RUN npm ci
 
 EXPOSE 8081
