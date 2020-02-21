@@ -1,14 +1,7 @@
 apiVersion: v1
-kind: Namespace
-metadata:
-  name: mandelbrot
----
-apiVersion: v1
 kind: Service
 metadata:
-  namespace: mandelbrot
   name: mandelbrot
-
 spec:
   selector:
     app: mandelbrot
@@ -18,16 +11,16 @@ spec:
     targetPort: 8081
   type: ClusterIP
 ---
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  namespace: mandelbrot
   name: mandelbrot
 spec:
   selector:
     matchLabels:
       app: mandelbrot
-  replicas: 64
+  replicas: 4
   template:
     metadata:
       labels:
@@ -35,7 +28,7 @@ spec:
     spec:
       containers:
         - name: mandelbrot
-          image: harbor.gsk.com/sdi/mandelbrot-dev:image-tag
+          image: harbor.gsk.com/sdi/mandelbrot-dev:3.5.117
           imagePullPolicy: Always
           ports:
             - name: http
@@ -43,15 +36,14 @@ spec:
       # imagePullSecrets:
       # - name: mandelbrot
 ---
+
 apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
-  namespace: mandelbrot
   name: mandelbrot
-
 spec:
   rules:
-  - host: mandelbrot.gsk.com
+  - host: az-mandelbrot.devk8s.gsk.com
     http:
       paths:
       - backend:
@@ -60,4 +52,4 @@ spec:
 
   tls:
   - hosts:
-    - mandelbrot.gsk.com
+    - az-mandelbrot.devk8s.gsk.com
