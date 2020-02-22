@@ -1,0 +1,9 @@
+pass show docker-credential-helpers/docker-pass-initialized-check
+DIR=~/win/az-devops/dind-rootless
+export DOCKER_HOST=tcp://us1salxbw001d.corpnet3d.com:2376
+export DOCKER_TLS_VERIFY=1
+export DOCKER_CERT_PATH=$DIR/certs/client
+docker login harbor.gsk.com
+docker build --tag harbor.gsk.com/sdi/mandelbrot-dev:$1 .
+docker push harbor.gsk.com/sdi/mandelbrot-dev:$1
+sed s/image-tag/$1/g mandelbrot-dev.yaml | kubectl --context=devk8s apply -f -
