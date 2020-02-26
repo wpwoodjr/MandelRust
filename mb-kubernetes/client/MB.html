@@ -1703,8 +1703,8 @@ function init() {
     <br><br>
     Calculating the Mandelbrot Set can be very computationally intensive, however it is parallelizable.
     Each "Worker" roughly corresponds to a Kubernetes pod which calculates rows of the image.
-    As more workers are added, Kubernetes automatically load balances, bringing in more pods to meet the demand and speed up the computation.
-    <b>To see this, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>, 
+    As more workers are added, Kubernetes automatically scales and load balances, bringing in more pods to meet the demand and speed up the computation.
+    <p>To see how Kubernetes scales, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>, 
     then vary the number of "Workers" to speed it up or slow it down.
     For more info, instructions, and examples, <a href="MB-info.html">click here</a>.
     The GSK github repository is <a href="https://mygithub.gsk.com/WOODB000/kubernetes-mandelbrot/tree/master/mb-kubernetes">here</a>.
