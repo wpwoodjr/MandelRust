@@ -1695,7 +1695,7 @@ function init() {
 <noscript><b>Sorry, this page requires JavaScript.</b></noscript>
 
 <h2>Explore the Mandelbrot Set with GSK Tech Platforms' on-premises Kubernetes cluster</h2>
-<p><b>
+<p>
     Based on a browser-only Mandelbrot Set viewer by <a href=http://math.hws.edu/eck/index.html>David Eck</a>,
     this revised client/server viewer is hosted on GSK's on-premises Kubernetes cluster,
     which provides a scalable backend API to perform the calculations.  
@@ -1703,13 +1703,10 @@ function init() {
     <br><br>
     Calculating the Mandelbrot Set can be very computationally intensive, however it is parallelizable.
     Each "Worker" roughly corresponds to a Kubernetes pod which calculates rows of the image.
-    As more workers are added, Kubernetes automatically load balances, bringing in more pods to meet the demand and speed up the computation.
-    To see this, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>, 
-    then vary the number of "Workers" to speed it up or slow it down.
-    For more info, instructions, and examples, <a href="MB-info.html">click here</a>.
-    The GSK github repository is <a href="https://mygithub.gsk.com/WOODB000/kubernetes-mandelbrot/tree/master/mb-kubernetes">here</a>.
-    Contact Bill Wood or David Beeker for more information.
-    </b></p>
+    As more workers are added, Kubernetes automatically scales and load balances, bringing in more pods to meet the demand and speed up the computation.
+    <p>To see how Kubernetes scales, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>, 
+	    then vary the number of "Workers" to speed it up or slow it down.</p>
+</p>
 <p id="message"></p>
 
 <table border=0 cellpadding=0 cellspacing=0>
@@ -1867,6 +1864,10 @@ allows you to save the example (or even edit it by hand).</p>
 <button style="margin-left:20px" id="grabcurrent">Grab Current Example</button></p>
 <p><textarea rows="21" cols="55" id="XMLtextinput" placeholder="XML code goes here"></textarea>
 </div>
-
+<p>
+    For more info, instructions, and examples, <a href="MB-info.html">click here</a>.
+    The GSK github repository is <a href="https://mygithub.gsk.com/WOODB000/kubernetes-mandelbrot/tree/master/mb-kubernetes">here</a>.
+    Contact Bill Wood or David Beeker for more information.
+</p>
 </body>
 </html>
