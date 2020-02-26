@@ -20,7 +20,7 @@ project=sdi
 #
 # Agent name; normally you wouldn't need to change this
 # If you plan to run multiple agents in the same namespace then give each one a different name
-agent_name=az-agent
+agent_name=az-agent-mandelbrot
 #
 # Image name of the agent; normally you wouldn't need to change this
 image=harbor.gsk.com/$project/$agent_name:1.0.0
