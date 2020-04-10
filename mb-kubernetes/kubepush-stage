@@ -1,5 +1,0 @@
-pass show docker-credential-helpers/docker-pass-initialized-check
-docker login harbor.gsk.com
-docker build --tag harbor.gsk.com/sdi/mandelbrot-server:$1 .
-docker push harbor.gsk.com/sdi/mandelbrot-server:$1
-sed s/image-tag/$1/g mandelbrot-stage.yaml | kubectl --context=stagek8s apply -f -

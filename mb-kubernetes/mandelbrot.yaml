@@ -27,7 +27,7 @@ spec:
   selector:
     matchLabels:
       app: mandelbrot
-  replicas: 64
+  replicas: 32
   template:
     metadata:
       labels:
@@ -35,7 +35,7 @@ spec:
     spec:
       containers:
         - name: mandelbrot
-          image: harbor.gsk.com/sdi/mandelbrot-dev:image-tag
+          image: harbor.gsk.com/sdi/mandelbrot:{{image-tag}}
           imagePullPolicy: Always
           ports:
             - name: http
@@ -51,7 +51,7 @@ metadata:
 
 spec:
   rules:
-  - host: mandelbrot.stagek8s.gsk.com
+  - host: {{url}}
     http:
       paths:
       - backend:
@@ -60,4 +60,4 @@ spec:
 
   tls:
   - hosts:
-    - mandelbrot.stagek8s.gsk.com
+    - {{url}}
