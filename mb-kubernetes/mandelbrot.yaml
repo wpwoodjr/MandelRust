@@ -27,7 +27,7 @@ spec:
   selector:
     matchLabels:
       app: mandelbrot
-  replicas: 32
+  replicas: {{replicas}}
   template:
     metadata:
       labels:
@@ -43,7 +43,7 @@ spec:
       # imagePullSecrets:
       # - name: mandelbrot
 ---
-apiVersion: extensions/v1beta1
+apiVersion: networking.k8s.io/v1beta1
 kind: Ingress
 metadata:
   namespace: mandelbrot
