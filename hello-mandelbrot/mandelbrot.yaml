@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mandelbrot
+spec:
+  selector:
+    app: mandelbrot
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 8081
+  type: ClusterIP
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mandelbrot
+spec:
+  selector:
+    matchLabels:
+      app: mandelbrot
+  replicas: 6
+  template:
+    metadata:
+      labels:
+        app: mandelbrot
+    spec:
+      containers:
+        - name: mandelbrot
+          image: harbor.gsk.com/sdi/mandelbrot:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8081
+---
+
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: mandelbrot
+spec:
+  rules:
+  - host: mb.{{ns}}.devk8s.gsk.com
+    http:
+      paths:
+      - backend:
+          serviceName: mandelbrot
+          servicePort: 8080
+  tls:
+  - hosts:
+    - mb.{{ns}}.devk8s.gsk.com
