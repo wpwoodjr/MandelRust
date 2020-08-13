@@ -13,4 +13,4 @@ $ ./build.sh <kubernetes-environment> <image-tag> <url> <num-replicas> <uname:pw
 ```
 
 ### Running the application
-Once the application is deployed, browse to <url>.
+Once the application is deployed, browse to `<url>`.
