@@ -7,14 +7,10 @@ and provides a browser-based client interface for viewing and navigating.
 Forked from a browser-only version by David Eck, http://math.hws.edu/eck/index.html
 
 ### Getting started
-Create the docker container from source, replacing <ver> with the version number:
+Build and deploy as follows:
 ```
-$ docker build --tag harbor.gsk.com/sdi/mandelbrot-server:<ver> .
-```
-Update the version number in mandelbrot.yaml, then push the Docker container to Kubernetes:
-```
-$ ./kubepush <ver>
+$ ./build.sh <kubernetes-environment> <image-tag> <url> <num-replicas> <uname:pwd>
 ```
 
 ### Running the application
-Once the application is deployed, browse to https://hostname/MB.html, where hostname is the deployment host as defined in mandelbrot.yaml.
+Once the application is deployed, browse to <url>.
