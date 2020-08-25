@@ -1,0 +1,51 @@
+apiVersion: kpt.dev/v1alpha1
+kind: Kptfile
+metadata:
+  name: mb-kubernetes
+upstream:
+  type: git
+  git:
+    commit: 6de45baff53fc0d531c00e76afd7194dbbb7cdb4
+    repo: git@mygithub.gsk.com:WOODB000/kubernetes-mandelbrot
+    directory: /mb-kubernetes
+    ref: master
+openAPI:
+  definitions:
+    io.k8s.cli.substitutions.image:
+      x-k8s-cli:
+        substitution:
+          name: image
+          pattern: ${image-url}:${image-tag}
+          values:
+          - marker: ${image-url}
+            ref: '#/definitions/io.k8s.cli.setters.image-url'
+          - marker: ${image-tag}
+            ref: '#/definitions/io.k8s.cli.setters.image-tag'
+    io.k8s.cli.setters.image-url:
+      x-k8s-cli:
+        setter:
+          name: image-url
+          value: harbor.gsk.com/sdi/mandelbrot
+    io.k8s.cli.setters.image-tag:
+      x-k8s-cli:
+        setter:
+          name: image-tag
+          value: latest
+    io.k8s.cli.setters.url:
+      x-k8s-cli:
+        setter:
+          name: url
+          value: mandelbrot.devk8s.gsk.com
+          required: true
+    io.k8s.cli.setters.namespace:
+      x-k8s-cli:
+        setter:
+          name: namespace
+          value: mandelbrot
+          required: true
+    io.k8s.cli.setters.replicas:
+      type: integer
+      x-k8s-cli:
+        setter:
+          name: replicas
+          value: "4"
