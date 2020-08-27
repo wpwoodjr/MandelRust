@@ -1,7 +1,7 @@
 #!/bin/bash
 # mandelbrot build
 
-[ -z "$1" ] && echo "No Kubernetes environment specified, exiting..." && exit 1
+[ -z "$1" ] && echo "No Kubernetes context specified, exiting..." && exit 1
 [ -z "$2" ] && echo "No image tag specified, exiting..." && exit 1
 [ -z "$3" ] && echo "No url specified, exiting..." && exit 1
 [ -z "$4" ] && echo "No number of replicas specified, exiting..." && exit 1
