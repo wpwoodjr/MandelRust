@@ -20,7 +20,7 @@ spec:
   selector:
     matchLabels:
       app: mandelbrot
-  replicas: 6
+  replicas: 2
   template:
     metadata:
       labels:
@@ -41,7 +41,7 @@ metadata:
   name: mandelbrot
 spec:
   rules:
-  - host: mb.{{ns}}.devk8s.gsk.com
+  - host: mb-{{ns}}.devk8s.gsk.com
     http:
       paths:
       - backend:
@@ -49,4 +49,4 @@ spec:
           servicePort: 8080
   tls:
   - hosts:
-    - mb.{{ns}}.devk8s.gsk.com
+    - mb-{{ns}}.devk8s.gsk.com
