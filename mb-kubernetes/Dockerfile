@@ -1,4 +1,5 @@
-FROM node:current-alpine
+# https://github.com/nodejs/docker-node/issues/1382 so using lts instead of current
+FROM node:lts-alpine
 # Create app directory
 
 WORKDIR /usr/src/app
