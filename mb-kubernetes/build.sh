@@ -7,8 +7,8 @@
 [ -z "$4" ] && echo "No number of replicas specified, exiting..." && exit 1
 [ -z "$5" ] && echo "No uname:pwd specified, exiting..." && exit 1
 
-proxy=http://"$5"@nodecrypt.gtm.corpnet2.com:800
-noproxy=localhost,127.0.0.0/8,.gsk.com,.corpnet1.com,.corpnet2.com,.corpnet3d.com
+proxy="http://$5@nodecrypt.gtm.corpnet2.com:800"
+noproxy="localhost,127.0.0.1,.gsk.com,.corpnet1.com,.corpnet2.com,.corpnet3d.com,.gskdev.com"
 
 docker login harbor.gsk.com
 docker build --tag harbor.gsk.com/sdi/mandelbrot:"$2" . \
