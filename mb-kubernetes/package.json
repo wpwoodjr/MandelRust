@@ -14,7 +14,7 @@
   "private": true,
   "dependencies": {
     "connect": ">=3.7.0",
-    "js-yaml": ">=3.13.1",
+    "js-yaml": "^3.13.1",
     "swagger-tools": ">=0.10.4",
     "serve-static": ">=1.14.1"
   }
