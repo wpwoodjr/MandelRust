@@ -1,4 +1,4 @@
-FROM node:lts-alpine
+FROM node:current-alpine
 # Create app directory
 
 WORKDIR /usr/src/app
@@ -11,6 +11,6 @@ RUN addgroup --gid 1001 -S app && adduser --uid 1001 -S -G app app \
 && chown -R 1001 ../app
 USER 1001
 
-RUN npm install
+RUN npm install --legacy-peer-deps
 
 CMD [ "npm", "start" ]
