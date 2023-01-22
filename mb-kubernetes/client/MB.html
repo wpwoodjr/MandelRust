@@ -6,7 +6,8 @@
    
     This is a fairly complete "Mandelbrot Set" viewer program, including
     the ability to do arbitrary precision computation (very slowly) when you
-    zoom in too far to do the calcultions with regular floating point numbers.
+    zoom in too far to do the calculations with regular floating point numbers.
+
     It can save and load examples as XML in a clunky way, by copy-and-paste
     between files and a textarea that appears when "Show XML Input/Export"
     is clicked.  All of the ideas and some of the code were ported from
@@ -19,12 +20,13 @@
 <head>
 <meta charset="UTF-8">
 <title>Mandelbrot Viewer</title>
-<meta property="og:image" content="https://mandelbrot.gsk.com/thumbnail.png"/>
+<!--
+<meta property="og:image" content="https://mandelbrot.xxxxxx.com/thumbnail.png"/>
+<meta property="og:url" content="https://mandelbrot.xxxxxx.com/MB.html"/>
+-->
 <meta property="og:type" content="website"/>
-<meta property="og:url" content="https://mandelbrot.gsk.com/MB.html"/> 
-<meta property="og:title" content="Kubernetes Mandelbrot Viewer" />
-<meta property="og:description" content="This Mandelbrot viewer is hosted by GSK's on-premises Kubernetes cluster,
-    which provides a scalable backend API to perform the calculations."/>
+<meta property="og:title" content="Mandelbrot Viewer" />
+<meta property="og:description" content="This Mandelbrot viewer, originally by David Eck, has been rewritten with a Rust backend, considerably speeding it up."/>
 <style type="text/css">
    body {
        background-color: #D8D8D8;
@@ -1079,12 +1081,12 @@ function setImageSize(w,h) {
 function doCustomSize() {
     var width = Math.round(Number(document.getElementById("customwidth").value.trim()));
     var height = Math.round(Number(document.getElementById("customheight").value.trim()));
-    if (isNaN(width) || width < 64 || width > 4096) {
-        document.getElementById("status").innerHTML = "Illegal value for image width.  Must be an integer in the range 64 to 4096.";
+    if (isNaN(width) || width < 64 || width > 7680) {
+        document.getElementById("status").innerHTML = "Illegal value for image width.  Must be an integer in the range 64 to 7680.";
         return;
     }
-    if (isNaN(height) || height < 64 || height > 4096) {
-        document.getElementById("status").innerHTML = "Illegal value for image height.  Must be an integer in the range 64 to 4096.";
+    if (isNaN(height) || height < 64 || height > 7680) {
+        document.getElementById("status").innerHTML = "Illegal value for image height.  Must be an integer in the range 64 to 7680.";
         return;
     }
     setImageSize(width,height,true);
@@ -1694,10 +1696,10 @@ function init() {
 
 <noscript><b>Sorry, this page requires JavaScript.</b></noscript>
 
-<h2>Explore the Mandelbrot Set with the GSK Core Tech on-premises Kubernetes cluster</h2>
+<h2>Explore the Mandelbrot Set</h2>
 <p>
     Based on a browser-only Mandelbrot Set viewer by <a href=http://math.hws.edu/eck/index.html>David Eck</a>,
-    this revised client/server viewer is hosted on GSK's on-premises Kubernetes cluster,
+    this revised client/server viewer can be hosted on a Kubernetes cluster,
     which provides a scalable backend API to perform the calculations.  
     Double-clicking the image (or dragging on it to draw a box) will zoom it in.
     <br><br>
@@ -1740,15 +1742,16 @@ function init() {
    </div>
    <div class="group">
       <p><label title="Width and height of the Mandelbrot picture, in pixels.">Image Size: <select id="imagesize">
-          <option value="200 150">200x150</option>
-          <option value="400 300">400x300</option>
           <option value="640 480">640x480</option>
           <option value="800 600">800x600</option>
           <option value="1024 768">1024x768</option>
-          <option value="1200 900">1200x900</option>
-          <option value="1600 900">1600x900</option>
-          <option value="425 550">425x550</option>
-          <option value="850 1100">850x1100</option>
+          <option value="1600 1200">1600x1200</option>
+          <option value="1920 1080">1920x1080 (HD)</option>
+          <option value="1920 1200">1920x1200</option>
+          <option value="2560 1440">2560x1440</option>
+          <option value="2880 1800">2880x1800</option>
+          <option value="3840 2160">3840x2160 (4K)</option>
+          <option value="5120 1440">5120x1440</option>
           <option value="Custom">Custom</option>
       </select></label><span id="customsize" style="display:none"><br><input type="text" maxlength="4" size="4" id="customwidth">x<input type="text" maxlength="4" size="4" id="customheight"> <button id="applysize">Apply</button></span></p>
    </div>
@@ -1864,8 +1867,7 @@ allows you to save the example (or even edit it by hand).</p>
 </div>
 <p>
     For more info, instructions, and examples, <a href="MB-info.html">click here</a>.
-    The GSK github repository is <a href="https://mygithub.gsk.com/WOODB000/kubernetes-mandelbrot/tree/master/mb-kubernetes">here</a>.
-    Contact Bill Wood or David Beeker for more information.
+    The github repository is <a href="https://github.com/wpwoodjr/Mandelbrot-for-Kubernetes">here</a>.
 </p>
 </body>
 </html>
