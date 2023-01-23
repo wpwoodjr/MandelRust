@@ -74,9 +74,8 @@ async fn file(req: HttpRequest) -> Result<NamedFile> {
     Ok(NamedFile::open(path)?)
 }
 
-async fn index() -> Result<NamedFile> {
-    let path: PathBuf = "MB.html".into();
-    Ok(NamedFile::open(path)?)
+async fn redirect() -> Result<HttpResponse> {
+    Ok(HttpResponse::MovedPermanently().append_header(("Location", "/MB.html")).finish())
 }
 
 fn web_server(url: &str) {
@@ -86,7 +85,7 @@ fn web_server(url: &str) {
             // .route("/static", web::get().to(static_html))
             .route("/mb-compute", web::post().to(compute_mandelbrot))
             .route("/mb-computeHP", web::post().to(compute_mandelbrot_hp))
-            .route("/", web::get().to(index))
+            .route("/", web::get().to(redirect))
             .route("/{filename:.*}", web::get().to(file))
     })
     .bind(url)
