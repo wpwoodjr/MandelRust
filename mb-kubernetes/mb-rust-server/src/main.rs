@@ -11,7 +11,7 @@ static mut NUM_SLICES: usize = 2;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let mut url = String::from("localhost:8080");
+    let mut url = String::from("localhost:8000");
     let help = r#"Run the Rust Mandelbrot server
 
 Usage: mb-rust [OPTIONS] [args]
