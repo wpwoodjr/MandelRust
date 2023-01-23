@@ -1459,7 +1459,7 @@ function installExampleFromXML(xmlString, recordUndo, respectSize) {
           else {
               width = Number(size[0].getAttribute("width"));
               height = Number(size[0].getAttribute("height"));
-              if (isNaN(width) || width > 4096 || width < 64 || isNaN(height) || height > 4096 || height < 64) {
+              if (isNaN(width) || width > 7680 || width < 64 || isNaN(height) || height > 7680 || height < 64) {
                    respectSize = false;
               }
           }
