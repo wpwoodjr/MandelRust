@@ -281,24 +281,20 @@ function doDraw() {
     }
 }
 
-let rowsPerSecond;
-let startTime;
+let startTime, rowsCompleted;
 
 function repaint() {
     doDraw();
+    let elapsedSecs = (Date.now() - startTime)/1000.0;
+    let rowsPerSecond = (rowsCompleted/elapsedSecs).toPrecision(3) + " rows per second";
     if (running) {
-       repaintTimeout = setTimeout(repaint, 500);
-       let pass = "";
-       let elapsedSecs = (Date.now() - startTime)/1000.0;
-       if (state == COMPUTING_SECOND_PASS) {
-            pass = " second pass";
-            //rowsPerSecond = ((canvas.height + jobsCompleted)/elapsedSecs).toPrecision(3) + " rows per second";
-       } else {
-            rowsPerSecond = (jobsCompleted/elapsedSecs).toPrecision(3) + " rows per second";
-       }
-       let prec = highPrecision? "high precision, " + digits + " digits" : "normal precision";
-       document.getElementById("status").innerHTML =
-                "Computing" + pass + ", " + prec + "...  Completed " + jobsCompleted + " of " + canvas.height + " rows at " + rowsPerSecond;
+        repaintTimeout = setTimeout(repaint, 500);
+        let pass = state == COMPUTING_SECOND_PASS ? " second pass" : "";
+        rowsPerSecond = " at " + rowsPerSecond;
+        let prec = highPrecision? "high precision, " + digits + " digits" : "normal precision";
+        document.getElementById("status").innerHTML =
+                    "Computing" + pass + ", " + prec + 
+                    (elapsedSecs == 0 ? "" : ("...  Completed " + jobsCompleted + " of " + canvas.height + " rows" + rowsPerSecond));
     }
     else {
         document.getElementById("status").innerHTML = "Idle (" + rowsPerSecond + ")";
@@ -414,8 +410,8 @@ function startJob() {
             }
         }
     }
-    rowsPerSecond = "many rows per second"
     startTime = Date.now();
+    rowsCompleted = 0;
     jobsCompleted = 0;
     for (var i = 0; i < workerCount; i++) {
         var j = jobs.pop();
@@ -466,6 +462,7 @@ function jobFinished(msg) {
         }
     }
     jobsCompleted += nRows;
+    rowsCompleted += nRows;
     timePerJob = ( (new Date().getTime()) - jobStartTime) / jobsCompleted;
     if (state == COMPUTING_FIRST_PASS) {
         if (jobsCompleted == canvas.height) {
@@ -623,11 +620,11 @@ function setDefaults() {
     setLimits(new BigDecimal("-2.2"), new BigDecimal("0.8"), new BigDecimal("-1.2"), new BigDecimal("1.2"), false);
     stretchPalette = false;
     fixedPaletteLength = 250;
-    maxIterations = 250;
+    maxIterations = 500;
     paletteOffsetFraction = 0;
     palette = new Palette();
     createPaletteColors();
-    document.getElementById("maxIterSelect").value = "250";
+    document.getElementById("maxIterSelect").value = "500";
     document.getElementById("custommaxiter").style.display = "none";
     document.getElementById("custompallen").style.display = "none";
     document.getElementById("custoffset").style.display = "none";
@@ -1630,7 +1627,7 @@ function init() {
         OSC = document.createElement("canvas");
         OSC.width = canvas.width;
         OSC.height = canvas.height;
-        OSG = OSC.getContext("2d");
+        OSG = OSC.getContext("2d", { willReadFrequently: true });
     }
     catch (e) {
          document.getElementById("message").innerHTML =
