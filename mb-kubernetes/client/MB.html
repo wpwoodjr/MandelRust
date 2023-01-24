@@ -3,7 +3,7 @@
     Web page written by David Eck, http://math.hws.edu/eck/index.html
     You can do anything you like with this web page and with the code, but
     if you use a substantial portion of it, you should include attribution.
-   
+
     This is a fairly complete "Mandelbrot Set" viewer program, including
     the ability to do arbitrary precision computation (very slowly) when you
     zoom in too far to do the calculations with regular floating point numbers.
@@ -12,7 +12,7 @@
     between files and a textarea that appears when "Show XML Input/Export"
     is clicked.  All of the ideas and some of the code were ported from
     an older program that was written in java.
-    
+
     This file depends on the scripts mandelbrot-worker-remote.js and Daniel Trebbien's
     BigDecimal-all-last.min.js.
 -->
@@ -1196,7 +1196,7 @@ function applyUndoItem(name, value) {
       case "Change Image Size":
          setImageSize(value[0],value[1]);
          var val = value[0] + " " + value[1];
-         if (["640 480", "800 600", "1024 768", "1600 1200", "1920 1080", "1920 1200", "2560 1440", "2880 1800", "3840 1080", "3840 2160", "5120 1440"].indexOf(val) < 0) {
+         if (["640 480", "800 600", "1024 768", "1600 1200", "1920 1080", "1920 1200", "2560 1440", "2880 1800", "3840 1080", "3840 2160", "5120 1440", "7680 4320"].indexOf(val) < 0) {
              document.getElementById("imagesize").value = "Custom";
              document.getElementById("customsize").style.display = "inline";
              document.getElementById("customwidth").value = "" + value[0];
@@ -1536,7 +1536,7 @@ function installExampleFromXML(xmlString, recordUndo, respectSize) {
       if (respectSize) {
          setImageSize(width,height);
          var val = width + " " + height;
-         if (["640 480", "800 600", "1024 768", "1600 1200", "1920 1080", "1920 1200", "2560 1440", "2880 1800", "3840 1080", "3840 2160", "5120 1440"].indexOf(val) < 0) {
+         if (["640 480", "800 600", "1024 768", "1600 1200", "1920 1080", "1920 1200", "2560 1440", "2880 1800", "3840 1080", "3840 2160", "5120 1440", "7680 4320"].indexOf(val) < 0) {
              document.getElementById("imagesize").value = "Custom";
              document.getElementById("customsize").style.display = "inline";
              document.getElementById("customwidth").value = "" + width;
@@ -1753,6 +1753,7 @@ function init() {
           <option value="3840 1080">3840x1080</option>
           <option value="3840 2160">3840x2160</option>
           <option value="5120 1440">5120x1440</option>
+          <option value="7680 4320">7680x4320</option>
           <option value="Custom">Custom</option>
       </select></label><span id="customsize" style="display:none"><br><input type="text" maxlength="4" size="4" id="customwidth">x<input type="text" maxlength="4" size="4" id="customheight"> <button id="applysize">Apply</button></span></p>
    </div>
