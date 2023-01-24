@@ -82,7 +82,7 @@
        height: 100%;
        display: none;
    }
-   #xmlimport {
+   #xmlimport, #paletteEditor {
        position: absolute;
        left: 50px;
        top: 50px;
@@ -119,7 +119,6 @@ var graphics;  // Graphics context for on-screen canvas.
 var ArrayType = window.Uint32Array || Array;
 
 var workers;
-//var wokerCount = 1;
 var jobNum = 0;
 
 var running = false;
@@ -143,8 +142,8 @@ var dragbox = null;
 
 var maxIterations;
 var palette;
-var stretchPalette = true;
-var fixedPaletteLength = 250;
+var stretchPalette;
+var fixedPaletteLength;
 var paletteLength, paletteOffsetFraction;
 var paletteColors;
 
@@ -158,6 +157,8 @@ var currentXML = null;
 var undoList = null; // will be an array; null here prevents SetDefaults from adding a spurious undo item
 var undoCount = 0;
 var applyUndoInProgress = false;
+
+var paletteEditInProgress = false;
 
 var interlaced = true;
 var interlaceOrder = (function() {
@@ -254,7 +255,7 @@ function checkAspect() {  // adjust requested x/y limits to match aspect ration 
     xmax = xmax.setScale(scale,BigDecimal.ROUND_HALF_EVEN);
     ymin = ymin.setScale(scale,BigDecimal.ROUND_HALF_EVEN);
     ymax = ymax.setScale(scale,BigDecimal.ROUND_HALF_EVEN);
-    
+
     var width = xmax.subtract(xmin);
     var height = ymax.subtract(ymin);
     var aspect = width.divide(height,BigDecimal.ROUND_HALF_EVEN);
@@ -310,9 +311,9 @@ function newWorkers(count) {
     }
     workers = [];
     for (i = 0; i < count; i++) {
-        workers[i] = new Worker("mandelbrot-worker-remote.js");
-        //workers[i] = new Worker("mandelbrot-worker-local.js");
-        workers[i].onmessage = jobFinished;
+       workers[i] = new Worker("mandelbrot-worker-remote.js");
+       //workers[i] = new Worker("mandelbrot-worker-local.js");
+       workers[i].onmessage = jobFinished;
     }
 }
 
@@ -791,30 +792,39 @@ function zoom(x, y, zoomFactor, recenter) {  // (x,y) is center of zoom, in pize
 }
 
 
-function setUpDragging() {
+function setUpDragging() {  // for image canvas
     var zoomin;
-    var dragging = false; // for mouse only, to delay dragging until mouse moves.
     var startX, startY; // for mouse only
     dragbox = null;  // initially, the mouse is not being dragged.
-    function startDrag(clientX,clientY) {
-        var r = canvas.getBoundingClientRect();
-        var x = clientX - r.left;
-        var y = clientY - r.top;
-        dragbox = new DragBox(x,y);
-        doDraw();
+    canvas.addEventListener("dblclick",doMouseDoubleClick,false);
+    new Mouser(canvas, startDrag, continueDrag, endDrag, true);
+    function startDrag(x,y,evt) {
+        if (evt && evt.button != 0)  // only allow left button to start drag
+            return false;
+        startX = x;
+        startY = y;
+        dragbox = null;
+        zoomin = ! (evt && evt.shiftKey); 
+        return true;
     }
-    function continueDrag(clientX,clientY) {
-        var r = canvas.getBoundingClientRect();
-        var x = clientX - r.left;
-        var y = clientY - r.top;
+    function continueDrag(x,y) {  
+        if (dragbox == null) {
+            if ( Math.abs(startX - x) < 3 && Math.abs(startY - y) < 3) {
+                return;  // don't show zoombox until mouse/touch has moved a bit.
+            }
+            dragbox = new DragBox(startX,startY);
+        }
         dragbox.setCorner(x,y);
         doDraw();
     }
     function endDrag() {
-        dragbox.zoom(zoomin);
-        dragbox = null;
+        if (dragbox != null) {
+            dragbox.zoom(zoomin);
+            dragbox = null;
+            doDraw();
+        }
     }
-    function doMouseDoubleClick(evt) {
+    function doMouseDoubleClick(evt) { 
         if (dragbox || evt.button != 0) {
             return;
         }
@@ -824,79 +834,90 @@ function setUpDragging() {
         var zoomFactor = evt.shiftKey? 2 : 0.5;
         zoom(x,y,zoomFactor,!evt.altKey);
     }
-    function doMouseDown(evt) {
-        if (dragging || evt.button != 0) {
+ }
+
+function Mouser(canvas, startDrag, continueDrag, endDrag, mouseMoveOnCanvasOnly) {
+      // functions startDrag, continueDrag take canvas coords (x,y); for a mouse event event object is also passed.
+      // function endDrag takes no parameter for touched, mouse event for mouse actions.
+      // function startDrag returns a boolean, true if the down action should start a drag.
+    var dragging = false;
+    canvas.addEventListener("mousedown",doMouseDown,false);
+    canvas.addEventListener("touchstart",doTouchStart,false);
+    function doMouseDown(evt) { 
+        if (dragging) {
             return;
         }
-        dragging = true;
-        startX = evt.clientX;
-        startY = evt.clientY;
-        dragbox = null;
-        zoomin = !evt.shiftKey;
-        canvas.addEventListener("mousemove",doMouseMove,false);
-        document.addEventListener("mouseup",doMouseUp,false);
+        var r = canvas.getBoundingClientRect();
+        var x = evt.clientX - r.left;
+        var y = evt.clientY - r.top;
+        if (startDrag(x,y,evt)) {
+            dragging = true;
+            (mouseMoveOnCanvasOnly? canvas : document).addEventListener("mousemove",doMouseMove,false);
+            document.addEventListener("mouseup",doMouseUp,false);
+        }
     }
     function doMouseMove(evt) {
         if (!dragging) {
             return;
         }
-        if (dragbox == null) {
-            if ( Math.abs(startX - evt.clientX) < 3 && Math.abs(startY - evt.clientY) < 3) {
-                return;  // don't start drag until mouse has moved a bit.
-            }
-            startDrag(startX,startY);
-        }
-        continueDrag(evt.clientX,evt.clientY);
+        var r = canvas.getBoundingClientRect();
+        var x = evt.clientX - r.left;
+        var y = evt.clientY - r.top;
+        continueDrag(x,y,evt); 
     }
     function doMouseUp(evt) {
-        if (dragging) {
+        if (dragging) {  
             dragging = false;
-            if (dragbox) {
-                endDrag();
-            }
-            canvas.removeEventListener("mousemove",doMouseMove,false);
+            (mouseMoveOnCanvasOnly? canvas : document).removeEventListener("mousemove",doMouseMove,false);
             document.removeEventListener("mouseup",doMouseUp,false);
+            endDrag(evt);
         }
     }
-   function doTouchStart(evt){
+    function doTouchStart(evt){
         if (evt.touches.length != 1) {
            doTouchCancel();
            return;
         }
-        if (dragbox) {
+        evt.preventDefault();
+        if (dragging) {
             return;
         }
-        canvas.addEventListener("touchmove", doTouchMove);
-        canvas.addEventListener("touchend", doTouchEnd);
-        canvas.addEventListener("touchcancel", doTouchCancel);
-        startDrag(evt.touches[0].clientX, evt.touches[0].clientY);
-        evt.preventDefault();
+        var r = canvas.getBoundingClientRect();
+        var x = evt.touches[0].clientX - r.left;
+        var y = evt.touches[0].clientY - r.top;
+        if (startDrag(x,y)) {
+            dragging = true;
+            canvas.addEventListener("touchmove", doTouchMove);
+            canvas.addEventListener("touchend", doTouchEnd);
+            canvas.addEventListener("touchcancel", doTouchCancel);
+        }
     }
     function doTouchMove(evt){
-        if (!dragbox)
+        if (!dragging)
            return;
+        evt.preventDefault();
         if (evt.touches.length != 1) {
            doTouchCancel();
            return;
         }
-        continueDrag(evt.touches[0].clientX, evt.touches[0].clientY);
-        evt.preventDefault();
+        var r = canvas.getBoundingClientRect();
+        var x = evt.touches[0].clientX - r.left;
+        var y = evt.touches[0].clientY - r.top;
+        continueDrag(x,y);
     }
     function doTouchEnd(evt) {
         doTouchCancel();
     }
     function doTouchCancel() {
-        if (dragbox) {
+        if (dragging) {
            canvas.removeEventListener("touchmove", doTouchMove);
            canvas.removeEventListener("touchend", doTouchEnd);
            canvas.removeEventListener("touchcancel", doTouchCancel);
            endDrag();
+           dragging = false;
         }
     }
-    canvas.addEventListener("mousedown",doMouseDown,false);
-    canvas.addEventListener("dblclick",doMouseDoubleClick,false);
-    canvas.addEventListener("touchstart",doTouchStart,false);
- }
+}
 
 function changeWorkerCount() {
     var ct = Number(document.getElementById("threadCountSelect").value);
@@ -912,9 +933,7 @@ function changeWorkerCount() {
         startJob();
     }
     try {
-      if (window.sessionStorage) {
-          window.sessionStorage.mandelbrotWorkerCount = "" + ct;
-      }
+      localStorage.setItem("mandelbrotWorkerCount", "" + ct);
     }
     catch(e) {
     }
@@ -964,7 +983,7 @@ function changePaletteLength() {
         document.getElementById("custompallen").style.display = "inline";
     }
     else if (val == "Match") {
-        var oldval = [stretchPalette, paletteLength];
+        var oldval = [stretchPalette, stretchPalette ? maxIterations : fixedPaletteLength];
         stretchPalette = true;
         if (paletteLength != maxIterations) {
             stopJob();
@@ -993,10 +1012,15 @@ function setFixedPaletteLength(len) {
 }
 function doCustomPaletteLength() {
     var val = Math.round(Number(document.getElementById("palleninput").value.trim()));
+    if (val == fixedPaletteLength)
+        return;
     if (isNaN(val) || val < 1) {
         document.getElementById("status").innerHTML = "Illegal value for number of colors.  Must be an integer greater than zero.";
         return;
     }
+    var oldval = [false,fixedPaletteLength];
+    var newval = [false,val];
+    addUndoItem("Change PaletteLength", oldval, newval);
     setFixedPaletteLength(val);
 }
 
@@ -1095,7 +1119,7 @@ function doApplyStandardPalette() {
     palette = Palette.createStandardPalette(name);
     createPaletteColors();
     remapColors();
-    addUndoItem("Change Palette", oldval, palette);
+    addUndoItem("Change Palette", oldval.copy(), palette.copy());
 }
 
 function changeSecondPass() {
@@ -1171,19 +1195,9 @@ function applyUndoItem(name, value) {
          installExampleFromXML(value,false,true);
          break;
       case "Change PaletteOffset":
-         paletteOffsetFraction = value;
+         setPaletteOffset(value);
          createPaletteColors();
          remapColors();
-         if ([0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9].indexOf(value) < 0) {
-              document.getElementById("paletteOffsetSelect").value = "Custom";
-              document.getElementById("custoffset").style.display = "inline";
-              value *= 100;
-              document.getElementById("offsetinput").value = (value == Math.round(value))? value : value.toPrecision(3);
-         }
-         else {
-              document.getElementById("paletteOffsetSelect").value = "" + value;
-              document.getElementById("custoffset").style.display = "none";
-         }
          break;
       case "Change Limits":
          stopJob();
@@ -1205,24 +1219,7 @@ function applyUndoItem(name, value) {
          }
          break;
       case "Change PaletteLength":
-         if (value[0]) {
-            stretchPalette = true;
-            document.getElementById("paletteLengthSelect").value = "Match MaxIter";
-            document.getElementById("custompallen").style.display = "none";
-         }
-         else  {
-             stretchPalette = false;
-             fixedPaletteLength = value[1];
-             if ([50,100,250,500,1000,2500,5000].indexOf(value[1]) < 0) {
-                document.getElementById("custompallen").style.display = "inline";
-                document.getElementById("paletteLengthSelect").value = "Custom";
-                document.getElementById("palleninput").value = "" + value[1];
-             }
-             else {
-                document.getElementById("custompallen").style.display = "none";
-                document.getElementById("paletteLengthSelect").value = "" + value[1];
-             }
-         }
+         setPaletteLength(value[0],value[1]);
          createPaletteColors();
          remapColors();
          break;
@@ -1239,12 +1236,52 @@ function applyUndoItem(name, value) {
          }
          break;
       case "Change Palette":
-         palette = value;
+         palette = value.copy();
          createPaletteColors();
          remapColors();
          break;
+      case "Edit Palette":
+        palette = value[0].copy();
+        setPaletteLength(value[1],value[2]);
+        setPaletteOffset(value[3]);
+        createPaletteColors();
+        remapColors();
+        break;
     }
     applyUndoInProgress = false;
+    function setPaletteLength(stretch,length) {
+         if (stretch) {
+            stretchPalette = true;
+            document.getElementById("paletteLengthSelect").value = "Match";
+            document.getElementById("custompallen").style.display = "none";
+         }
+         else  {
+             stretchPalette = false;
+             fixedPaletteLength = length;
+             if ([50,100,250,500,1000,2500,5000].indexOf(length) < 0) {
+                document.getElementById("custompallen").style.display = "inline";
+                document.getElementById("paletteLengthSelect").value = "Custom";
+                document.getElementById("palleninput").value = "" + length;
+             }
+             else {
+                document.getElementById("custompallen").style.display = "none";
+                document.getElementById("paletteLengthSelect").value = "" + length;
+             }
+         }
+    }
+    function setPaletteOffset(fraction) {
+         paletteOffsetFraction = fraction;
+         if ([0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9].indexOf(fraction) < 0) {
+              document.getElementById("paletteOffsetSelect").value = "Custom";
+              document.getElementById("custoffset").style.display = "inline";
+              fraction *= 100;
+              document.getElementById("offsetinput").value = (fraction == Math.round(fraction))? fraction : fraction.toPrecision(3);
+         }
+         else {
+              document.getElementById("paletteOffsetSelect").value = "" + fraction;
+              document.getElementById("custoffset").style.display = "none";
+         }
+    }
 }
 
 //--------------------- Palette ------------------------------------------
@@ -1265,7 +1302,7 @@ Palette.prototype.getColor = function(position) {  // 0.0 <= position <= 1.0
     var b = c1[1] + ratio*(c2[1] - c1[1]);
     var c = c1[2] + ratio*(c2[2] - c1[2]);
     return this.toRGB(a,b,c);
-}
+};
 Palette.prototype.toRGB = function(a,b,c) {  // 3 non-clamped color components.
     a = (this.colorType == "HSB")? (a - Math.floor(a)) : clamp(a);
     b = clamp(b);
@@ -1303,7 +1340,7 @@ Palette.prototype.toRGB = function(a,b,c) {  // 3 non-clamped color components.
         }
         return [r,g,b];
     }
-}
+};
 Palette.prototype.makeRGBs = function(paletteLength, offset) {
     var rgb = new Array(paletteLength);
     rgb[offset % paletteLength] =
@@ -1316,7 +1353,14 @@ Palette.prototype.makeRGBs = function(paletteLength, offset) {
     rgb[(offset+paletteLength-1) % paletteLength] =
               this.toRGB(this.divisionColors[last][0],this.divisionColors[last][1],this.divisionColors[last][2]);
     return rgb;
-}
+};
+Palette.prototype.makeCanvasColors = function(paletteLength, offset) {
+    var rgb = this.makeRGBs(paletteLength,offset);
+    var colors = new Array(rgb.length);
+    for (var i = 0; i < rgb.length; i++)
+        colors[i] = "rgb(" + rgb[i][0] + "," + rgb[i][1] + "," + rgb[i][2] + ")";
+    return colors;
+};
 Palette.prototype.toXMLString = function() {
    var xml = "<palette colorType='" + this.colorType + "'>\n";
    for (var i = 0; i < this.divisionPoints.length; i++) {
@@ -1326,7 +1370,14 @@ Palette.prototype.toXMLString = function() {
    }
    xml += "</palette>\n";
    return xml;
-}
+};
+Palette.prototype.copy = function() {
+    var divColors = [];
+    for (var i = 0; i < this.divisionColors.length; i++) {
+        divColors.push(this.divisionColors[i].slice(0));
+    }
+    return new Palette(this.colorType,this.divisionPoints.slice(0),divColors);
+};
 Palette.fromXML = function( paletteNode ) {  // can throw an exception
     try {
        var children = paletteNode.childNodes;
@@ -1354,6 +1405,12 @@ Palette.fromXML = function( paletteNode ) {  // can throw an exception
                    if (isNaN(rgb[j]) || rgb[j] < 0 ){
                       throw "Bad data for divisionPoint color";
                    }
+                   else if (rgb[j] < 0) {
+                      throw "Color component number " + (j+1) + " can't be less than zero.";
+                   }
+                   else if (rgb[j] > 1 && (j > 0 || type == "RGB")) {
+                      throw "Color component number " + (j+1) + " can't be greater than one.";
+                   }
               }
               if (i > 0 && pt <= points[points.length-1]) {
                   throw "Division points out of order";
@@ -1363,14 +1420,14 @@ Palette.fromXML = function( paletteNode ) {  // can throw an exception
           }
        }
        if (points.length < 2 || points[0] != 0 || points[points.length-1] != 1) {
-           throw "Illegal divisionPoint data"
+           throw "Illegal divisionPoint data";
        }
        return new Palette(type, points, colors);
     }
     catch (e) {
         throw "Illegal palette definition: " + e;
     }
-}
+};
 Palette.createStandardPalette = function(name) {
     var palette;
     switch (name) {
@@ -1398,6 +1455,10 @@ Palette.createStandardPalette = function(name) {
            palette = new Palette("RGB",[0,0.17,0.83,1],
                      [[0,0,0],[1,0,0],[1,1,0],[1,1,1]]);
            break;
+        case "Cyclic Fire":
+           palette = new Palette("RGB",[0,0.2,0.4,0.5,0.6,0.8,1],
+                     [[0,0,0],[1,0,0],[1,1,0],[1,1,1],[1,1,0],[1,0,0],[0,0,0]]);
+           break;
         case "TreeColors":
            palette = new Palette("HSB",[0,0.33,0.66,1],
                      [[0.1266,0.5955,0.2993],[0.0896,0.3566,0.6575],[0.6195,0.8215,0.4039],[0.1266,0.5955,0.2993]]);
@@ -1406,6 +1467,19 @@ Palette.createStandardPalette = function(name) {
            palette = new Palette("RGB",[0,0.1667,0.3333,0.5,0.6667,0.8333,1],
                      [[0.7909,0.9961,0.7630],[0.8974,0.8953,0.6565],[0.9465,0.3161,0.1267],[0.5184,0.1109,0.0917],
                               [0.0198,0.4563,0.6839],[0.5385,0.8259,0.8177],[0.7909,0.9961,0.7630]]);
+           break;
+        case "Pastels":
+           palette = new Palette("RGB",[0,0.180781,0.418566,0.627035,0.858306,1],
+                     [ [ 0.80585,0.81648,0.82180 ], [ 0.43882,0.52393,1 ], [ 1,0.35904,0.58244 ],
+                       [ 1,1,0.52127 ], [ 0.54787,0.93351,0.56914 ], [ 0.80585,0.81648,0.82180 ] ]);
+           break;
+        case "Dark":
+           palette = new Palette("RGB",['0','0.18241042','0.38599348','0.57166123','0.78338762','1'],
+                         [  [0.65957446,0,0],[0,0.30585106,0.58776595],[0.81648936,0.41489361,0.07180851],
+                                [0,0.48670212,0.16489361],[0.29787234,0.13829787,0.75],[0.65957446,0,0] ]);
+//           palette = new Palette("RGB",[0,0.18241,0.38599,0.57166,0.78338,1],
+//                       [ [0.65957,0,0],[0,0.40159,0.74734],[0.87234,0.49202,0.07180],
+//                           [0,0.48670,0.16489],[0.29787,0.13829,0.75], [0.65957,0,0] ]);
            break;
         case "Random":
            var c = [Math.random(),Math.random(),Math.random()];
@@ -1423,7 +1497,767 @@ Palette.createStandardPalette = function(name) {
            palette = new Palette();
     }
     return palette;
+};
+
+//----- Palette Editor ---------------------------------------------------------------
+
+function showPaletteEditor() {
+    if (!colorEditCanvas) {  // showing for the first time, do initialization
+        document.getElementById("applyPaletteEdit").onclick = applyAndClose;
+        document.getElementById("revertPaletteEdit").onclick = revert;
+        document.getElementById("dismissPaletteEdit").onclick = dismiss;
+        document.getElementById("addcolorstop").onclick = function() { colorEditCanvas.addColorStop(); };
+        document.getElementById("deletecolorstop").onclick = function() { colorEditCanvas.deleteColorStop(); };
+        document.getElementById("lockcolors").onchange = setLeftRightColorsLocked;
+        document.getElementById("paletteEditStandardInstall").onclick = installStandard;
+        document.getElementById("paletteEditStandardSelect").value = "EarthAndSky";
+        document.addEventListener("keydown", doKey, false);
+        updateDuringDrag = document.getElementById("updateWhileDraggingCheck").checked;
+        document.getElementById("updateWhileDraggingCheck").oninput = function() { 
+           updateDuringDrag =document.getElementById("updateWhileDraggingCheck").checked;
+        };
+        histogramPalette = document.getElementById("histogrampalette");
+        colorEditCanvas = new ColorEditCanvas();
+        colorSliders = [ 
+           new SliderAndInput(document.getElementById("colorslider0"), document.getElementById("colorinput0"), 0, 1),
+           new SliderAndInput(document.getElementById("colorslider1"), document.getElementById("colorinput1"), 0, 1),
+           new SliderAndInput(document.getElementById("colorslider2"), document.getElementById("colorinput2"), 0, 1)
+        ];
+        colorSliders[0].onchange = function(v) { newColorSliderValue(0,v); };
+        colorSliders[1].onchange = function(v) { newColorSliderValue(1,v); };
+        colorSliders[2].onchange = function(v) { newColorSliderValue(2,v); };
+        paletteLengthSlider = new SliderAndInput(document.getElementById("lengthslider"), document.getElementById("editorlengthinput"), 1, maxIterations, paletteLength, true, true);
+        paletteOffsetSlider = new SliderAndInput(document.getElementById("offsetslider"), document.getElementById("editoroffsetinput"), 0, 100, paletteOffsetFraction*100);
+        paletteLengthSlider.onchange = newPaletteMappingInEditor;
+        paletteOffsetSlider.onchange = newPaletteMappingInEditor;
+    }
+    paletteEditInProgress = true;
+    document.getElementById("paletteEditor").style.display="block";
+    document.getElementById("xmlimportbg").style.display = "block";
+    copyOfCurrentPalette = palette.copy();
+    histogram = new Histogram();
+    palettePreview = new PalettePreview();
+    installPaletteInEditor(palette);
+    paletteLengthSlider.reset(1,maxIterations,paletteLength);
+    paletteOffsetSlider.setValue(paletteOffsetFraction*100);
+    document.getElementById("applyPaletteEdit").disabled = true;
+    document.getElementById("revertPaletteEdit").disabled = true;
+    function applyAndClose() {
+        var newval = [paletteInEditor, false, paletteLengthInEditor, paletteOffsetFractionInEditor];
+        addUndoItem("Edit Palette", 
+                       [copyOfCurrentPalette, stretchPalette, fixedPaletteLength, paletteOffsetFraction], 
+                       newval);
+        applyUndoItem("Edit Palette", newval);
+        dismiss();
+    }
+    function dismiss() {
+        document.getElementById("xmlimportbg").style.display = "none";
+        document.getElementById("paletteEditor").style.display = "none";
+        document.removeEventListener("keydown", doKey, false);
+        paletteEditInProgress = false;
+        histogram = null;
+        palettePreview = null;
+        paletteInEditor = null;
+        colorsInEditor = null;
+    }
+    function revert() { 
+        installPaletteInEditor( copyOfCurrentPalette );
+        palettePreview.redraw();
+        document.getElementById("applyPaletteEdit").disabled = true;
+        document.getElementById("revertPaletteEdit").disabled = true;
+    }
+    function installStandard() {
+        var name = document.getElementById("paletteEditStandardSelect").value;
+        var p = Palette.createStandardPalette(name);
+        installPaletteInEditor( p, paletteLengthInEditor, paletteOffsetFractionInEditor );
+        document.getElementById("applyPaletteEdit").disabled = false;
+        document.getElementById("revertPaletteEdit").disabled = false;
+        palettePreview.redraw();
+    }
+    function doKey(evt) {
+        var code = evt.keyCode;
+        if (code == 27) {
+            dismiss();
+        }
+    }
 }
+
+var copyOfCurrentPalette;
+var paletteInEditor;
+var paletteLengthInEditor;
+var paletteOffsetFractionInEditor;
+var histogram;
+var histogramPalette;
+var palettePreview;
+var colorEditCanvas = null;
+var leftRightColorsLocked;
+var saveRightColorWhileLocked;
+var colorsInEditor;
+var colorSliders;
+var paletteLengthSlider;
+var paletteOffsetSlider;
+var updateDuringDrag;
+
+function installPaletteInEditor(palette,length,offsetFraction) {
+    paletteInEditor = palette.copy();
+    var leftCol = paletteInEditor.divisionColors[0];
+    var rightCol = paletteInEditor.divisionColors[paletteInEditor.divisionColors.length-1];
+    var locked = leftCol[1] == rightCol[1] && leftCol[2] == rightCol[2] &&
+           (leftCol[0] == rightCol[0] || (paletteInEditor.colorType == "HSB" &&
+                leftCol[0] - Math.floor(leftCol[0]) == rightCol[0] - Math.floor(rightCol[0])));
+    colorEditCanvas.setLocked(locked,true);
+    document.getElementById("lockcolors").checked = locked;
+    paletteLengthInEditor = (typeof length != "undefined")? length : paletteLength;
+    paletteLengthSlider.setValue(paletteLengthInEditor);
+    paletteOffsetFractionInEditor = (typeof offsetFraction != "undefined")? offsetFraction : paletteOffsetFraction;
+    paletteOffsetSlider.setValue(paletteOffsetFractionInEditor*100);
+    colorEditCanvas.colorsChanged();
+    colorEditCanvas.select(0);
+    newColorsInEditor();
+    if (!updateDuringDrag)
+        palettePreview.redraw();
+    if (palette.colorType == "RGB") {
+        document.getElementById("colorlabel0").innerHTML = "Red";
+        document.getElementById("colorlabel1").innerHTML = "Green";
+        document.getElementById("colorlabel2").innerHTML = "Blue";
+    }
+    else {
+        document.getElementById("colorlabel0").innerHTML = "Hue";
+        document.getElementById("colorlabel1").innerHTML = "Saturation";
+        document.getElementById("colorlabel2").innerHTML = "Brightness";
+    }
+    if (palette.colorType == "HSB")
+        colorSliders[0].setAllowOutOfRange( true, true  );
+    else
+        colorSliders[0].setAllowOutOfRange( false, false);
+    if (palette.colorType == "HSB") { 
+       var n = Math.floor(palette.divisionColors[0][0]);
+       colorSliders[0].reset(n,n+1,palette.divisionColors[0][0]);
+       colorSliders[0].canvas.title = "Drag the slider to set the hue of the selected color stop to a value in the range " +
+                                       n + " to " + (n+1) + ". Values outside this range can be set in the textbox.";
+    }
+    else {
+       colorSliders[0].reset(0,1,palette.divisionColors[0][0]);
+       colorSliders[0].canvas.title = "Drag the slider to set the red component of the selected color stop to a value in the range 0.0 to 1.0.";
+    }
+    colorSliders[1].setValue(palette.divisionColors[0][1]);
+    colorSliders[2].setValue(palette.divisionColors[0][2]);
+}
+
+function newColorsInEditor() {
+    var offset = Math.round(paletteLengthInEditor * paletteOffsetFractionInEditor);
+    colorsInEditor = paletteInEditor.makeCanvasColors(paletteLengthInEditor,offset);
+    colorEditCanvas.draw();
+    if (updateDuringDrag)
+        palettePreview.redraw();
+    redrawHistogramPalette();
+    document.getElementById("applyPaletteEdit").disabled = false;
+    document.getElementById("revertPaletteEdit").disabled = false;
+}
+
+function newPaletteMappingInEditor() {
+    paletteLengthInEditor = paletteLengthSlider.value;
+    paletteOffsetFractionInEditor = paletteOffsetSlider.value / 100;
+    var offset = Math.round(paletteLengthInEditor * paletteOffsetFractionInEditor);
+    colorsInEditor = paletteInEditor.makeCanvasColors(paletteLengthInEditor,offset);
+    if (updateDuringDrag)
+        palettePreview.redraw();
+    redrawHistogramPalette();
+    document.getElementById("applyPaletteEdit").disabled = false;
+    document.getElementById("revertPaletteEdit").disabled = false;
+}
+
+function newColorSliderValue(componentIndex,value) {
+   var colorNum = colorEditCanvas.getSelected();
+   var color = paletteInEditor.divisionColors[colorNum];
+   color[componentIndex] = value;
+   var color2 = null;
+   if (leftRightColorsLocked) {
+       if (colorNum == 0) {
+           color2 = paletteInEditor.divisionColors[paletteInEditor.divisionColors.length-1];
+       }
+       else if (colorNum == paletteInEditor.divisionColors.length-1) {
+           color2 = paletteInEditor.divisionColors[0];
+       }
+   }
+   if (color2 != null) {
+       if (componentIndex == 0 && paletteInEditor.colorType == "HSB") {
+           var n = Math.floor(color2[0]);
+           color2[0] = n + (value - Math.floor(value));
+       }
+       else {
+           color2[componentIndex] = value;
+       }
+       saveRightColorWhileLocked = null;
+   }
+   colorEditCanvas.colorsChanged();
+   newColorsInEditor();
+}
+
+function redrawHistogramPalette() {
+     var hg = histogramPalette.getContext('2d');
+     var onecopy = paletteLengthInEditor/maxIterations * (histogramPalette.width-2);
+     for (var i = 1; i < histogramPalette.width-1; i++) {
+         var fraction = ((i-1) % onecopy) / onecopy;
+         var index = Math.max(0, Math.min(colorsInEditor.length,Math.round(fraction * colorsInEditor.length)));
+         hg.fillStyle = colorsInEditor[index];
+         hg.fillRect(i,0,1,histogramPalette.height);
+     }
+     hg.strokeStyle = "black";
+     hg.strokeRect(0.5,0.5,histogramPalette.width-1,histogramPalette.height-1);
+}
+
+function setLeftRightColorsLocked() {
+    var locked = document.getElementById("lockcolors").checked;
+    colorEditCanvas.setLocked(locked);
+}
+
+function ColorEditCanvas() {
+    var canvas = document.getElementById("coloredit");
+    var g = canvas.getContext('2d');
+    var size = canvas.width - 16;
+    var colors = null;
+    var selected;
+    var prevX;
+    var me = this;
+    new Mouser(canvas, 
+       function(x,y) {
+           for (var i = 0; i < paletteInEditor.divisionPoints.length; i++) {
+              var p = 8 + Math.floor(paletteInEditor.divisionPoints[i] * size);
+              if ((x > p-2 && x < p+3) || (y > 48 && (x > p-6 & x < p+7))) {
+                  prevX = x;
+                  if (i != selected) {
+                      me.select(i);
+                      me.draw();
+                  }
+                  return i > 0 && i < paletteInEditor.divisionPoints.length - 1;
+              }
+           }
+           return false;
+       },
+       function (x,y) {
+            var position = 8 + Math.floor(paletteInEditor.divisionPoints[selected] * size);
+            var left = 8 + Math.floor(paletteInEditor.divisionPoints[selected-1] * size);
+            var right = 8 + Math.floor(paletteInEditor.divisionPoints[selected+1] * size);
+            var change = x - prevX;
+            prevX = x;
+            var newposition = Math.min(right-10,Math.max(left+10,position + change));
+            if (newposition != position) {
+                paletteInEditor.divisionPoints[selected] = (newposition-8)/size;
+                colors = null;
+                newColorsInEditor();
+            }
+       },
+       function () {
+               if (!updateDuringDrag)
+                   palettePreview.redraw();
+           }
+     );
+     canvas.ondblclick = function(evt) {
+        if (evt.button != 0)
+           return;
+        var r = canvas.getBoundingClientRect();
+        var x = evt.clientX - r.left;
+        var y = evt.clientY - r.top;    
+        if (y > 50)
+           return;
+        for (var i = 1; i < paletteInEditor.divisionPoints.length; i++) {
+            var leftDP = paletteInEditor.divisionPoints[i-1];
+            var rightDP = paletteInEditor.divisionPoints[i];
+            var left = 8 + Math.floor( leftDP * size);
+            var right = 8 + Math.floor(rightDP * size);
+            if (x > left+9 && x < right-9) {
+                var divisionPt = (x-8)/size;
+                var t = (divisionPt - leftDP) / (rightDP - leftDP);
+                var leftCol = paletteInEditor.divisionColors[i-1];
+                var rightCol = paletteInEditor.divisionColors[i];
+                var col = [ (1-t)*leftCol[0]+t*rightCol[0], (1-t)*leftCol[1]+t*rightCol[1], (1-t)*leftCol[2]+t*rightCol[2] ];
+                paletteInEditor.divisionPoints.splice(i,0,divisionPt);
+                paletteInEditor.divisionColors.splice(i,0,col);
+                me.select(i);
+                me.draw();
+                break;
+            }
+        }
+     };
+     this.addColorStop = function() {
+         var left = selected - 1;
+         var right = selected + 1; 
+         while (left >= 0 || right < paletteInEditor.divisionPoints.length) {
+                // try to find room alternately to left and to right of selected stop
+            if (placeColorStopBetween(right-1,right))
+               return;
+            right++;
+            if (placeColorStopBetween(left,left+1))
+                return;
+            left--;
+         }
+         alert("Sorry, can't find room for another color stop.");
+         function placeColorStopBetween( a, b ) {  // b - a = 1
+             if (a < 0 || b >= paletteInEditor.divisionPoints.length)
+                return false;
+             var leftDP = paletteInEditor.divisionPoints[a];
+             var rightDP = paletteInEditor.divisionPoints[b];
+             if ( (rightDP-leftDP)*size > 19) {
+                var divisionPt = (leftDP + rightDP)/2;
+                var leftCol = paletteInEditor.divisionColors[a];
+                var rightCol = paletteInEditor.divisionColors[b];
+                var col = [ (leftCol[0]+rightCol[0])/2, (leftCol[1]+rightCol[1])/2, (leftCol[2]+rightCol[2])/2 ];
+                paletteInEditor.divisionPoints.splice(b,0,divisionPt);
+                paletteInEditor.divisionColors.splice(b,0,col);
+                me.select(b);
+                me.draw();
+                return true;
+             }
+             return false;
+         }
+     };
+     this.deleteColorStop = function() {
+         if (selected > 0 && selected < paletteInEditor.divisionPoints.length-1) {
+             paletteInEditor.divisionPoints.splice(selected,1);
+             paletteInEditor.divisionColors.splice(selected,1);
+             me.select(selected-1);
+             colors = null;
+             newColorsInEditor();
+             me.draw();
+         }
+     };
+     this.setLocked = function(lock,onInstall) {
+         leftRightColorsLocked = lock;
+         if (onInstall) {
+             saveRightColorWhileLocked = null;
+             return;
+         }
+         var leftCol = paletteInEditor.divisionColors[0];
+         var rightCol = paletteInEditor.divisionColors[paletteInEditor.divisionColors.length-1];
+         if (leftRightColorsLocked) {
+            var save = [];
+            save.push(rightCol[0]);
+            save.push(rightCol[1]);
+            save.push(rightCol[2]);
+            rightCol[1] = leftCol[1];
+            rightCol[2] = leftCol[2];
+            if (paletteInEditor.colorType == "HSB") {
+                var n = Math.floor(rightCol[0]);
+                rightCol[0] = n + (leftCol[0] - Math.floor(leftCol[0]));
+            }
+            else {
+                rightCol[0] = leftCol[0];
+            }
+            colors = null;
+            newColorsInEditor();
+            if (selected == paletteInEditor.divisionColors.length-1)
+               me.select(selected);
+            saveRightColorWhileLocked = save;
+         }
+         else if (saveRightColorWhileLocked != null) {
+            rightCol[0] = saveRightColorWhileLocked[0];
+            rightCol[1] = saveRightColorWhileLocked[1];
+            rightCol[2] = saveRightColorWhileLocked[2];
+            saveRightColorWhileLocked = null;
+            colors = null;
+            newColorsInEditor();
+            if (selected == paletteInEditor.divisionColors.length-1)
+               me.select(selected);
+         }
+     };
+     this.select = function(colorIndex) {
+         selected = colorIndex;
+         if (paletteInEditor.colorType == "HSB") { 
+            var n = Math.floor(paletteInEditor.divisionColors[selected][0]); 
+            colorSliders[0].reset(n,n+1,paletteInEditor.divisionColors[selected][0]);
+            colorSliders[0].canvas.title = "Drag the slider to set the hue of the selected color stop to a value in the range " +
+                                            n + " to " + (n+1) + ". Values outside this range can be set in the textbox.";
+         }
+         else {
+             colorSliders[0].setValue(paletteInEditor.divisionColors[selected][0]);
+         }
+         colorSliders[1].setValue(paletteInEditor.divisionColors[selected][1]);
+         colorSliders[2].setValue(paletteInEditor.divisionColors[selected][2]);
+         document.getElementById("deletecolorstop").disabled = !(selected > 0 && selected < paletteInEditor.divisionPoints.length-1);
+     };
+     this.getSelected = function() {
+        return selected;
+     };
+     this.colorsChanged = function() {
+        colors = null;
+     };
+     this.draw = function() {
+         g.fillStyle = "#e8e8e8";
+         g.fillRect(0,0,canvas.width,canvas.height);
+         if (colors == null)
+             colors = paletteInEditor.makeCanvasColors(size,0);
+         for (var i = 0; i < size; i++) {
+             g.fillStyle = colors[i];
+             g.fillRect(8+i,3,1,40);
+         }
+         g.lineWidth = 2;
+         g.strokeRect(7,2,size+2,41);
+         for (var i = 0; i < paletteInEditor.divisionPoints.length; i++) {
+            var x = 8 + Math.floor(paletteInEditor.divisionPoints[i] * size);
+            var c = paletteInEditor.divisionColors[i]; 
+            c = paletteInEditor.toRGB(c[0],c[1],c[2]); 
+            c = "rgb(" + c[0] + "," + c[1] + "," + c[2] + ")";
+            if ( i == selected ) {
+                g.fillStyle = "black";
+                g.fillRect(x-3,1,6,42);
+                g.fillRect(x-7,51,14,29);
+                g.fillStyle = "lightgray";
+                g.fillRect(x-2,2,4,40);
+                g.fillRect(x-6,52,12,27);
+                g.fillStyle = c;
+                g.fillRect(x-1,3,2,38);
+            }
+            g.fillStyle = "black";
+            g.fillRect(x-1,43,2,10);
+            g.fillRect(x-5,53,10,25);
+            g.fillStyle = c;
+            g.fillRect(x-4,54,8,23);
+         }
+     };
+}
+
+function PalettePreview() {
+   var previewIterationCounts;
+   var previewRect;
+   var preview = document.getElementById("preview");
+   var g = preview.getContext("2d");
+   if (canvas.width >= canvas.height) {
+       var h = Math.round(canvas.height/canvas.width * (preview.height-2));
+       previewRect = { left:1, top: 1+Math.floor((preview.height-h)/2), width: preview.width-2, height: h };
+   }
+   else {
+       var w = Math.round(canvas.width/canvas.height * (preview.width-2));
+       previewRect = { left: 1+Math.floor((preview.width-w)/2), top: 1, width: w, height: preview.height-2 };
+   }
+   var previewCounts = new Array(previewRect.height);
+   var desiredRow = new Array(previewRect.height+1);
+   var currentRow = new Array(previewRect.height);
+   var i,j;
+   for (i = 0; i < previewRect.height; i++) {
+       desiredRow[i] = Math.floor( i * canvas.height/previewRect.height );
+       currentRow[i] = -1;
+   }
+   desiredRow[previewRect.height+1] = canvas.height;
+   for (i = 0; i < previewRect.height; i++) {
+       for (j = desiredRow[i]; j < desiredRow[i+1]; j++) {
+           if (savedIterationCounts[j]) {
+               currentRow[i] = j;
+               previewCounts[i] = new Int32Array(previewRect.width);
+               for (var k = 0; k < previewRect.width; k++) {
+                   var index = Math.floor( k / previewRect.width * savedIterationCounts[j].length );
+                   previewCounts[i][k] = savedIterationCounts[j][index];
+               }
+               break;
+           }
+       }
+   }
+   this.update = function(newRowNumber, newRowCounts) {
+      for (var k = 0; k < previewRect.height; k++) { 
+          if (newRowNumber < desiredRow[k+1]) { 
+             if (currentRow[k] == -1 || (currentRow[k] != desiredRow[k] && newRowNumber < currentRow[k])) { 
+                 currentRow[k] = newRowNumber;
+                 newColors(k,newRowCounts);
+             }
+             break;
+          }
+      }
+   };
+   function newColors(row,counts) {
+       previewCounts[row] = new Int32Array(previewRect.width);
+       for (var k = 0; k < previewRect.width; k++) {
+           var index = Math.floor( k / previewRect.width * counts.length );
+           previewCounts[row][k] = counts[index];
+       }
+       showRow(row);
+   }
+   function showRow(row) { 
+       for (var k = 0; k < previewRect.width; k++) {
+           if (previewCounts[row][k] == -1)
+               g.fillStyle="black";
+           else {
+               var index = previewCounts[row][k] % paletteLengthInEditor;
+               g.fillStyle = colorsInEditor[index];
+           }
+           g.fillRect(k+previewRect.left,row+previewRect.top,1,1);
+       }
+   }
+   function drawBG() {
+      g.fillStyle="#e8e8e8";
+      g.fillRect(0,0,preview.width,preview.height);
+      g.lineWidth = 1;
+      g.strokeStyle = "black";
+      g.strokeRect( previewRect.left-0.5, previewRect.top-0.5, previewRect.width+1, previewRect.height );
+   }
+   this.redraw = function() {
+      drawBG();
+      for (var i = 0; i < previewCounts.length; i++) {
+         if (previewCounts[i])
+             showRow(i);
+      }
+   };
+}
+
+function Histogram() {
+   var canvas = document.getElementById("histogram");
+   var histogramWidth = canvas.width - 15;
+   var histogramHeight = canvas.height - 15;
+   var histogramCounts = new Int32Array(maxIterations+1);
+   for (var j = 0; j < savedIterationCounts.length; j++) {
+       if (savedIterationCounts[j]) {
+          var counts = savedIterationCounts[j];
+          for (var k = 0; k < counts.length; k++)
+              histogramCounts[counts[k]] ++;
+       }
+   }
+   this.update = function(newcounts) {
+       for (var i = 0; i < newcounts.length; i++) {
+           histogramCounts[newcounts[i]] ++;
+       }
+       redraw();
+   };
+   function redraw() {
+       var g = canvas.getContext("2d");
+       g.fillStyle = "white";
+       g.fillRect(0,0,canvas.width,canvas.height);
+       g.lineWidth = 2;
+       g.strokeStyle = "red";
+       g.beginPath();
+       g.moveTo(8,5);
+       g.lineTo(8,canvas.height-8);
+       g.lineTo(canvas.width-5,canvas.height-8);
+       g.stroke();
+       var i,a,b;
+       var maxct = 0;
+       for (i = 1; i < histogramCounts.length; i++)
+           maxct = Math.max(histogramCounts[i],maxct);
+       if (maxct == 0)
+           return;
+       g.lineWidth=1;
+       g.strokeStyle="black";
+       g.beginPath();
+       for (i = 1; i < histogramCounts.length; i++) {
+           if (histogramCounts[i] > 0) {
+               a = Math.round(i/histogramCounts.length * histogramWidth) + 10.5;
+               b = Math.ceil(histogramCounts[i]/maxct * histogramHeight) + 0.5; 
+               g.moveTo(a,canvas.height-10);
+               g.lineTo(a,canvas.height-10-b);
+           }
+       }
+       g.stroke();
+   }
+   redraw();
+}
+
+function SliderAndInput(canvas,textbox,min,max,val,integerOnly,allowOutOfRange) {
+    this.canvas = canvas;
+    this.textbox = textbox;
+    this.min = (typeof min == "number")? min : 0.0;    
+    this.max = (typeof max == "number")? max : this.min + 100.0;    
+    this.value = (typeof val == "number")? val : this.min;
+    this.integerOnly = (typeof integerOnly == "undefined")? false : integerOnly;
+    this.allowOutOfRange = (typeof allowOutOfRange == "undefined")? false : allowOutOfRange;
+    this.allowLessThanMin = false;
+    this.g = this.canvas.getContext("2d");
+    this.g.translate(0,-8);  // fudge for resuing old code
+    this.size = this.canvas.width - 25;
+    if (this.allowOutOfRange)
+       this.size -= 20;
+    this.setTabLeft();
+    this.valueToTextbox();
+    this.draw();
+    this.onchange = null;
+    var me = this;
+    var valueInTextbox, savedValueWhileEditing, saveTitle;
+    textbox.style.color = "black";
+    textbox.style.backgroundColor = "white";
+    textbox.style.padding = "2px";
+    textbox.onfocus = function() { 
+        valueInTextbox = savedValueWhileEditing = this.value; 
+        textbox.style.backgroundColor="#d8ffd8";
+        saveTitle = textbox.title;
+        textbox.title = "Editing slider value. Press return or move to another input box to apply the new value, if legal.";
+    };
+    textbox.onblur = function() { 
+        textbox.style.backgroundColor="white";
+        if (checkTextbox())
+            me.setValue(valueInTextbox);
+        else
+            me.setValue(savedValueWhileEditing);
+        if (!updateDuringDrag)
+            palettePreview.redraw();
+        me.valueToTextbox();
+        textbox.title = saveTitle;
+        textbox.style.backgroundColor = "white";
+    };
+    textbox.oninput = function() { 
+        checkTextbox();
+    };
+    textbox.onkeydown = function(evt) {
+       if (evt.keyCode == 13 && checkTextbox()) {
+          me.setValue(valueInTextbox);
+          valueInTextbox = me.value;
+          if (!updateDuringDrag)
+              palettePreview.redraw();
+       }
+    };
+    function checkTextbox() {
+       var val = Number(textbox.value);
+       if (isNaN(val)) {
+           textbox.style.backgroundColor = "#ff9090";
+           textbox.title = "The value in the input box is not a number!";
+           return false;
+       }
+       if (me.integerOnly)
+          val = Math.round(val);
+       if (val < 0 || (val < me.min && !me.allowLessThanMin) || (val > me.max && !me.allowOutOfRange)) {
+           textbox.style.backgroundColor = "#ffff90";
+           textbox.title = "The value in the textbox is not in the legal range for the slider";
+           return false;
+       }
+       valueInTextbox = val;
+       textbox.style.backgroundColor="#d8ffd8";
+       textbox.title = "Editing slider value. Press return or move to another input box to apply the new value, if legal.";
+       return true;
+    }
+    var offset;
+    new Mouser(this.canvas,
+        function(x,y) {
+           if (y < 23 && x > me.tabLeft - 2 && x < me.tabLeft + 22) {
+              offset = x - (me.tabLeft+10);
+              return true;
+           }
+           else if (y > 20 && x > 14 && x < me.canvas.width - 5) {
+              var val = (x - 15)/me.size * (me.max-me.min) + me.min;
+              me.setValue(val);
+              return false;
+           }
+        },
+        function(x,y) {
+           x = x - offset;
+           var val = (x - 15)/me.size * (me.max-me.min) + me.min;
+           if (val > me.max)
+              val = me.max;
+           if (val < me.min)
+              val = me.min;
+           me.setValue(val); 
+        },
+        function() {
+            if (!updateDuringDrag)
+                palettePreview.redraw();
+        }
+    );
+}
+SliderAndInput.prototype.setAllowOutOfRange = function( allow, allowLessThanMin ) {
+    if (this.allowOutOfRange == allow && this.allowLessThanMin == allowLessThanMin)
+       return;
+    this.allowOutOfRange = allow;
+    if (allowLessThanMin)
+        this.allowLessThanMin = true;
+    else
+        this.allowLessThanMin = false;
+    this.size = this.canvas.width - 25;
+    if (this.allowOutOfRange)
+       this.size -= 20;
+    this.setTabLeft();
+    this.draw();
+};
+SliderAndInput.prototype.reset = function(min,max,val) {
+//    if (this.min != min || this.max != max) {
+        this.min = min;
+        this.max = max;
+        this.value = "none";
+        this.setValue(val);
+//    }
+};
+SliderAndInput.prototype.setValue = function(val) { 
+    var newval = this.integerOnly? Math.round(val) : val;
+    if ( ! this.allowOutOfRange ) {
+        newval = Math.min(this.max,newval);
+    }
+    if ( ! this.allowOutOfRange ) {
+        newval = Math.max(this.min,newval);
+    }
+    newval = Math.max(0,newval);
+    if (this.value != newval) { 
+        this.value = newval;
+        this.valueToTextbox();
+        this.changed();
+    }
+};
+SliderAndInput.prototype.valueToTextbox = function() {
+    if (this.integerOnly)
+        this.textbox.value = "" + this.value;
+    else
+        this.textbox.value = this.value.toPrecision(3);
+};
+SliderAndInput.prototype.setTabLeft = function() {
+   if (this.value > this.max  || this.value < this.min)
+      this.tabLeft = this.size + 20;
+   else
+      this.tabLeft = 5 + Math.floor((this.value - this.min)/(this.max - this.min) * this.size);
+};
+SliderAndInput.prototype.changed = function() {
+   this.setTabLeft();
+   this.draw();
+   if (this.onchange)
+      this.onchange(this.value);
+};
+SliderAndInput.prototype.draw = function() {
+    var graphics = this.g;
+    graphics.save();
+    graphics.fillStyle = "#e8e8e8";
+    graphics.fillRect(0,8,this.canvas.width,this.canvas.height);
+    graphics.beginPath();
+    graphics.moveTo(15, 35);
+    graphics.lineTo(15 + this.size, 35);
+    graphics.strokeStyle = "black";
+    graphics.lineWidth = 10;
+    graphics.lineCap = "round";
+    graphics.stroke();
+    graphics.strokeStyle = "gray";
+    graphics.lineWidth = 7.5;
+    graphics.lineCap = "butt";
+    graphics.stroke();
+    graphics.beginPath();
+    graphics.moveTo(15, 35);
+    graphics.lineTo(Math.min(this.tabLeft + 10,15+this.size), 35);
+    graphics.strokeStyle = "lightgray";
+    graphics.stroke();
+    graphics.fillStyle = "black";
+    graphics.lineWidth = 1;
+    graphics.beginPath();
+    graphics.moveTo(this.tabLeft + 10, 36);
+    graphics.lineTo(this.tabLeft + 20, 30);
+    graphics.lineTo(this.tabLeft + 20, 10);
+    graphics.lineTo(this.tabLeft, 10);
+    graphics.lineTo(this.tabLeft, 30);
+    graphics.closePath();
+    graphics.fillStyle = "#9090FF";
+    graphics.fill();
+    graphics.strokeStyle = "#000099";
+    graphics.stroke();
+    graphics.beginPath();
+    graphics.moveTo(this.tabLeft + 4.5, 14);
+    graphics.lineTo(this.tabLeft + 4.5, 26);
+    graphics.moveTo(this.tabLeft + 9.5, 14);
+    graphics.lineTo(this.tabLeft + 9.5, 26);
+    graphics.moveTo(this.tabLeft + 14.5, 14);
+    graphics.lineTo(this.tabLeft + 14.5, 26);
+    graphics.stroke();
+    graphics.beginPath();
+    graphics.moveTo(this.tabLeft + 6, 16);
+    graphics.lineTo(this.tabLeft + 6, 28);
+    graphics.moveTo(this.tabLeft + 11, 16);
+    graphics.lineTo(this.tabLeft + 11, 28);
+    graphics.moveTo(this.tabLeft + 16, 16);
+    graphics.lineTo(this.tabLeft + 16, 28);
+    graphics.strokeStyle = "white";
+    graphics.stroke();
+    graphics.restore();
+};
+
+
 
 //-------------------------------------------------------------------------------------------
 
@@ -1441,7 +2275,7 @@ function currentExampletoXML() {
             "</mandelbrot_settings_2>\n";
 }
 
-function installExampleFromXML(xmlString, recordUndo, respectSize) {
+function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError) {
     var oldXML = currentXML;
     stopJob();
     try {
@@ -1549,9 +2383,13 @@ function installExampleFromXML(xmlString, recordUndo, respectSize) {
       if (recordUndo && undoList) {
           addUndoItem("Import Example", oldXML, currentXML);
       }
+      return null;
     }
     catch (e) {
-        document.getElementById("status").innerHTML = "Illegal data in XML example string: " + e;
+        var error =  "Illegal data in XML example string: " + e;
+        if ( ! dontShowError )
+           document.getElementById("status").innerHTML = error;
+        return error;
     }
 }
 
@@ -1591,9 +2429,15 @@ function importXML() {
     document.getElementById("grabcurrent").onclick = grabCurrent;
     function apply() {
         var text = document.getElementById("XMLtextinput").value.trim();
-        dismiss();
-        if (text != "") {
-            installExampleFromXML(text,true,false);
+        if (text == "") {
+            dismiss();
+        }
+        else {
+            var errorMsg = installExampleFromXML(text,true,false);
+            if (errorMsg == null)
+               dismiss();
+            else
+               alert("Error in input: " + errorMsg);
         }
     }
     function dismiss() {
@@ -1647,18 +2491,15 @@ function init() {
     document.getElementById("imagesize").onchange = changeImageSize;
     document.getElementById("applysize").onclick = doCustomSize;
     try {
-      if (window.sessionStorage && window.sessionStorage.mandelbrotWorkerCount) {
-          var ct = Math.round(Number(window.sessionStorage.mandelbrotWorkerCount));
-          if (!isNaN(ct) && ct > 0 && ct <= 8) {
-              workerCount = ct;
-          }
+      var ct = Number(localStorage.getItem("mandelbrotWorkerCount"));
+      if (!isNaN(ct) && ct > 0) {
+          workerCount = ct;
       }
     }
     catch(e) {
     }
     document.getElementById("threadCountSelect").value = "" + workerCount;
     document.getElementById("threadCountSelect").onchange = changeWorkerCount;
-    document.getElementById("maxIterSelect").value = "100";
     document.getElementById("maxIterSelect").onchange = changeMaxIterations;
     document.getElementById("maxiterapply").onclick = doCustomMaxIterations;
     document.getElementById("paletteLengthSelect").onchange = changePaletteLength;
@@ -1667,7 +2508,8 @@ function init() {
     document.getElementById("offsetapply").onclick = doApplyCustomPaletteOffset;
     document.getElementById("standardPaletteButton").onclick = doApplyStandardPalette;
     document.getElementById("standardPaletteSelect").value = "EarthAndSky";
-    document.getElementById("secondpass").checked = false;
+    document.getElementById("showpaletteedit").onclick=showPaletteEditor;
+    document.getElementById("secondpass").checked = true;
     document.getElementById("secondpass").onchange = changeSecondPass;
     document.getElementById("highprecision").checked = false;
     document.getElementById("highprecision").onchange = changeHighPrecision;
@@ -1694,18 +2536,19 @@ function init() {
 <noscript><b>Sorry, this page requires JavaScript.</b></noscript>
 
 <h2>Explore the Mandelbrot Set</h2>
-<p>
-    Based on a browser-only Mandelbrot Set viewer by <a href=http://math.hws.edu/eck/index.html>David Eck</a>,
-    this revised client/server viewer can be hosted on a Kubernetes cluster,
-    which provides a scalable backend API to perform the calculations.  
-    Double-clicking the image (or dragging on it to draw a box) will zoom it in.
-    <br><br>
-    Calculating the Mandelbrot Set can be very computationally intensive, however it is parallelizable.
-    Each "Worker" roughly corresponds to a Kubernetes pod which calculates rows of the image.
-    As more workers are added, Kubernetes automatically scales and load balances, bringing in more pods to meet the demand and speed up the computation.
-    <p>To see how Kubernetes scales, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>, 
-	    then vary the number of "Workers" to speed it up or slow it down.</p>
+<p>Based on a browser-only Mandelbrot Set viewer by <a href=http://math.hws.edu/eck/index.html>David Eck</a>,
+this revised client/server version can be hosted in Docker on a PC or on a Kubernetes cluster.
+</p><p>
+Calculating the Mandelbrot Set is very computationally intensive, however it is parallelizable.
+Increasing the number of "Workers" below brings in more CPU threads to calculate rows of the image. 
+</p><p>
+To see, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>, 
+then vary the number of "Workers" to speed it up or slow it down.
+When running on Kubernetes, increasing the workers also brings in more pods to speed up the computation.
+</p><p>
+Double-clicking the image (or dragging on it to draw a box) will zoom it in.
 </p>
+
 <p id="message"></p>
 
 <table border=0 cellpadding=0 cellspacing=0>
@@ -1717,7 +2560,7 @@ function init() {
    <div class="group">
       <p><label title="If checked, lines in image are computed out of order."><input type="checkbox" id="interlaced">Interlaced Drawing</label></p>
       <p><label title="If checked, extra computations are done that can often give the completed image a smoother look."><input type="checkbox" id="secondpass">Do a Second Pass</label></p>
-      <p><label title="Increasing this can speed up the computation by bringing in more Kubernetes resources.">Workers: <select id="threadCountSelect">
+      <p><label title="Increasing this can speed up the computation by utilizing more CPUs.">Workers: <select id="threadCountSelect">
           <option value="1">1</option>
           <option value="2">2</option>
           <option value="3">3</option>
@@ -1771,6 +2614,8 @@ function init() {
       </select></label><span id="custommaxiter" style="display:none"><br><input type="text" maxlength="6" size="5" id="maxiterinput"> <button id="maxiterapply">Apply</button></span></p>
    </div>
    <div class="group">
+      <p><button id="showpaletteedit" title="Show a popup dialog box that gives greater control over the palette.">Show Palette Editor</button>
+            &nbsp;(<a href="palette-editor-info.png" target="_blank" title="Opens a guide to the Palette Editor in a separate tab or window.">info</a>)</p>
       <p><label title="Size of the color palette for pixels outside the Mandebrot set.">PaletteLength: <select id="paletteLengthSelect">
             <option value="Match">= MaxIter</option>
             <option value="50">50</option>
@@ -1782,7 +2627,7 @@ function init() {
             <option value="5000">5000</option>
             <option value="Custom">Custom</option>
       </select></label><span id="custompallen" style="display:none"><br><input type="text" maxlength="5" size="4" id="palleninput"><button id="pallenapply">Apply</button></span>
-      <p><label title="Offsets the colors within the palette to get a different mapping">PaletteOffset:</label> <select id="paletteOffsetSelect">
+      <p><label title="Offsets the colors within the palette to get a different mapping.">PaletteOffset: <select id="paletteOffsetSelect">
             <option value="0">None</option>
             <option value="0.1">10%</option>
             <option value="0.2">20%</option>
@@ -1794,20 +2639,22 @@ function init() {
             <option value="0.8">80%</option>
             <option value="0.9">90%</option>
             <option value="Custom">Custom</option>
-      </select><span id="custoffset" style="display:none"><br><input type="text" id="offsetinput" maxlength="6" size="5"><b>%</b> &nbsp;<button id="offsetapply">Apply</button></span></p>
-      <p style="margin-bottom:4px"><button id="standardPaletteButton">Apply Standard Palette:</button></p>
-      <p style="margin-top:0"><select id="standardPaletteSelect" style="margin-left:70px">
+      </select></label><span id="custoffset" style="display:none"><br><input type="text" id="offsetinput" maxlength="6" size="5"><b>%</b> &nbsp;<button id="offsetapply">Apply</button></span></p>
+      <p style="margin-bottom:4px"><button id="standardPaletteButton" title="Click here to apply the palette of colors selected in the popup menu below.">Apply Standard Palette:</button></p>
+      <p style="margin-top:0"><select id="standardPaletteSelect" style="margin-left:70px" title="Some palettes of colors to be applied to the Mandelbrot image.  Click the above button to apply the selected palette.">
             <option value="Spectrum">Spectrum</option>
             <option value="EarthAndSky">EarthAndSky</option>
-            <option value="HotAndCold">HotAndCold</option>
-            <option value="TreeColors">Forest</option>
+            <option value="Cyclic Fire">Fire</option>
             <option value="Seashore">Seashore</option>
-            <option value="Fire">Fire</option>
-            <option value="Red/Cyan">Red/Cyan</option>
-            <option value="Blue/Gold">Blue/Gold</option>
-            <option value="Grayscale">Grayscale</option>
-            <option value="CyclicGrayscale">CyclicGrayscale</option>
+            <option value="TreeColors">Forest</option>
+            <option value="Pastels">Pastel Colors</option>
+            <option value="Dark">Dark Colors</option>
+            <option value="HotAndCold">HotAndCold</option>
+            <option value="CyclicGrayscale">Grayscale</option>
             <option value="Random">Random</option>
+            <!--<option value="Red/Cyan">Red/Cyan</option>
+                <option value="Blue/Gold">Blue/Gold</option>
+                <option value="Grayscale">Grayscale</option> -->
       </select></p>
    </div>
    <div class="group">
@@ -1864,9 +2711,97 @@ allows you to save the example (or even edit it by hand).</p>
 <button style="margin-left:20px" id="grabcurrent">Grab Current Example</button></p>
 <p><textarea rows="21" cols="55" id="XMLtextinput" placeholder="XML code goes here"></textarea>
 </div>
+
+
+<div id="paletteEditor">
+<table bgcolor="#E8E8E8" cellpadding=3 cellspacing=0 border=2>
+<tr>
+   <td colspan=2>
+      <table width=620 border=0>
+      <tr><td align=left><button id="paletteEditStandardInstall"  
+             title="Click this button to replace the palette below with the standard palette that is selected on the right.">Install:</button>
+          <select id="paletteEditStandardSelect" title="Click the button on the left to apply this palette in the palette editor.">
+            <option value="Spectrum">Spectrum</option>
+            <option value="EarthAndSky">EarthAndSky</option>
+            <option value="Cyclic Fire">Fire</option>
+            <option value="Seashore">Seashore</option>
+            <option value="TreeColors">Forest</option>
+            <option value="Pastels">Pastel Colors</option>
+            <option value="Dark">Dark Colors</option>
+            <option value="HotAndCold">HotAndCold</option>
+            <option value="CyclicGrayscale">Grayscale</option>
+            <option value="Random">Random</option>
+          </select></td>
+          <td align=right><button id="addcolorstop"
+                title="Click to add a color stop to the palette below. The stop will be added next to the currently selected stop, if possible.  You can also add a stop by double-clicking the palette.">Add Color Stop</button>
+                <button id="deletecolorstop" title="Click to delete the selected color stop. The first and last stops cannot be deleted.">Delete</button>
+                <label style="margin-left:20pt" title="Check this box to lock the colors of the first and last color stops so that the two colors are forced to be the same.">Lock<input type="checkbox" id="lockcolors"></label>
+          </td>
+      </tr>
+      </table>
+      <p style="margin: 5px 0 0 0"><canvas id="coloredit" width=630 height=80
+           title="Click a color stop to select it.  Drag selected color stop (except for the two at the ends) to move it.  Double-click in a free area to add a color stop."></canvas></p>
+      <table border=0 cellpadding=0 style="margin:0 0 0 20px">
+       <tr><td><canvas id="colorslider0" width=401 height=40
+           title="Drag the slider to set the first color component of the selected color stop to a value in the range 0.0 to 1.0."></canvas></td>
+           <td><input type=text id="colorinput0" size=5 title="You can type a value for the first color component here, 0.0 to 1.0 for Red, anything greater than or equal to zero for Hue.">
+           <span id="colorlabel0">Hue</span></td>
+       </tr>
+       <tr><td><canvas id="colorslider1" width=401 height=40
+           title="Drag the slider to set the second color component of the selected color stop to a value in the range 0.0 to 1.0."></canvas></td>
+           <td><input type=text id="colorinput1" size=5 title="You can type a value for the second color component here, in the range 0.0 to 1.0.">
+           <span id="colorlabel1">Saturation</span></td>
+       </tr>
+       <tr><td><canvas id="colorslider2" width=401 height=40
+           title="Drag the slider to set the third color component of the selected color stop to a value in the range 0.0 to 1.0."></canvas></td>
+           <td><input type=text id="colorinput2" size=5 title="You can type a value for the third color component here, in the range 0.0 to 1.0.">
+           <span id="colorlabel2">Brightness</span></td>
+       </tr>
+      </table>
+   </td>
+</tr>
+<tr>
+   <td valign=top>
+      <canvas id="histogram" width=420 height=100
+          title="Shows the distribution of iteration counts in the image, from 1 up to MaxIterations.  This can help with selecting a good palette length."></canvas>
+      <p style="margin: 3px 0 0 9px"><canvas id="histogrampalette" width=408 height=22 style="display:inline"
+          title="Shows how colors from palette will actually be applied to each iteration count, based on palette length and palette offset."></canvas></p>
+      <table border=0 cellpadding=0 style="margin:3px 0 0 0">
+       <tr><td colspan=2><canvas id="lengthslider" width=420 height=40
+           title="Drag the slider to set the palette length.  Slider shows values between 1 and MaxIterations.  You can set an even larger value in the input box below."></canvas></td>
+       </tr>
+       <tr><td align=right colspan=2>
+              <input type=text id="editorlengthinput" size=5 
+                  title="You can type a value for the palette length here.  It must be 1 or more.">Palette Length</td>
+       </tr>
+       <tr><td align=right><canvas id="offsetslider" width=250 height=40
+           title="Drag the slider to set the palette offset as a percentage in the range 0 to 100."></canvas></td>
+           <td align=left><input type=text id="editoroffsetinput" size=5 title="You can type a value for the palette offset percentage, in the range 0.0 to 100.0.">%&nbsp;&nbsp;Offset</td>
+       </tr>
+      </table>
+   </td>
+   <td valign=top width=200>
+       <table border=0 cellpadding=0>
+         <tr><td><canvas id="preview" width=200 height=200 
+               title="A rough copy of the current image, with edited colors applied, giving a preview of the image with the edited palette."></td></tr>
+         <tr><td><label title="If this box is unchecked, changes are only applied to the above preview when a drag action end.  Uncheck the box if your computer is having trouble keeping up as you drag a slider or color stop.">
+               <input type=checkbox id="updateWhileDraggingCheck" checked>UpdateDuringDrag</label></td></tr>
+       </table>
+   </td>
+</tr>
+<tr>
+   <td align=center  colspan=2>
+   <button id="dismissPaletteEdit" title="Cancel palette editing, leaving colors in the image unchanged.">Cancel</button>
+   <button id="revertPaletteEdit" title="Restore the palette to the its state when the palette editor was opened.">Revert Palette</button>
+   <button id="applyPaletteEdit"  title="Dismiss the palette editor and apply the palette from the editor to the main image.">Apply and Close</button>
+   </td>
+</tr>
+</table>
+</div>
+
 <p>
     For more info, instructions, and examples, <a href="MB-info.html">click here</a>.
-    The github repository is <a href="https://github.com/wpwoodjr/Mandelbrot-for-Kubernetes">here</a>.
+    The github repository is <a href="https://github.com/wpwoodjr/Mandelbrot-for-Docker-and-Kubernetes">here</a>.
 </p>
 </body>
 </html>
