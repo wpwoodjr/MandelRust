@@ -1196,7 +1196,7 @@ function applyUndoItem(name, value) {
       case "Change Image Size":
          setImageSize(value[0],value[1]);
          var val = value[0] + " " + value[1];
-         if (["200 150", "400 300", "640 480", "800 600", "1024 768", "1200 900", "1600 900", "425 550", "850 1100"].indexOf(val) < 0) {
+         if (["640 480", "800 600", "1024 768", "1600 1200", "1920 1080", "1920 1200", "2560 1440", "2880 1800", "3840 1080", "3840 2160", "5120 1440"].indexOf(val) < 0) {
              document.getElementById("imagesize").value = "Custom";
              document.getElementById("customsize").style.display = "inline";
              document.getElementById("customwidth").value = "" + value[0];
@@ -1536,7 +1536,7 @@ function installExampleFromXML(xmlString, recordUndo, respectSize) {
       if (respectSize) {
          setImageSize(width,height);
          var val = width + " " + height;
-         if (["200 150", "400 300", "640 480", "800 600", "1024 768", "1200 900", "1600 900", "425 550", "850 1100"].indexOf(val) < 0) {
+         if (["640 480", "800 600", "1024 768", "1600 1200", "1920 1080", "1920 1200", "2560 1440", "2880 1800", "3840 1080", "3840 2160", "5120 1440"].indexOf(val) < 0) {
              document.getElementById("imagesize").value = "Custom";
              document.getElementById("customsize").style.display = "inline";
              document.getElementById("customwidth").value = "" + width;
