@@ -8,7 +8,7 @@ This version's backend web server has been rewritten from JavaScript to Rust and
 
 Forked from a browser-only version by David Eck, at http://math.hws.edu/eck/index.html
 
-![dancing](../dancing.png)
+![dancing](dancing.png)
 
 ### Getting started
 #### Docker
@@ -26,3 +26,5 @@ cd Mandelbrot-for-Docker-and-Kubernetes/mb-kubernetes
 ... men at work ...
 ```
 Once the application is deployed to Kubernetes, browse to `<url>`.
+
+![flaming](flaming.png)
