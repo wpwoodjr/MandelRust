@@ -50,7 +50,7 @@ as visualized using the <a href="MB.html">Mandelbrot&nbsp;Viewer</a> program.
 The Mandelbrot set itself is a well-known mathematical object; see
 the <a href="http://en.wikipedia.org/wiki/Mandelbrot_Set">Wikipedia&nbsp;entry</a>
 for more information about the set.</p>
-<p>This page mostly discusses how to use the program.  There is also a
+<p>This page mostly discusses how to use the program.  There is also a small
 <b><a href="#gallery">gallery of examples</a></b>
 at the bottom of this page that you can load into the program.</p>
 <p>There is also a <a href="java/MandelbrotSettings/index.html"><b>large collection of examples</b></a> on another page.</p>
@@ -77,7 +77,6 @@ image on the right:</p>
 
 <p style="text-align:center"><img src="too-few-iterations.png" width="200" height="150">&nbsp;&nbsp;
    <img src="enough-iterations.png" width="200" height="150"></p>
-   
 <p><b>About the palette:</b>  The colors in the images are arbitrary.  The set of colors that are used is called the "palette"
 in the program.  If you find that the colors in the image are too uniform, you can try <b>decreasing</b>
 the value in the PaletteLength menu.  For example, changing the setting in that menu from 250 to 50 transformed
@@ -103,6 +102,13 @@ is called "Spectrum."  (It can be quite fun to set the popup menu to "Random" an
 keep hitting the "Apply Standard Palette" button.  The "Random" setting produces a different
 palette each time it is clicked.)</p>
 
+   
+<p><b>About the Palette Editor:</b> (New in August 2019.) The button labeled "Show Palette Editor"
+will pop up a dialog box that gives you almost total control over the palette of colors that are
+used in the image.  Hover your mouse over an item in the palette editor to get information about
+it.  For a more complete guide to the palette editor, see this
+<a href="palette-editor-info.png" syle="white-space:pre">map of the palette editor</a>.</p>
+   
 <p><b>About Workers:</b> The Mandelbrot Viewer is a computation-intensive
 program.  Most computers today are "multi-core", which means that they can do several
 computations simultaneously.  To do that on a web page, the page can use several "worker
