@@ -243,30 +243,37 @@ fn compute_mandelbrot_hp_rayon(xmin: &[u32], dx: &[u32], y: &[u32], columns: usi
 }
 
 /*
-fn compute_mandelbrot_hp_rayon(mandelbrot_coords_hp: web::Json<MandelbrotCoordsHP>) -> Vec<i32> {
-
-    let mut x_vals = vec![vec![0; mandelbrot_coords_hp.xmin.len() ]; mandelbrot_coords_hp.columns];
-
-    x_vals[0].copy_from_slice(&mandelbrot_coords_hp.xmin);
-    for i in 1..mandelbrot_coords_hp.columns {
-        for j in 0..x_vals[0].len() {
-            x_vals[i][j] = x_vals[i - 1][j];
-        }
-        incr(&mut x_vals[i], &mandelbrot_coords_hp.dx);
+function countIterationsHP( /* Uint32Array */ x, /* Uint32Array */ y, maxIterations) {
+    arraycopy(x,0,zx,0,chunks);
+    arraycopy(y,0,zy,0,chunks);
+    let count = 0;
+    while (count < maxIterations) {
+        arraycopy(zx, 0, work2, 0, chunks);
+        multiply(work2,zx,chunks);  // work2 = zx*zx
+        arraycopy(zy, 0, work1, 0, chunks);
+        multiply(work1,zy,chunks);  // work1 = zy*zy
+        arraycopy(work1,0,work3,0,chunks);   // work3 = zy*zy, save a copy.  (Note: multiplication uses work3.)
+        add(work1,work2,chunks);  // work1 = zx*zx + zy*zy
+        if ((work1[0] & 0xFFF8) != 0 && (work1[0] & 0xFFF8) != 0xFFF0)
+            break;
+        negate(work3,chunks);  // work3 = -work3 = -zy*zy
+        add(work2,work3,chunks);  // work2 = zx*zx - zy*zy
+        add(work2,x,chunks); // work2 = zx*zx - zy*zy + x, the next value for zx
+        arraycopy(zx,0,work1,0,chunks);  // work1 = zx
+        add(work1,zx,chunks);  // work1 = 2*zx
+        multiply(work1,zy,chunks);  // work1 = 2*zx*zy
+        add(work1,y,chunks);  // work1 = 2*zx*zy + y, the next value for zy
+        arraycopy(work1,0,zy,0,chunks);  // zy = work1
+        arraycopy(work2,0,zx,0,chunks);  // zx = work2
+        count++;
     }
+    return (count < maxIterations)? count : -1 ;
+}
 
-    // ignoring the last u32 chunk seems to be a small speed optimization which reduces precision but doesn't affect image quality
-    let chunks = mandelbrot_coords_hp.xmin.len() - unsafe { IMAGE_QUALITY };
-
-    let iteration_counts: Vec<i32> =
-        x_vals
-            .into_par_iter()
-            .map(| x | {
-                let mut hp_data = HPData::new(chunks);
-                count_iterations_hp(&mut hp_data, &x[0..chunks], &mandelbrot_coords_hp.ymax[0..chunks], mandelbrot_coords_hp.maxIterations)
-            })
-            .collect();
-    iteration_counts
+function arraycopy( sourceArray, sourceStart, destArray, destStart, count ) {
+   for (let i = 0; i < count; i++) {
+       destArray[destStart + i] = sourceArray[sourceStart + i];
+   }
 }
 */
 
