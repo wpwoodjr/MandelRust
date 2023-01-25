@@ -15,6 +15,25 @@
 
     This file depends on the scripts mandelbrot-worker-remote.js and Daniel Trebbien's
     BigDecimal-all-last.min.js.
+
+    August, 2019. Added Palette Editor.
+    January, 2020. Improved Palette Editor.
+    April, 2020.  Cleaned up standard palettes, removed a few, added Dark Colors palette.
+    May, 2020.  Change maximum image width and height from 2500 to 10000 (but that
+        doesn't necessarily mean very large images will work on every device).
+    October, 2021.  Fixed a bug in startJob() and startSecondPass() that showed up
+        when the change in y-value from one line to the next is very small.  This was
+        done previously by successive subtraction, which introduced errors.  Thanks to
+        Robert Munafo for finding and fixing the bug.
+    August, 2022.  Use localStorage to save workerCount between sessions.
+
+    Changes by Bill Wood:
+    Jul/Aug 2019: Rewrote job processing to be client/server, also fixed y-value issue
+    Jul/Aug 2019: Changed HP_CUTOFF from 16 to 15 to avoid artifacts at the limits of f64 precision
+    Jul/Aug 2019: Added "High Precision" toggle
+    Jan 2023:     Rewrote JavaScript server in Rust to get 3-5 times speedup in high precision computations
+    Jan 2023:     Max image width/height is now 7680 (8K)
+
 -->
 <html>
 <head>
@@ -228,19 +247,19 @@ function setLimits(x1, x2, y1, y2, recordUndo) {
     }
 }
 
-function checkAspect() {  // adjust requested x/y limits to match aspect ration of image
+function checkAspect() {  // adjust requested x/y limits to match aspect ratio of image
     xmin = xmin_requested;
     xmax = xmax_requested;
     ymin = ymin_requested;
     ymax = ymax_requested;
     if (xmin.scale() < HP_CUTOFF_EXP + 8)
-        xmin.setScale(HP_CUTOFF_EXP + 8);
+        xmin = xmin.setScale(HP_CUTOFF_EXP + 8);
     if (xmax.scale() < HP_CUTOFF_EXP + 8)
-        xmax.setScale(HP_CUTOFF_EXP + 8);
+        xmax = xmax.setScale(HP_CUTOFF_EXP + 8);
     if (ymin.scale() < HP_CUTOFF_EXP + 8)
-        ymin.setScale(HP_CUTOFF_EXP + 8);
+        ymin = ymin.setScale(HP_CUTOFF_EXP + 8);
     if (ymax.scale() < HP_CUTOFF_EXP + 8)
-        ymax.setScale(HP_CUTOFF_EXP + 8);
+        ymax = ymax.setScale(HP_CUTOFF_EXP + 8);
     var dx = xmax.subtract(xmin).setScale(Math.max(xmax.scale(),HP_CUTOFF_EXP)*2, BigDecimal.ROUND_HALF_EVEN);
     dx = dx.divide(new BigDecimal("" + canvas.width),BigDecimal.ROUND_HALF_EVEN);
     var precision = 0;
@@ -2536,17 +2555,18 @@ function init() {
 <noscript><b>Sorry, this page requires JavaScript.</b></noscript>
 
 <h2>Explore the Mandelbrot Set</h2>
-<p>Based on a browser-only Mandelbrot Set viewer by <a href=http://math.hws.edu/eck/index.html>David Eck</a>,
-this revised client/server version can be hosted in Docker on a PC or on a Kubernetes cluster.
+<p>
+To zoom in, double-click on the image or drag on it to draw a box.  For more info, instructions, and examples, <a href="MB-info.html">click here</a>.
+</p><p>
+Based on a browser-only Mandelbrot Set viewer by <a href=http://math.hws.edu/eck/index.html>David Eck</a>,
+this revised client/server version can be hosted in Docker on a PC or, on a Kubernetes cluster. The GitHub repository is <a href="https://github.com/wpwoodjr/Mandelbrot-for-Docker-and-Kubernetes/tree/master/mb-kubernetes">here</a>.
 </p><p>
 Calculating the Mandelbrot Set is very computationally intensive, however it is parallelizable.
 Increasing the number of "Workers" below brings in more CPU threads to calculate rows of the image. 
-</p><p>
+<br>
 To see, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>, 
 then vary the number of "Workers" to speed it up or slow it down.
 When running on Kubernetes, increasing the workers also brings in more pods to speed up the computation.
-</p><p>
-Double-clicking the image (or dragging on it to draw a box) will zoom it in.
 </p>
 
 <p id="message"></p>
@@ -2558,8 +2578,8 @@ Double-clicking the image (or dragging on it to draw a box) will zoom it in.
       <p><button id="restoreButton" title="Restore default limits, image size, palette, max iterations.">Restore Defaults</button><button id="stop" style="margin-left:20px" title="Abort the current computation, if any, leaving an incomplete image.">Stop</button></p>
    </div>
    <div class="group">
-      <p><label title="If checked, lines in image are computed out of order."><input type="checkbox" id="interlaced">Interlaced Drawing</label></p>
-      <p><label title="If checked, extra computations are done that can often give the completed image a smoother look."><input type="checkbox" id="secondpass">Do a Second Pass</label></p>
+      <p><label title="If checked, lines in image are computed out of order.  This can give a general idea of the image more quickly."><input type="checkbox" id="interlaced">Interlaced Drawing</label></p>
+      <p><label title="If checked, extra computations are done that can often give the completed image a smoother look, by computing two samples per pixel and averaging the resulting colors."><input type="checkbox" id="secondpass">Do a Second Pass</label></p>
       <p><label title="Increasing this can speed up the computation by utilizing more CPUs.">Workers: <select id="threadCountSelect">
           <option value="1">1</option>
           <option value="2">2</option>
@@ -2569,12 +2589,15 @@ Double-clicking the image (or dragging on it to draw a box) will zoom it in.
           <option value="6">6</option>
           <option value="7">7</option>
           <option value="8">8</option>
+          <option value="10">10</option>
           <option value="12">12</option>
           <option value="16">16</option>
           <option value="24">24</option>
           <option value="32">32</option>
+          <option value="48">48</option>
+          <option value="64">64</option>
       </select></label></p>
-      <p><label title="If checked, high precision arithmetic will be used even when its not strictly necessary in order to to retain image quality (slower)."><input type="checkbox" id="highprecision">High Precision</label></p>
+      <p><label title="If checked, high precision arithmetic will be used even when its not needed (slower)."><input type="checkbox" id="highprecision">High Precision</label></p>
    </div>
    <div class="group">
       <p><button id="undo">Undo</button></p>
@@ -2799,9 +2822,5 @@ allows you to save the example (or even edit it by hand).</p>
 </table>
 </div>
 
-<p>
-    For more info, instructions, and examples, <a href="MB-info.html">click here</a>.
-    The github repository is <a href="https://github.com/wpwoodjr/Mandelbrot-for-Docker-and-Kubernetes">here</a>.
-</p>
 </body>
 </html>
