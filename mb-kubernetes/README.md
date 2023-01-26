@@ -4,6 +4,8 @@
 This full-featured Mandelbrot web app is a client/server application using a local build, Docker, or a Kubernetes cluster to compute the Mandelbrot set, 
 with a browser-based client interface for viewing and navigating.
 
+![Interface](../interface.png)
+
 Forked from a browser-only version by David Eck, at http://math.hws.edu/eck/index.html
 
 This version's backend web server has been rewritten from JavaScript to Rust and is much faster.
