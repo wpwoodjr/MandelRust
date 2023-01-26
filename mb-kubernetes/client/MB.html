@@ -32,7 +32,9 @@
     Jul/Aug 2019: Changed HP_CUTOFF from 16 to 15 to avoid artifacts at the limits of f64 precision
     Jul/Aug 2019: Added "High Precision" toggle
     Jan 2023:     Rewrote JavaScript server in Rust to get 3-5 times speedup in high precision computations
-    Jan 2023:     Max image width/height is now 7680 (8K)
+                  Added zoom effect
+                  Max image width/height is now 7680 (8K)
+                  Fixed off by factor of 10 error in zoom out by 10,000 and 100,000
 
 -->
 <html>
@@ -131,7 +133,7 @@ var TWO = new BigDecimal("2");
 
 
 var OSC;  // Off-screen canvas, holds the the Mandelbrot set.
-var OSG;  // Graphics context for on-screen canvas.
+var OSG;  // Graphics context for off-screen canvas.
 var canvas;    // On-screen canvas -- shows OSC, with stuff possibly drawn on top.
 var graphics;  // Graphics context for on-screen canvas.
 
@@ -295,6 +297,8 @@ function checkAspect() {  // adjust requested x/y limits to match aspect ratio o
 
 
 function doDraw() {
+    // console.log("doDraw from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
+    clearTimeout(zoomTimeout);
     graphics.drawImage(OSC,0,0);
     if (dragbox && dragbox.width > 2 && dragbox.height > 2) {
        dragbox.draw();
@@ -304,6 +308,7 @@ function doDraw() {
 let startTime, rowsCompleted;
 
 function repaint() {
+    // console.log("repaint from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     doDraw();
     let elapsedSecs = (Date.now() - startTime)/1000.0;
     let rowsPerSecond = (rowsCompleted/elapsedSecs).toPrecision(3) + " rows per second";
@@ -337,6 +342,7 @@ function newWorkers(count) {
 }
 
 function stopJob() {
+    // console.log("stopJob", running, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     if (running) {
        jobNum++;
        running = false;
@@ -355,12 +361,16 @@ function stopJob() {
 let maxRowsPerJob = 32;
 
 function startJob() {
+    // console.log("startJob",zoomTimeout != null,running, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     if (running) {
        stopJob();
     }
-    graphics.fillRect(0,0,canvas.width,canvas.height);
-    OSG.fillStyle="#BBBBBB";
-    OSG.fillRect(0,0,canvas.width,canvas.height);
+    if (! zoomTimeout) {
+        graphics.fillStyle = "#BBBBBB";
+        graphics.fillRect(0,0,canvas.width,canvas.height);
+        OSG.fillstyle = "#BBBBBB";
+        OSG.fillRect(0,0,canvas.width,canvas.height);
+    }
     imageData = OSG.getImageData(0,0,canvas.width,1);
     hres = Math.round(imageData.width/canvas.width);
     vres = imageData.height;
@@ -446,7 +456,9 @@ function startJob() {
     document.getElementById("stop").disabled = false;
     var prec = highPrecision? "high precision, " + digits + " digits" : "normal precision";
     document.getElementById("status").innerHTML = "Computing, " + prec + "...";
-    repaintTimeout = setTimeout(repaint,333);
+    if (! zoomTimeout) {
+        repaintTimeout = setTimeout(repaint,333);
+    }
     timePerJob = -1;
     jobStartTime = new Date().getTime();
     state = COMPUTING_FIRST_PASS;
@@ -737,6 +749,62 @@ DragBox.prototype.zoom = function(zoomin) {
     startJob();
 }
 
+var zoomTimeout;
+var OSZC;  // Zoom canvas.
+var OSZG;  // Graphics context for zoom canvas.
+const FPS = 60;
+const ZOOMTIME = 250;   // zoom time in ms
+const NFRAMES = Math.floor(ZOOMTIME/1000*FPS);
+const FRAMEINTERVAL = ZOOMTIME/NFRAMES;
+
+function drawZoom(left, top, width, height) {
+    // console.log("drawZoom from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], left, top, width, height, NFRAMES, FRAMEINTERVAL);
+
+    // draw latest OSC
+    graphics.drawImage(OSC,0,0);
+
+    // scale image into OSG with gray surround if needed
+    OSG.fillStyle="#BBBBBB";
+    OSG.fillRect(0, 0, canvas.width, canvas.height);
+    OSG.drawImage(canvas, left, top, width, height, 0, 0, canvas.width, canvas.height);
+
+    // save the un-zoomed image
+    if (! OSZC) {
+        OSZC = document.createElement("canvas");
+        OSZG = OSZC.getContext("2d");
+    }
+    OSZC.width = canvas.width;
+    OSZC.height = canvas.height;
+    OSZG.drawImage(canvas, 0, 0);
+
+    let frameCount = 1;
+    zoomDrawFrame(left, top, width, height, frameCount);
+    frameCount++;
+    zoomTimeout = setTimeout(function zoomTimeoutDrawFrame() {
+        if (frameCount <= NFRAMES) {
+            zoomTimeout = setTimeout(zoomTimeoutDrawFrame, FRAMEINTERVAL);
+            zoomDrawFrame(left, top, width, height, frameCount);
+            frameCount++;
+        } else {
+            zoomTimeout = null;
+            repaint();
+        }
+    }, FRAMEINTERVAL);
+}
+
+function zoomDrawFrame(left, top, width, height, frameCount) {
+    const zoomFactor = frameCount/NFRAMES;
+    const leftZ = left*zoomFactor;
+    const topZ = top*zoomFactor;
+    const widthZ = canvas.width - (canvas.width - width)*zoomFactor;
+    const heightZ = canvas.height - (canvas.height - height)*zoomFactor;
+    graphics.fillStyle = "#BBBBBB";
+    graphics.fillRect(0,0,canvas.width,canvas.height);
+    graphics.drawImage(OSZC, leftZ, topZ, widthZ, heightZ, 0, 0, canvas.width, canvas.height);
+}
+//???undo/redo
+//???nPW
+
 function doZoomInOnRect(x,y,width,height) {
     var rectX = new BigDecimal("" + Math.round(x));  // (Firefox can have fractional parts)
     var rectY = new BigDecimal("" + Math.round(y));
@@ -754,9 +822,11 @@ function doZoomInOnRect(x,y,width,height) {
     newXmax = newXmin.add(newWidth);
     newYmin = newYmax.subtract(newHeight);
     setLimits(newXmin, newXmax, newYmin, newYmax, true);
+    drawZoom(x, y, width, height);
 }
 
 function doZoomOutFromRect(x,y,width,height) {
+    // console.log("doZoomOutFromRect", x, y, width, height);
     var rectX = new BigDecimal("" + Math.round(x));
     var rectY = new BigDecimal("" + Math.round(y));
     var rectW = new BigDecimal("" + Math.round(width));
@@ -773,9 +843,18 @@ function doZoomOutFromRect(x,y,width,height) {
     newXmax = newXmin.add(newWidth);
     newYmin = newYmax.subtract(newHeight);
     setLimits(newXmin, newXmax, newYmin, newYmax, true);
+
+    let nPW = canvas.width/width;
+    let nPH = canvas.height/height;
+    let nX = -nPW*x;
+    let nY = -nPH*y;
+    let nW = nPW*canvas.width;
+    let nH = nPH*canvas.height;
+    drawZoom(nX, nY, nW, nH);
 }
 
 function zoom(x, y, zoomFactor, recenter) {  // (x,y) is center of zoom, in pizels; recenter moves that point to center of image
+    // console.log("zoom:", x, y, zoomFactor, recenter);
     stopJob();
     var zf = new BigDecimal("" + zoomFactor);
     var X = new BigDecimal("" + Math.round(x));
@@ -807,6 +886,18 @@ function zoom(x, y, zoomFactor, recenter) {  // (x,y) is center of zoom, in pize
     newYmin = newYmax.subtract(newHeight);
     newXmax = newXmin.add(newWidth);
     setLimits(newXmin, newXmax, newYmin, newYmax, true);
+
+    let width = canvas.width*zoomFactor;
+    let height = canvas.height*zoomFactor;
+    if (recenter) {
+        let left = x - width/2;
+        let top = y - height/2;
+        drawZoom(left, top, width, height);
+    } else {
+        let left = x*(1 - zoomFactor);
+        let top = y*(1 - zoomFactor);
+        drawZoom(left, top, width, height);
+    }
     startJob();
 }
 
@@ -838,9 +929,9 @@ function setUpDragging() {  // for image canvas
     }
     function endDrag() {
         if (dragbox != null) {
+            doDraw();
             dragbox.zoom(zoomin);
             dragbox = null;
-            doDraw();
         }
     }
     function doMouseDoubleClick(evt) { 
@@ -2554,7 +2645,7 @@ function init() {
 
 <noscript><b>Sorry, this page requires JavaScript.</b></noscript>
 
-<h2>Explore the Mandelbrot Set</h2>
+<h2>Explore the <a href=MB.html>Mandelbrot Set</a></h2>
 <p>
 To zoom in, double-click on the image or drag on it to draw a box.  For more info, instructions, and examples, <a href="MB-info.html">click here</a>.
 </p><p>
@@ -2689,8 +2780,8 @@ When running on Kubernetes, increasing the workers also brings in more pods to s
            <option value="0.02">50 X</option>
            <option value="0.01">100 X</option>
            <option value="0.001">1,000 X</option>
-           <option value="0.00001">10,000 X</option>
-           <option value="0.000001">100,000 X</option>
+           <option value="0.0001">10,000 X</option>
+           <option value="0.00001">100,000 X</option>
       </select></p>
       <p><button id="zoomout">Zoom out by: </button> <select id="zoomOutAmount">
            <option value="2">2 X</option>
