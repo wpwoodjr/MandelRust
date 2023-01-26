@@ -1,8 +1,8 @@
 # Mandelbrot for Docker and Kubernetes
 
 ## Overview
-This client/server application uses Docker, a local install, or a Kubernetes cluster to compute the Mandelbrot set, 
-and provides a browser-based client interface for viewing and navigating.
+This full-featured Mandelbrot web app is a client/server application using a local build, Docker, or a Kubernetes cluster to compute the Mandelbrot set, 
+with a browser-based client interface for viewing and navigating.
 
 Forked from a browser-only version by David Eck, at http://math.hws.edu/eck/index.html
 
