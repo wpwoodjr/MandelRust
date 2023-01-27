@@ -1,5 +1,5 @@
 #!/bin/bash
-# mandelbrot build
+# build Mandelbrot serverfor Kubernetes
 
 [ -z "$1" ] && echo "No Kubernetes context specified, exiting..." && exit 1
 [ -z "$2" ] && echo "No image tag specified, exiting..." && exit 1

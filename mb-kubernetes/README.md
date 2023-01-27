@@ -17,6 +17,7 @@ This version's backend web server has been rewritten from JavaScript to Rust and
 Clone or download this repo, then build and run in Docker as follows:
 ```
 cd Mandelbrot-for-Docker-and-Kubernetes/mb-kubernetes
+./docker-build.sh
 ./docker-run.sh
 ```
 Then browse to `localhost:8001`.
