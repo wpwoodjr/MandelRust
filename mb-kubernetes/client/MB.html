@@ -298,7 +298,10 @@ function checkAspect() {  // adjust requested x/y limits to match aspect ratio o
 
 function doDraw() {
     // console.log("doDraw from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
-    clearTimeout(zoomTimeout);
+    if (zoomTimeout) {
+        clearTimeout(zoomTimeout);
+        zoomTimeout = null;
+    }
     graphics.drawImage(OSC,0,0);
     if (dragbox && dragbox.width > 2 && dragbox.height > 2) {
        dragbox.draw();
@@ -368,7 +371,7 @@ function startJob() {
     if (! zoomTimeout) {
         graphics.fillStyle = "#BBBBBB";
         graphics.fillRect(0,0,canvas.width,canvas.height);
-        OSG.fillstyle = "#BBBBBB";
+        OSG.fillStyle = "#BBBBBB";
         OSG.fillRect(0,0,canvas.width,canvas.height);
     }
     imageData = OSG.getImageData(0,0,canvas.width,1);
@@ -764,7 +767,7 @@ function drawZoom(left, top, width, height) {
     graphics.drawImage(OSC,0,0);
 
     // scale image into OSG with gray surround if needed
-    OSG.fillStyle="#BBBBBB";
+    OSG.fillStyle = "#BBBBBB";
     OSG.fillRect(0, 0, canvas.width, canvas.height);
     OSG.drawImage(canvas, left, top, width, height, 0, 0, canvas.width, canvas.height);
 
@@ -802,10 +805,9 @@ function zoomDrawFrame(left, top, width, height, frameCount) {
     graphics.fillRect(0,0,canvas.width,canvas.height);
     graphics.drawImage(OSZC, leftZ, topZ, widthZ, heightZ, 0, 0, canvas.width, canvas.height);
 }
-//???undo/redo
-//???nPW
 
 function doZoomInOnRect(x,y,width,height) {
+    // console.log("doZoomInOnRect", x, y, width, height);
     var rectX = new BigDecimal("" + Math.round(x));  // (Firefox can have fractional parts)
     var rectY = new BigDecimal("" + Math.round(y));
     var rectW = new BigDecimal("" + Math.round(width));
@@ -844,13 +846,8 @@ function doZoomOutFromRect(x,y,width,height) {
     newYmin = newYmax.subtract(newHeight);
     setLimits(newXmin, newXmax, newYmin, newYmax, true);
 
-    let nPW = canvas.width/width;
-    let nPH = canvas.height/height;
-    let nX = -nPW*x;
-    let nY = -nPH*y;
-    let nW = nPW*canvas.width;
-    let nH = nPH*canvas.height;
-    drawZoom(nX, nY, nW, nH);
+    let zoomFactor = (canvas.width/width + canvas.height/height)/2;
+    drawZoom(-zoomFactor*x, -zoomFactor*y, zoomFactor*canvas.width, zoomFactor*canvas.height);
 }
 
 function zoom(x, y, zoomFactor, recenter) {  // (x,y) is center of zoom, in pizels; recenter moves that point to center of image
@@ -889,15 +886,15 @@ function zoom(x, y, zoomFactor, recenter) {  // (x,y) is center of zoom, in pize
 
     let width = canvas.width*zoomFactor;
     let height = canvas.height*zoomFactor;
+    let left, top;
     if (recenter) {
-        let left = x - width/2;
-        let top = y - height/2;
-        drawZoom(left, top, width, height);
+        left = x - width/2;
+        top = y - height/2;
     } else {
-        let left = x*(1 - zoomFactor);
-        let top = y*(1 - zoomFactor);
-        drawZoom(left, top, width, height);
+        left = x*(1 - zoomFactor);
+        top = y*(1 - zoomFactor);
     }
+    drawZoom(left, top, width, height);
     startJob();
 }
 
