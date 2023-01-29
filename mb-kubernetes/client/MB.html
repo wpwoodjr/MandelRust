@@ -747,7 +747,7 @@ DragBox.prototype.zoom = function(zoomin) {
         doZoomOutFromRect(this.left, this.top, this.width, this.height);
     }
     else {
-        doZoomInOnRect(this.left, this.top, this.width, this.height);
+        doZoomInOnRect(this.left, this.top, this.width, this.height, true);
     }
     startJob();
 }
@@ -806,7 +806,7 @@ function zoomDrawFrame(left, top, width, height, frameCount) {
     graphics.drawImage(OSZC, leftZ, topZ, widthZ, heightZ, 0, 0, canvas.width, canvas.height);
 }
 
-function doZoomInOnRect(x,y,width,height) {
+function doZoomInOnRect(x,y,width,height,undo) {
     // console.log("doZoomInOnRect", x, y, width, height);
     var rectX = new BigDecimal("" + Math.round(x));  // (Firefox can have fractional parts)
     var rectY = new BigDecimal("" + Math.round(y));
@@ -823,7 +823,7 @@ function doZoomInOnRect(x,y,width,height) {
     var newHeight = pixelHeight.multiply(rectH);
     newXmax = newXmin.add(newWidth);
     newYmin = newYmax.subtract(newHeight);
-    setLimits(newXmin, newXmax, newYmin, newYmax, true);
+    setLimits(newXmin, newXmax, newYmin, newYmax, undo);
     drawZoom(x, y, width, height);
 }
 
@@ -2630,11 +2630,44 @@ function init() {
     document.getElementById("redo").onclick = doRedo;
     document.getElementById("redo").disabled = true;
     setUpDragging();
+    setUpArrowKeys();
     changeWorkerCount(); // has to be done before setDefaults
     setDefaults();
     checkForExample();
     undoList = [];
     undoCount = 0;
+}
+
+function setUpArrowKeys() {
+    document.addEventListener("keydown", function(event) {
+        if (event.defaultPrevented) {
+            return; // Do nothing if the event was already processed
+        }
+
+        const shiftLR = Math.max(1, canvas.width/32);
+        const shiftUD = Math.max(1, canvas.width/32);
+        stopJob();
+        switch (event.key) {
+            case "ArrowLeft":
+                doZoomInOnRect(shiftLR, 0, canvas.width, canvas.height, false);
+            break;
+            case "ArrowRight":
+                doZoomInOnRect(-shiftLR, 0, canvas.width, canvas.height, false);
+            break;
+            case "ArrowUp":
+                doZoomInOnRect(0, shiftUD, canvas.width, canvas.height, false);
+            break;
+            case "ArrowDown":
+               doZoomInOnRect(0, -shiftUD, canvas.width, canvas.height, false);
+            break;
+            default:
+                return; // Quit when this doesn't handle the key event.
+        }
+        startJob();
+
+        // Cancel the default action to avoid it being handled twice
+        event.preventDefault();
+    }, true);
 }
 </script>
 </head>
