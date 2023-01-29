@@ -2650,16 +2650,16 @@ function setUpArrowKeys() {
         stopJob();
         switch (event.key) {
             case "ArrowLeft":
-                doZoomInOnRect(shiftLR, 0, canvas.width, canvas.height, false);
-            break;
-            case "ArrowRight":
                 doZoomInOnRect(-shiftLR, 0, canvas.width, canvas.height, false);
             break;
+            case "ArrowRight":
+                doZoomInOnRect(shiftLR, 0, canvas.width, canvas.height, false);
+            break;
             case "ArrowUp":
-                doZoomInOnRect(0, shiftUD, canvas.width, canvas.height, false);
+                doZoomInOnRect(0, -shiftUD, canvas.width, canvas.height, false);
             break;
             case "ArrowDown":
-               doZoomInOnRect(0, -shiftUD, canvas.width, canvas.height, false);
+               doZoomInOnRect(0, shiftUD, canvas.width, canvas.height, false);
             break;
             default:
                 return; // Quit when this doesn't handle the key event.
