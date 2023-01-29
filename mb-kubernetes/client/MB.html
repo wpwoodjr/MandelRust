@@ -32,7 +32,8 @@
     Jul/Aug 2019: Changed HP_CUTOFF from 16 to 15 to avoid artifacts at the limits of f64 precision
     Jul/Aug 2019: Added "High Precision" toggle
     Jan 2023:     Rewrote JavaScript server in Rust to get 3-5 times speedup in high precision computations
-                  Added zoom effect
+                  When zooming, the zoomed area is shown using image interpolation before calculations are done
+                  Left, right, up, and down arrows shift the image appropriately
                   Max image width/height is now 7680 (8K)
                   Fixed off by factor of 10 error in zoom out by 10,000 and 100,000
 
