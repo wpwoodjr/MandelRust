@@ -1,10 +1,12 @@
-check for other uses of arrow keys
-why goes to idle state when window is hidden
+optimize redraw on undo
+
+>check for other uses of arrow keys
+>why goes to idle state when window is hidden
 >ctrl/alt arrow zooms
 >stopJob() should stop zoom too
-check what preventdefault stuff does
+>check what preventdefault stuff does
 >check how alt key is detected for dbl click zoom and see if ctrl can be an alternate for PB
-shift dbl click not working on PB
+>shift dbl click not working on PB
 >zoom in a lot, moves image up vertically
 >in Dockerfile chmod instead of chown
 >ctrl by itself stops drawing
