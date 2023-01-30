@@ -348,6 +348,10 @@ function newWorkers(count) {
 function stopJob() {
     // console.log("stopJob", running, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     if (running) {
+        if (zoomTimeout) {
+            clearTimeout(zoomTimeout);
+            zoomTimeout = null;
+        }
        jobNum++;
        running = false;
        document.getElementById("stop").disabled = true;
@@ -380,7 +384,7 @@ function startJob() {
     vres = imageData.height;
     dx = xmax.subtract(xmin).divide(new BigDecimal(""+(canvas.width-1)),BigDecimal.ROUND_HALF_EVEN);
     dy = ymax.subtract(ymin).divide(new BigDecimal(""+(canvas.height-1)),BigDecimal.ROUND_HALF_EVEN);
-    highPrecision = document.getElementById("highprecision").checked || dy.compareTo(HP_CUTOFF) < 0;
+    highPrecision = document.getElementById("highPrecision").checked || dy.compareTo(HP_CUTOFF) < 0;
     jobs = [];
     var yVal = ymax.add(new BigDecimal("0"));
     var rows = canvas.height;
@@ -529,7 +533,7 @@ function startSecondPass() {
     dy = ymax.subtract(ymin).divide(new BigDecimal(""+(canvas.height-1)),BigDecimal.ROUND_HALF_EVEN);
     var dxHalf = dx.divide(TWO,BigDecimal.ROUND_HALF_EVEN);
     var dyHalf = dy.divide(TWO,BigDecimal.ROUND_HALF_EVEN);
-    highPrecision = document.getElementById("highprecision").checked || dy.compareTo(HP_CUTOFF) < 0;
+    highPrecision = document.getElementById("highPrecision").checked || dy.compareTo(HP_CUTOFF) < 0;
     jobs = [];
     var yVal = ymax.add(dyHalf);
     var xStart = xmin.subtract(dxHalf);
@@ -940,7 +944,7 @@ function setUpDragging() {  // for image canvas
         var x = evt.clientX - r.left;
         var y = evt.clientY - r.top;
         var zoomFactor = evt.shiftKey? 2 : 0.5;
-        zoom(x,y,zoomFactor,!evt.altKey);
+        zoom(x,y,zoomFactor,!evt.altKey && !evt.ctrlKey);
     }
  }
 
@@ -1238,7 +1242,7 @@ function changeSecondPass() {
 }
 
 function changeHighPrecision() {
-    var checked = document.getElementById("highprecision").checked;
+    var checked = document.getElementById("highPrecision").checked;
     if (running && checked != highPrecision) {
         stopJob();
         startJob();
@@ -2619,8 +2623,8 @@ function init() {
     document.getElementById("showpaletteedit").onclick=showPaletteEditor;
     document.getElementById("secondpass").checked = true;
     document.getElementById("secondpass").onchange = changeSecondPass;
-    document.getElementById("highprecision").checked = false;
-    document.getElementById("highprecision").onchange = changeHighPrecision;
+    document.getElementById("highPrecision").checked = false;
+    document.getElementById("highPrecision").onchange = changeHighPrecision;
     document.getElementById("zoomInAmount").value = "0.1";
     document.getElementById("zoomOutAmount").value = "10";
     document.getElementById("zoomin").onclick = doZoomIn;
@@ -2639,44 +2643,48 @@ function init() {
     undoCount = 0;
 }
 
+// var arrowTimeout;
 function setUpArrowKeys() {
     document.addEventListener("keydown", function(event) {
-        if (event.defaultPrevented) {
-            return; // Do nothing if the event was already processed
-        }
-
         const shiftLR = Math.max(1, Math.round(canvas.width/32));
         const shiftUD = Math.max(1, Math.round(canvas.height/32));
-        stopJob();
         switch (event.key) {
             case "ArrowLeft":
+                stopJob();
                 doZoomInOnRect(-shiftLR, 0, canvas.width, canvas.height, false);
             break;
+
             case "ArrowRight":
+                stopJob();
                 doZoomInOnRect(shiftLR, 0, canvas.width, canvas.height, false);
             break;
+
             case "ArrowUp":
-                if (event.ctrlKey) {
+                stopJob();
+                if (event.ctrlKey || event.altKey) {
                     doZoomInOnRect(shiftLR, shiftUD, canvas.width - shiftLR*2, canvas.height - shiftUD*2, false);
                 } else {
                     doZoomInOnRect(0, -shiftUD, canvas.width, canvas.height, false);
                 }
             break;
+
             case "ArrowDown":
-               if (event.ctrlKey) {
-                   doZoomInOnRect(-shiftLR, -shiftUD, canvas.width + shiftLR*2, canvas.height + shiftUD*2, false);
-               } else {
-                   doZoomInOnRect(0, shiftUD, canvas.width, canvas.height, false);
-               }
+                stopJob();
+                if (event.ctrlKey || event.altKey) {
+                    doZoomInOnRect(-shiftLR, -shiftUD, canvas.width + shiftLR*2, canvas.height + shiftUD*2, false);
+                } else {
+                    doZoomInOnRect(0, shiftUD, canvas.width, canvas.height, false);
+                }
             break;
+
             default:
                 return; // Quit when this doesn't handle the key event.
         }
+        // arrowTimeout = setTimeout(startJob, 0);
         startJob();
-
         // Cancel the default action to avoid it being handled twice
         event.preventDefault();
-    }, true);
+    });
 }
 </script>
 </head>
@@ -2727,7 +2735,7 @@ When running on Kubernetes, increasing the workers also brings in more pods to s
           <option value="48">48</option>
           <option value="64">64</option>
       </select></label></p>
-      <p><label title="If checked, high precision arithmetic will be used even when its not needed (slower)."><input type="checkbox" id="highprecision">High Precision</label></p>
+      <p><label title="If checked, high precision arithmetic will be used even when its not needed (slower)."><input type="checkbox" id="highPrecision">High Precision</label></p>
    </div>
    <div class="group">
       <p><button id="undo">Undo</button></p>

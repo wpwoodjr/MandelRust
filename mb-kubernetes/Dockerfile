@@ -24,7 +24,7 @@ COPY --from=builder /mb-rust-server/target/release/mb-rust-server .
 # create a user to run as
 RUN addgroup --gid 1001 -S app \
 && adduser --uid 1001 -S -G app app \
-&& chown -R 1001 ../app
+&& chmod -R a-w,a+r ../app
 USER 1001
 
 # start server
