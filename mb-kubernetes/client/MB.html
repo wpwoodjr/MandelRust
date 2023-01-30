@@ -2643,47 +2643,61 @@ function init() {
     undoCount = 0;
 }
 
-// var arrowTimeout;
+var arrowTimeout;
 function setUpArrowKeys() {
     document.addEventListener("keydown", function(event) {
+        switch (event.key) {
+            case "ArrowLeft":
+            case "ArrowRight":
+            case "ArrowUp":
+            case "ArrowDown":
+            case "PageDown":
+            case "PageUp":
+                break;
+            default:
+                return; // Quit when this doesn't handle the key event.
+        }
+
+        // Cancel the default action to avoid it being handled twice
+        event.preventDefault();
+        // prevent too many of these slowing down response
+        if (arrowTimeout) {
+            return;
+        }
+        stopJob();
+
         const shiftLR = Math.max(1, Math.round(canvas.width/32));
         const shiftUD = Math.max(1, Math.round(canvas.height/32));
         switch (event.key) {
             case "ArrowLeft":
-                stopJob();
                 doZoomInOnRect(-shiftLR, 0, canvas.width, canvas.height, false);
-            break;
+                break;
 
             case "ArrowRight":
-                stopJob();
                 doZoomInOnRect(shiftLR, 0, canvas.width, canvas.height, false);
-            break;
+                break;
 
             case "ArrowUp":
-                stopJob();
-                if (event.ctrlKey || event.altKey) {
-                    doZoomInOnRect(shiftLR, shiftUD, canvas.width - shiftLR*2, canvas.height - shiftUD*2, false);
-                } else {
-                    doZoomInOnRect(0, -shiftUD, canvas.width, canvas.height, false);
-                }
-            break;
+                doZoomInOnRect(0, -shiftUD, canvas.width, canvas.height, false);
+                break;
 
             case "ArrowDown":
-                stopJob();
-                if (event.ctrlKey || event.altKey) {
-                    doZoomInOnRect(-shiftLR, -shiftUD, canvas.width + shiftLR*2, canvas.height + shiftUD*2, false);
-                } else {
-                    doZoomInOnRect(0, shiftUD, canvas.width, canvas.height, false);
-                }
-            break;
+                doZoomInOnRect(0, shiftUD, canvas.width, canvas.height, false);
+                break;
 
-            default:
-                return; // Quit when this doesn't handle the key event.
+            case "PageUp":
+                doZoomInOnRect(-shiftLR, -shiftUD, canvas.width + shiftLR*2, canvas.height + shiftUD*2, false);
+                break;
+
+            case "PageDown":
+                doZoomInOnRect(shiftLR, shiftUD, canvas.width - shiftLR*2, canvas.height - shiftUD*2, false);
+                break;
         }
-        // arrowTimeout = setTimeout(startJob, 0);
-        startJob();
-        // Cancel the default action to avoid it being handled twice
-        event.preventDefault();
+
+        arrowTimeout = setTimeout(function () {
+            arrowTimeout = null;
+            startJob();
+        }, 0);
     });
 }
 </script>
