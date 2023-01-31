@@ -300,7 +300,7 @@ function checkAspect() {  // adjust requested x/y limits to match aspect ratio o
 function doDraw() {
     // console.log("doDraw from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     if (zoomTimeout) {
-        clearTimeout(zoomTimeout);
+        clearInterval(zoomTimeout);
         zoomTimeout = null;
     }
     graphics.drawImage(OSC,0,0);
@@ -349,7 +349,7 @@ function stopJob() {
     // console.log("stopJob", running, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     if (running) {
         if (zoomTimeout) {
-            clearTimeout(zoomTimeout);
+            clearInterval(zoomTimeout);
             zoomTimeout = null;
         }
        jobNum++;
@@ -788,12 +788,12 @@ function drawZoom(left, top, width, height) {
     let frameCount = 1;
     zoomDrawFrame(left, top, width, height, frameCount);
     frameCount++;
-    zoomTimeout = setTimeout(function zoomTimeoutDrawFrame() {
+    zoomTimeout = setInterval(function () {
         if (frameCount < NFRAMES) {
-            zoomTimeout = setTimeout(zoomTimeoutDrawFrame, FRAMEINTERVAL);
             zoomDrawFrame(left, top, width, height, frameCount);
             frameCount++;
         } else {
+            clearInterval(zoomTimeout);
             zoomTimeout = null;
             repaint();
         }
