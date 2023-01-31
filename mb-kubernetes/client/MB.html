@@ -789,7 +789,7 @@ function drawZoom(left, top, width, height) {
     zoomDrawFrame(left, top, width, height, frameCount);
     frameCount++;
     zoomTimeout = setTimeout(function zoomTimeoutDrawFrame() {
-        if (frameCount <= NFRAMES) {
+        if (frameCount < NFRAMES) {
             zoomTimeout = setTimeout(zoomTimeoutDrawFrame, FRAMEINTERVAL);
             zoomDrawFrame(left, top, width, height, frameCount);
             frameCount++;
