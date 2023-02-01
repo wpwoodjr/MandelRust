@@ -161,12 +161,12 @@ struct MandelbrotCoordsHP {
 }
 
 struct HPData {
-    work1: Vec<u32>,
-    work2: Vec<u32>,
-    work3: Vec<u32>,
-    work4: Vec<u32>,
-    zx: Vec<u32>,
-    zy: Vec<u32>,
+    work1: Vec<u64>,
+    work2: Vec<u64>,
+    work3: Vec<u64>,
+    work4: Vec<u64>,
+    zx: Vec<u64>,
+    zy: Vec<u64>,
 }
 
 impl HPData {
@@ -204,17 +204,20 @@ exports.computeMandelbrotHP = function(mandelbrotCoords) {
 */
 
 async fn compute_mandelbrot_hp(mandelbrot_coords_hp: web::Json<MandelbrotCoordsHP>) -> HttpResponse {
+    let xmin = u32tou64(&mandelbrot_coords_hp.xmin);
+    let dx = u32tou64(&mandelbrot_coords_hp.dx);
+    let y = u32tou64(&mandelbrot_coords_hp.ymax);
     let iteration_counts =
-        compute_mandelbrot_hp_rayon(&mandelbrot_coords_hp.xmin, &mandelbrot_coords_hp.dx, &mandelbrot_coords_hp.ymax, mandelbrot_coords_hp.columns, mandelbrot_coords_hp.maxIterations);
+        compute_mandelbrot_hp_rayon(&xmin, &dx, &y, mandelbrot_coords_hp.columns, mandelbrot_coords_hp.maxIterations);
     HttpResponse::Ok().json(vec![iteration_counts; 1])
 }
 
 use rayon::prelude::*;
-fn compute_mandelbrot_hp_rayon(xmin: &[u32], dx: &[u32], y: &[u32], columns: usize, max_iter: i32) -> Vec<i32> {
+fn compute_mandelbrot_hp_rayon(xmin: &[u64], dx: &[u64], y: &[u64], columns: usize, max_iter: i32) -> Vec<i32> {
     let num_size = xmin.len();
 
     // ignoring the last u32 chunk seems to be a small speed optimization which reduces precision but doesn't affect image quality
-    let chunks = num_size - unsafe { IMAGE_QUALITY };
+    let chunks = num_size;// - unsafe { IMAGE_QUALITY };
 
     let num_slices = unsafe { NUM_SLICES };
     let slice_size = columns/num_slices;
@@ -277,7 +280,7 @@ function arraycopy( sourceArray, sourceStart, destArray, destStart, count ) {
 }
 */
 
-fn count_iterations_hp(hp_data: &mut HPData, x: &[u32], y: &[u32], max_iterations: i32) -> i32 {
+fn count_iterations_hp(hp_data: &mut HPData, x: &[u64], y: &[u64], max_iterations: i32) -> i32 {
     let mut count = 0;
     hp_data.zx.copy_from_slice(x);
     hp_data.zy.copy_from_slice(y);
@@ -287,7 +290,7 @@ fn count_iterations_hp(hp_data: &mut HPData, x: &[u32], y: &[u32], max_iteration
         sq(&hp_data.zx, &mut hp_data.work3, &mut hp_data.work1);
         sq(&hp_data.zy, &mut hp_data.work3, &mut hp_data.work2);
         add(&hp_data.work1, &hp_data.work2, &mut hp_data.work3);
-        if (hp_data.work3[0] & 0xFFF8) != 0 && (hp_data.work3[0] & 0xFFF8) != 0xFFF0 {
+        if (hp_data.work3[0] & 0xFFFFFFF8) != 0 && (hp_data.work3[0] & 0xFFFFFFF8) != 0xFFFFFFF0 {
             return count;
         }
 
@@ -309,6 +312,7 @@ fn count_iterations_hp(hp_data: &mut HPData, x: &[u32], y: &[u32], max_iteration
 }
 
 /*
+/*
 function add( /* int[] */ x, /* int[] */ dx, /* int */ count) {
     let carry = 0;
     for (let i = count - 1; i >= 0; i--) {
@@ -319,27 +323,27 @@ function add( /* int[] */ x, /* int[] */ dx, /* int */ count) {
     }
 }
 */
-fn incr(x: &mut [u32], dx: &[u32]) {
+fn incr(x: &mut [u64], dx: &[u64]) {
     let mut carry = 0;
     let mut i = x.len();
     while i > 0 {
         i -= 1;
         x[i] += dx[i];
         x[i] += carry;
-        carry = x[i] >> 16;
-        x[i] &= 0xFFFF;
+        carry = x[i] >> 32;
+        x[i] &= 0xFFFFFFFF;
     }
 }
 
-fn add(x: &[u32], y: &[u32], out: &mut[u32]) {
+fn add(x: &[u64], y: &[u64], out: &mut[u64]) {
     let mut carry = 0;
     let mut i = out.len();
     while i > 0 {
         i -= 1;
         out[i] = x[i] + y[i];
         out[i] += carry;
-        carry = out[i] >> 16;
-        out[i] &= 0xFFFF;
+        carry = out[i] >> 32;
+        out[i] &= 0xFFFFFFFF;
     }
 }
 
@@ -389,9 +393,9 @@ function multiply( /* int[] */ x, /* int[] */ y, /* int */ count){  // Can't all
         negate(x,count);
 }
 */
-fn multiply(x: &[u32], y: &[u32], work1: &mut [u32], work2: &mut [u32], out: &mut [u32]) {
-    let negx = (x[0] & 0x8000) != 0;
-    let negy = (y[0] & 0x8000) != 0;
+fn multiply(x: &[u64], y: &[u64], work1: &mut [u64], work2: &mut [u64], out: &mut [u64]) {
+    let negx = (x[0] & 0x80000000) != 0;
+    let negy = (y[0] & 0x80000000) != 0;
     if negx != negy {
         if negx {
             negate(x, work1);
@@ -410,7 +414,7 @@ fn multiply(x: &[u32], y: &[u32], work1: &mut [u32], work2: &mut [u32], out: &mu
     }
 }
 
-fn multiply_pos(x: &[u32], y: &[u32], out: &mut [u32]) {
+fn multiply_pos(x: &[u64], y: &[u64], out: &mut [u64]) {
     let count = out.len();
     if x[0] == 0 {
         for i in 0..count {
@@ -422,25 +426,26 @@ fn multiply_pos(x: &[u32], y: &[u32], out: &mut [u32]) {
         while i > 0 {
             i -= 1;
             out[i] = x[0]*y[i] + carry;
-            carry = out[i] >> 16;
-            out[i] &= 0xFFFF;
+            // println!("out[i] = {}", out[i]);
+            carry = out[i] >> 32;
+            out[i] &= 0xFFFFFFFF;
         }
     }
     for j in 1..count {
         let mut i = count - j;
-        let mut carry = (x[j]*y[i]) >> 16;
+        let mut carry = (x[j]*y[i]) >> 32;
         let mut k = count - 1;
         while i > 0 {
             i -= 1;
             out[k] += x[j]*y[i] + carry;
-            carry = out[k] >> 16;
-            out[k] &= 0xFFFF;
+            carry = out[k] >> 32;
+            out[k] &= 0xFFFFFFFF;
             k -= 1;
         }
         while carry != 0 {
             out[k] += carry;
-            carry = out[k] >> 16;
-            out[k] &= 0xFFFF;
+            carry = out[k] >> 32;
+            out[k] &= 0xFFFFFFFF;
             if k == 0 {
                 break;
             }
@@ -449,8 +454,8 @@ fn multiply_pos(x: &[u32], y: &[u32], out: &mut [u32]) {
     }
 }
 
-fn sq(x: &[u32], work: &mut [u32], out: &mut [u32]) {
-    let neg = (x[0] & 0x8000) != 0;
+fn sq(x: &[u64], work: &mut [u64], out: &mut [u64]) {
+    let neg = (x[0] & 0x80000000) != 0;
     if neg {
         negate(x, work);
         multiply_pos(work, work, out);
@@ -471,18 +476,155 @@ function negate( /* int[] */ x, /* int */ chunks) {
     x[0] &= 0xFFFF;
 }
 */
-fn negate(x: &[u32], out: &mut[u32]) {
+fn negate(x: &[u64], out: &mut[u64]) {
     let chunks = out.len();
     for i in 0..chunks {
-        out[i] = 0xFFFF - x[i];
+        out[i] = 0xFFFFFFFF - x[i];
     }
     debug_assert!(chunks > 0);
     let mut i = chunks - 1;
     out[i] += 1;
-    while i > 0 && out[i] & 0x10000 != 0 {
-        out[i] &= 0xFFFF;
+    while i > 0 && out[i] & 0x100000000 != 0 {
+        out[i] &= 0xFFFFFFFF;
         out[i - 1] += 1;
         i -= 1;
     }
-    out[0] &= 0xFFFF;
+    out[0] &= 0xFFFFFFFF;
+}
+*/
+
+fn negate(x: &[u64], out: &mut[u64]) {
+    let chunks = out.len();
+    for i in 0..chunks {
+        out[i] = 0xFFFFFFFF - x[i];
+    }
+    debug_assert!(chunks > 0);
+    let mut i = chunks - 1;
+    out[i] += 1;
+    while i > 0 && out[i] & 0x100000000 != 0 {
+        out[i] &= 0xFFFFFFFF;
+        out[i - 1] += 1;
+        i -= 1;
+    }
+    out[0] &= 0xFFFFFFFF;
+}
+
+fn incr(x: &mut [u64], dx: &[u64]) {
+    let mut carry = 0;
+    let mut i = x.len();
+    while i > 0 {
+        i -= 1;
+        x[i] += dx[i];
+        x[i] += carry;
+        carry = x[i] >> 32;
+        x[i] &= 0xFFFFFFFF;
+    }
+}
+
+fn add(x: &[u64], y: &[u64], out: &mut[u64]) {
+    let mut carry = 0;
+    let mut i = out.len();
+    while i > 0 {
+        i -= 1;
+        out[i] = x[i] + y[i];
+        out[i] += carry;
+        carry = out[i] >> 32;
+        out[i] &= 0xFFFFFFFF;
+    }
+}
+
+fn multiply(x: &[u64], y: &[u64], work1: &mut [u64], work2: &mut [u64], out: &mut [u64]) {
+    let negx = (x[0] & 0x80000000) != 0;
+    let negy = (y[0] & 0x80000000) != 0;
+    if negx != negy {
+        if negx {
+            negate(x, work1);
+            multiply_pos(work1, y, work2);
+        } else {
+            negate(y, work1);
+            multiply_pos(x, work1, work2);
+        }
+        negate(work2, out);
+    } else if negx && negy {
+        negate(x, work1);
+        negate(y, work2);
+        multiply_pos(work1, work2, out);
+    } else {
+        multiply_pos(x, y, out);
+    }
+}
+
+fn multiply_pos(x: &[u64], y: &[u64], out: &mut [u64]) {
+    let count = out.len();
+    if x[0] == 0 {
+        for i in 0..count {
+            out[i] = 0;
+        }
+    } else {
+        let mut carry = 0;
+        let mut i = count;
+        while i > 0 {
+            i -= 1;
+            out[i] = x[0]*y[i] + carry;
+            // println!("out[i] = {}", out[i]);
+            carry = out[i] >> 32;
+            out[i] &= 0xFFFFFFFF;
+        }
+    }
+    for j in 1..count {
+        let mut i = count - j;
+        let mut carry = (x[j]*y[i]) >> 32;
+        let mut k = count - 1;
+        while i > 0 {
+            i -= 1;
+            out[k] += x[j]*y[i] + carry;
+            carry = out[k] >> 32;
+            out[k] &= 0xFFFFFFFF;
+            k -= 1;
+        }
+        while carry != 0 {
+            out[k] += carry;
+            carry = out[k] >> 32;
+            out[k] &= 0xFFFFFFFF;
+            if k == 0 {
+                break;
+            }
+            k -= 1;
+        }
+    }
+}
+
+fn sq(x: &[u64], work: &mut [u64], out: &mut [u64]) {
+    let neg = (x[0] & 0x80000000) != 0;
+    if neg {
+        negate(x, work);
+        multiply_pos(work, work, out);
+    } else {
+        multiply_pos(x, x, out);
+    }
+}
+
+fn u32tou64(a: &[u32]) -> Vec<u64> {
+    let mut r = Vec::with_capacity(1 + a.len()/2);
+    r.push(a[0] as u64);
+    if a[0] & 0x8000 != 0 {
+        r[0] |= 0xFFFF0000;
+    }
+    let mut i = 1;
+    let mut j = 1;
+    while i < a.len() - 1 {
+        let mut x = a[i] as u64;
+        x = x & 0xFFFF;
+        r.push(x << 16);
+        x = a[i + 1] as u64;
+        x = x & 0xFFFF;
+        r[j] |= x;
+        i += 2;
+        j += 1;
+    }
+
+    if i < a.len() {
+        r.push(((a[i] as u64) & 0xFFFF) << 16);
+    }
+    r
 }
