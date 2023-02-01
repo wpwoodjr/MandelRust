@@ -1,3 +1,10 @@
+/*
+    Backend Mandelbrot web server in Rust
+    Rewritten from Javascript by Bill Wood, Jan/Feb 2023
+    Based on work by David Eck
+*/
+
+// *** web server *** //
 use actix_rt::System;
 use actix_web::{web, App, HttpResponse, HttpServer, HttpRequest, Result};
 use actix_files::NamedFile;
@@ -6,8 +13,9 @@ use std::path::PathBuf;
 use std::process::exit;
 
 use std::env;
-static mut IMAGE_QUALITY: usize = 1;
+// static mut IMAGE_QUALITY: usize = 1;
 static mut NUM_SLICES: usize = 2;
+static mut U_TYPE: usize = 128;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -23,21 +31,24 @@ Options:
   -h, --help     Show this help message and exit
   -r, --rayon    Number of slices for Rayon to parallelize over on each Javascript "worker";
                  only affects high precision images; defaults to 2
-  -q, --quality  Set image quality from 0 (best) to 5 (worst); only affects high precision images;
-                 defaults to 1"#;
+  --u32          Use 32 bit unsigned integers for high precision calculations (slowest)
+  --u64          Use 64 bit unsigned integers for high precision calculations
+  --u128         Use 128 bit unsigned integers for high precision calculations"#;
+//   -q, --quality  Set image quality from 0 (best) to 5 (worst); only affects high precision images;
+//                  defaults to 1
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "-q" | "--quality" => {
-                if i + 1 < args.len() {
-                    i += 1;
-                    unsafe { IMAGE_QUALITY = args[i].parse().unwrap() };
-                } else {
-                    println!("missing value for --quality!");
-                    exit(1);
-                }
-            }
+            // "-q" | "--quality" => {
+            //     if i + 1 < args.len() {
+            //         i += 1;
+            //         unsafe { IMAGE_QUALITY = args[i].parse().unwrap() };
+            //     } else {
+            //         println!("missing value for --quality!");
+            //         exit(1);
+            //     }
+            // }
             "-r" | "--rayon" => {
                 if i + 1 < args.len() {
                     i += 1;
@@ -51,6 +62,15 @@ Options:
                     exit(1);
                 }
             }
+            "--u32" => unsafe {
+                U_TYPE = 32;
+            }
+            "--u64" => unsafe {
+                U_TYPE = 64;
+            }
+            "--u128" => unsafe {
+                U_TYPE = 128;
+            }
             "-h" | "--help" => {
                 println!("{help}");
                 exit(0);
@@ -62,9 +82,9 @@ Options:
         i += 1;
     }
 
-    println!("Mandelbrot server running on URL {url} with image quality {} and {} Rayon parallel slice(s)",
-        unsafe { IMAGE_QUALITY },
+    println!("Mandelbrot server running on URL {url} with {} Rayon parallel slice(s) and {} bit unsigned integers for high precision calculations.",
         unsafe { NUM_SLICES },
+        unsafe { U_TYPE },
     );
     web_server(&url);
 }
@@ -94,6 +114,7 @@ fn web_server(url: &str) {
     sys.block_on(server.run()).unwrap();
 }
 
+// *** low precision *** //
 #[derive(Deserialize, Serialize, Debug)]
 #[allow(non_snake_case)]
 struct MandelbrotCoords {
@@ -146,7 +167,22 @@ fn count_iterations(x: f64, y: f64, max_iterations: i32) -> i32 {
     }
 }
 
-// high precision
+// *** high precision *** //
+use std::ops::{ BitAnd, BitAndAssign, BitOrAssign, Shl, Shr, AddAssign, Sub, Mul };
+use num::traits::{ Zero, One, AsPrimitive };
+use core::cmp::PartialEq;
+use core::mem::size_of;
+
+macro_rules! t_bit_info {
+    () => {
+        {
+            let t_size_bits = size_of::<T>()*8;
+            let low_bits = u64::MAX >> (64 - t_size_bits/2);
+            (t_size_bits, low_bits.as_())
+        }
+    };
+}
+
 #[derive(Deserialize, Serialize, Debug)]
 #[allow(non_snake_case)]
 struct MandelbrotCoordsHP {
@@ -160,24 +196,26 @@ struct MandelbrotCoordsHP {
     maxIterations: i32,
 }
 
-struct HPData {
-    work1: Vec<u64>,
-    work2: Vec<u64>,
-    work3: Vec<u64>,
-    work4: Vec<u64>,
-    zx: Vec<u64>,
-    zy: Vec<u64>,
+struct HPData<T> {
+    work1: Vec<T>,
+    work2: Vec<T>,
+    work3: Vec<T>,
+    work4: Vec<T>,
+    zx: Vec<T>,
+    zy: Vec<T>,
 }
 
-impl HPData {
-    fn new(chunks: usize) -> HPData {
-        HPData {
-            work1: vec![0; chunks],
-            work2: vec![0; chunks],
-            work3: vec![0; chunks],
-            work4: vec![0; chunks],
-            zx: vec![0; chunks],
-            zy: vec![0; chunks],
+impl<T> HPData<T> {
+    fn new(chunks: usize) -> HPData::<T>
+    where T: Zero + Copy,
+    {
+        HPData::<T> {
+            work1: vec![T::zero(); chunks],
+            work2: vec![T::zero(); chunks],
+            work3: vec![T::zero(); chunks],
+            work4: vec![T::zero(); chunks],
+            zx: vec![T::zero(); chunks],
+            zy: vec![T::zero(); chunks],
         }
     }
 }
@@ -202,18 +240,42 @@ exports.computeMandelbrotHP = function(mandelbrotCoords) {
     });
 };
 */
-
 async fn compute_mandelbrot_hp(mandelbrot_coords_hp: web::Json<MandelbrotCoordsHP>) -> HttpResponse {
-    let xmin = u32tou64(&mandelbrot_coords_hp.xmin);
-    let dx = u32tou64(&mandelbrot_coords_hp.dx);
-    let y = u32tou64(&mandelbrot_coords_hp.ymax);
-    let iteration_counts =
-        compute_mandelbrot_hp_rayon(&xmin, &dx, &y, mandelbrot_coords_hp.columns, mandelbrot_coords_hp.maxIterations);
+
+    let iteration_counts = match unsafe { U_TYPE } {
+        32 => {
+            let xmin = u32_to_t::<u32>(&mandelbrot_coords_hp.xmin);
+            let dx = u32_to_t::<u32>(&mandelbrot_coords_hp.dx);
+            let y = u32_to_t::<u32>(&mandelbrot_coords_hp.ymax);
+            compute_mandelbrot_hp_rayon(&xmin, &dx, &y, mandelbrot_coords_hp.columns, mandelbrot_coords_hp.maxIterations)
+        }
+        64 => {
+            let xmin = u32_to_t::<u64>(&mandelbrot_coords_hp.xmin);
+            let dx = u32_to_t::<u64>(&mandelbrot_coords_hp.dx);
+            let y = u32_to_t::<u64>(&mandelbrot_coords_hp.ymax);
+            compute_mandelbrot_hp_rayon(&xmin, &dx, &y, mandelbrot_coords_hp.columns, mandelbrot_coords_hp.maxIterations)
+        }
+        128 => {
+            let xmin = u32_to_t::<u128>(&mandelbrot_coords_hp.xmin);
+            let dx = u32_to_t::<u128>(&mandelbrot_coords_hp.dx);
+            let y = u32_to_t::<u128>(&mandelbrot_coords_hp.ymax);
+            compute_mandelbrot_hp_rayon(&xmin, &dx, &y, mandelbrot_coords_hp.columns, mandelbrot_coords_hp.maxIterations)
+        }
+        _ => panic!("illegal size!")
+    };
     HttpResponse::Ok().json(vec![iteration_counts; 1])
 }
 
 use rayon::prelude::*;
-fn compute_mandelbrot_hp_rayon(xmin: &[u64], dx: &[u64], y: &[u64], columns: usize, max_iter: i32) -> Vec<i32> {
+fn compute_mandelbrot_hp_rayon<T>(xmin: &[T], dx: &[T], y: &[T], columns: usize, max_iter: i32) -> Vec<i32>
+where T: Sync + Zero + Copy,
+    // add, sq, multiply, negate, incr, count_iterations requirements
+    T: One + AddAssign + BitAndAssign + Sub<Output = T> + PartialEq +
+        BitAnd + Shr<usize, Output = T> + Shl<usize, Output = T> + Copy + 'static,
+    <T as BitAnd>::Output: PartialEq<T>,
+    u64: AsPrimitive<T>,
+    T: std::fmt::LowerHex,
+{
     let num_size = xmin.len();
 
     // ignoring the last u32 chunk seems to be a small speed optimization which reduces precision but doesn't affect image quality
@@ -222,13 +284,13 @@ fn compute_mandelbrot_hp_rayon(xmin: &[u64], dx: &[u64], y: &[u64], columns: usi
     let num_slices = unsafe { NUM_SLICES };
     let slice_size = columns/num_slices;
 
-    let mut x_vals = vec![vec![0; num_size]; columns];
-    x_vals[0].copy_from_slice(xmin);
+    let mut x_vals = vec![vec![T::zero(); num_size]; columns];
+    x_vals[0].copy_from_slice(&xmin);
     for i in 1..columns {
         for j in 0..num_size {
             x_vals[i][j] = x_vals[i - 1][j];
         }
-        incr(&mut x_vals[i], dx);
+        incr(&mut x_vals[i], &dx);
     }
 
     x_vals
@@ -243,6 +305,44 @@ fn compute_mandelbrot_hp_rayon(xmin: &[u64], dx: &[u64], y: &[u64], columns: usi
         })
         .flatten()
         .collect()
+}
+
+fn u32_to_t<T>(a: &[u32]) -> Vec<T>
+where T: BitOrAssign + Shl<usize, Output = T> + From<u32> + Copy + 'static,
+    u128: AsPrimitive<T>,
+    u64: AsPrimitive<T>
+{
+    let (t_size_bits, _) = t_bit_info!();
+    let mut r = vec![];
+
+    r.push(T::from(a[0]));
+    if a[0] & 0x8000 != 0 {
+        let mut neg_mask = u128::MAX >> 64;
+        neg_mask >>=
+            match t_size_bits {
+                32 => 64,
+                64 => 48,
+                128 => 16,
+                _ => panic!("unsupported type in u32_to_t<T>")
+            };
+        neg_mask <<= 16;
+        // r[0] |= unsafe { std::mem::transmute_copy(&neg_mask) };
+        r[0] |= neg_mask.as_();
+    }
+
+    let mut i = 1;
+    while i < a.len() {
+        let mut k = 1;
+        r.push(T::from(a[i]) << (t_size_bits/2 - k*16));
+        i += 1;
+        let rlast = r.len() - 1;
+        while k < t_size_bits/32 && i < a.len() {
+            k += 1;
+            r[rlast] |= T::from(a[i]) << (t_size_bits/2 - k*16);
+            i += 1;
+        }
+    }
+    r
 }
 
 /*
@@ -279,18 +379,30 @@ function arraycopy( sourceArray, sourceStart, destArray, destStart, count ) {
    }
 }
 */
-
-fn count_iterations_hp(hp_data: &mut HPData, x: &[u64], y: &[u64], max_iterations: i32) -> i32 {
+fn count_iterations_hp<T>(hp_data: &mut HPData<T>, x: &[T], y: &[T], max_iterations: i32) -> i32
+where T: Zero + BitAnd + Shr<usize, Output = T> + Shl<usize, Output = T> + Copy + 'static,
+    <T as BitAnd>::Output: PartialEq<T>,
+    u64: AsPrimitive<T>,
+    T: std::fmt::LowerHex,
+    // add, sq, multiply, negate requirements
+    T: One + AddAssign + BitAndAssign + Sub<Output = T> + PartialEq,
+{
     let mut count = 0;
     hp_data.zx.copy_from_slice(x);
     hp_data.zy.copy_from_slice(y);
+
+    let (_, t_low_bits) = t_bit_info!();
+    let t_8_test = (t_low_bits >> 3) << 3;
+    let t_8_what_test = (t_low_bits >> 4) << 4;
 
     // while count < max_iterations && zx*zx + zy*zy < 8.0 {
     while count < max_iterations {
         sq(&hp_data.zx, &mut hp_data.work3, &mut hp_data.work1);
         sq(&hp_data.zy, &mut hp_data.work3, &mut hp_data.work2);
         add(&hp_data.work1, &hp_data.work2, &mut hp_data.work3);
-        if (hp_data.work3[0] & 0xFFFFFFF8) != 0 && (hp_data.work3[0] & 0xFFFFFFF8) != 0xFFFFFFF0 {
+        if (hp_data.work3[0] & t_8_test) != T::zero() && (hp_data.work3[0] & t_8_test) != t_8_what_test {
+            // dbg!(&hp_data.zx, &hp_data.zy, &hp_data.work1, &hp_data.work2, &hp_data.work3, );
+            // panic!("here");
             return count;
         }
 
@@ -312,6 +424,40 @@ fn count_iterations_hp(hp_data: &mut HPData, x: &[u64], y: &[u64], max_iteration
 }
 
 /*
+function negate( /* int[] */ x, /* int */ chunks) {
+    for (let i = 0; i < chunks; i++)
+        x[i] = 0xFFFF-x[i];
+    ++x[chunks-1];
+    for (let i = chunks-1; i > 0 && (x[i] & 0x10000) != 0; i--) {
+        x[i] &= 0xFFFF;
+        ++x[i-1];
+    }
+    x[0] &= 0xFFFF;
+}
+*/
+fn negate<T>(x: &[T], out: &mut[T])
+where T: Zero + One + AddAssign + BitAnd + BitAndAssign + Sub<Output = T> + Copy + 'static,
+    <T as BitAnd>::Output: PartialEq<T>,
+    u64: AsPrimitive<T>
+{
+    let (_, t_low_bits) = t_bit_info!();
+    let chunks = out.len();
+    for i in 0..chunks {
+        out[i] = t_low_bits - x[i];
+    }
+
+    debug_assert!(chunks > 0);
+    let mut i = chunks - 1;
+    out[i] += T::one();
+    let t_overflow_test = t_low_bits + T::one();
+    while i > 0 && out[i] & t_overflow_test != T::zero() {
+        out[i] &= t_low_bits;
+        out[i - 1] += T::one();
+        i -= 1;
+    }
+    out[0] &= t_low_bits;
+}
+
 /*
 function add( /* int[] */ x, /* int[] */ dx, /* int */ count) {
     let carry = 0;
@@ -323,27 +469,33 @@ function add( /* int[] */ x, /* int[] */ dx, /* int */ count) {
     }
 }
 */
-fn incr(x: &mut [u64], dx: &[u64]) {
-    let mut carry = 0;
+fn incr<T>(x: &mut [T], dx: &[T])
+where T: Zero + AddAssign + Shr<usize, Output = T> + BitAndAssign + Copy + 'static,
+    u64: AsPrimitive<T>
+{
+    let (t_size_bits, t_low_bits) = t_bit_info!();
+    let mut carry = T::zero();
     let mut i = x.len();
     while i > 0 {
         i -= 1;
-        x[i] += dx[i];
-        x[i] += carry;
-        carry = x[i] >> 32;
-        x[i] &= 0xFFFFFFFF;
+        x[i] += dx[i] + carry;
+        carry = x[i] >> t_size_bits/2;
+        x[i] &= t_low_bits;
     }
 }
 
-fn add(x: &[u64], y: &[u64], out: &mut[u64]) {
-    let mut carry = 0;
+fn add<T>(x: &[T], y: &[T], out: &mut[T])
+where T: Zero + AddAssign + Shr<usize, Output = T> + BitAndAssign + Copy + 'static,
+    u64: AsPrimitive<T>
+{
+    let (t_size_bits, t_low_bits) = t_bit_info!();
+    let mut carry = T::zero();
     let mut i = out.len();
     while i > 0 {
         i -= 1;
-        out[i] = x[i] + y[i];
-        out[i] += carry;
-        carry = out[i] >> 32;
-        out[i] &= 0xFFFFFFFF;
+        out[i] = x[i] + y[i] + carry;
+        carry = out[i] >> t_size_bits/2;
+        out[i] &= t_low_bits;
     }
 }
 
@@ -393,9 +545,18 @@ function multiply( /* int[] */ x, /* int[] */ y, /* int */ count){  // Can't all
         negate(x,count);
 }
 */
-fn multiply(x: &[u64], y: &[u64], work1: &mut [u64], work2: &mut [u64], out: &mut [u64]) {
-    let negx = (x[0] & 0x80000000) != 0;
-    let negy = (y[0] & 0x80000000) != 0;
+fn multiply<T>(x: &[T], y: &[T], work1: &mut [T], work2: &mut [T], out: &mut [T])
+where T: Zero + One + BitAnd + Shr<usize, Output = T> + Copy + 'static,
+    <T as BitAnd>::Output: PartialEq<T>,
+    u64: AsPrimitive<T>,
+    // negate and multiply_pos requirements
+    T: AddAssign + BitAndAssign + Sub<Output = T> + PartialEq,
+{
+    let (_, t_low_bits) = t_bit_info!();
+    let t_neg_test = (t_low_bits + T::one()) >> 1;
+
+    let negx = (x[0] & t_neg_test) != T::zero();
+    let negy = (y[0] & t_neg_test) != T::zero();
     if negx != negy {
         if negx {
             negate(x, work1);
@@ -414,38 +575,43 @@ fn multiply(x: &[u64], y: &[u64], work1: &mut [u64], work2: &mut [u64], out: &mu
     }
 }
 
-fn multiply_pos(x: &[u64], y: &[u64], out: &mut [u64]) {
+fn multiply_pos<T>(x: &[T], y: &[T], out: &mut [T])
+where T: Zero + AddAssign + Mul<Output = T> + Shr<usize, Output = T> + BitAndAssign + PartialEq + Copy + 'static,
+    u64: AsPrimitive<T>
+{
+    let (t_size_bits, t_low_bits) = t_bit_info!();
     let count = out.len();
-    if x[0] == 0 {
+
+    if x[0] == T::zero() {
         for i in 0..count {
-            out[i] = 0;
+            out[i] = T::zero();
         }
     } else {
-        let mut carry = 0;
+        let mut carry = T::zero();
         let mut i = count;
         while i > 0 {
             i -= 1;
             out[i] = x[0]*y[i] + carry;
-            // println!("out[i] = {}", out[i]);
-            carry = out[i] >> 32;
-            out[i] &= 0xFFFFFFFF;
+            carry = out[i] >> t_size_bits/2;
+            out[i] &= t_low_bits;
         }
     }
+
     for j in 1..count {
         let mut i = count - j;
-        let mut carry = (x[j]*y[i]) >> 32;
+        let mut carry = (x[j]*y[i]) >> t_size_bits/2;
         let mut k = count - 1;
         while i > 0 {
             i -= 1;
             out[k] += x[j]*y[i] + carry;
-            carry = out[k] >> 32;
-            out[k] &= 0xFFFFFFFF;
+            carry = out[k] >> t_size_bits/2;
+            out[k] &= t_low_bits;
             k -= 1;
         }
-        while carry != 0 {
+        while carry != T::zero() {
             out[k] += carry;
-            carry = out[k] >> 32;
-            out[k] &= 0xFFFFFFFF;
+            carry = out[k] >> t_size_bits/2;
+            out[k] &= t_low_bits;
             if k == 0 {
                 break;
             }
@@ -454,177 +620,20 @@ fn multiply_pos(x: &[u64], y: &[u64], out: &mut [u64]) {
     }
 }
 
-fn sq(x: &[u64], work: &mut [u64], out: &mut [u64]) {
-    let neg = (x[0] & 0x80000000) != 0;
+fn sq<T>(x: &[T], work: &mut [T], out: &mut [T])
+where T: Zero + One + BitAnd + Shr<usize, Output = T> + Copy + 'static,
+    <T as BitAnd>::Output: PartialEq<T>,
+    u64: AsPrimitive<T>,
+    // negate and multiply_pos requirements
+    T: AddAssign + BitAndAssign + Sub<Output = T> + PartialEq,
+{
+    let (_, t_low_bits) = t_bit_info!();
+    let t_neg_test = (t_low_bits + T::one()) >> 1;
+    let neg = (x[0] & t_neg_test) != T::zero();
     if neg {
         negate(x, work);
         multiply_pos(work, work, out);
     } else {
         multiply_pos(x, x, out);
     }
-}
-
-/*
-function negate( /* int[] */ x, /* int */ chunks) {
-    for (let i = 0; i < chunks; i++)
-        x[i] = 0xFFFF-x[i];
-    ++x[chunks-1];
-    for (let i = chunks-1; i > 0 && (x[i] & 0x10000) != 0; i--) {
-        x[i] &= 0xFFFF;
-        ++x[i-1];
-    }
-    x[0] &= 0xFFFF;
-}
-*/
-fn negate(x: &[u64], out: &mut[u64]) {
-    let chunks = out.len();
-    for i in 0..chunks {
-        out[i] = 0xFFFFFFFF - x[i];
-    }
-    debug_assert!(chunks > 0);
-    let mut i = chunks - 1;
-    out[i] += 1;
-    while i > 0 && out[i] & 0x100000000 != 0 {
-        out[i] &= 0xFFFFFFFF;
-        out[i - 1] += 1;
-        i -= 1;
-    }
-    out[0] &= 0xFFFFFFFF;
-}
-*/
-
-fn negate(x: &[u64], out: &mut[u64]) {
-    let chunks = out.len();
-    for i in 0..chunks {
-        out[i] = 0xFFFFFFFF - x[i];
-    }
-    debug_assert!(chunks > 0);
-    let mut i = chunks - 1;
-    out[i] += 1;
-    while i > 0 && out[i] & 0x100000000 != 0 {
-        out[i] &= 0xFFFFFFFF;
-        out[i - 1] += 1;
-        i -= 1;
-    }
-    out[0] &= 0xFFFFFFFF;
-}
-
-fn incr(x: &mut [u64], dx: &[u64]) {
-    let mut carry = 0;
-    let mut i = x.len();
-    while i > 0 {
-        i -= 1;
-        x[i] += dx[i];
-        x[i] += carry;
-        carry = x[i] >> 32;
-        x[i] &= 0xFFFFFFFF;
-    }
-}
-
-fn add(x: &[u64], y: &[u64], out: &mut[u64]) {
-    let mut carry = 0;
-    let mut i = out.len();
-    while i > 0 {
-        i -= 1;
-        out[i] = x[i] + y[i];
-        out[i] += carry;
-        carry = out[i] >> 32;
-        out[i] &= 0xFFFFFFFF;
-    }
-}
-
-fn multiply(x: &[u64], y: &[u64], work1: &mut [u64], work2: &mut [u64], out: &mut [u64]) {
-    let negx = (x[0] & 0x80000000) != 0;
-    let negy = (y[0] & 0x80000000) != 0;
-    if negx != negy {
-        if negx {
-            negate(x, work1);
-            multiply_pos(work1, y, work2);
-        } else {
-            negate(y, work1);
-            multiply_pos(x, work1, work2);
-        }
-        negate(work2, out);
-    } else if negx && negy {
-        negate(x, work1);
-        negate(y, work2);
-        multiply_pos(work1, work2, out);
-    } else {
-        multiply_pos(x, y, out);
-    }
-}
-
-fn multiply_pos(x: &[u64], y: &[u64], out: &mut [u64]) {
-    let count = out.len();
-    if x[0] == 0 {
-        for i in 0..count {
-            out[i] = 0;
-        }
-    } else {
-        let mut carry = 0;
-        let mut i = count;
-        while i > 0 {
-            i -= 1;
-            out[i] = x[0]*y[i] + carry;
-            // println!("out[i] = {}", out[i]);
-            carry = out[i] >> 32;
-            out[i] &= 0xFFFFFFFF;
-        }
-    }
-    for j in 1..count {
-        let mut i = count - j;
-        let mut carry = (x[j]*y[i]) >> 32;
-        let mut k = count - 1;
-        while i > 0 {
-            i -= 1;
-            out[k] += x[j]*y[i] + carry;
-            carry = out[k] >> 32;
-            out[k] &= 0xFFFFFFFF;
-            k -= 1;
-        }
-        while carry != 0 {
-            out[k] += carry;
-            carry = out[k] >> 32;
-            out[k] &= 0xFFFFFFFF;
-            if k == 0 {
-                break;
-            }
-            k -= 1;
-        }
-    }
-}
-
-fn sq(x: &[u64], work: &mut [u64], out: &mut [u64]) {
-    let neg = (x[0] & 0x80000000) != 0;
-    if neg {
-        negate(x, work);
-        multiply_pos(work, work, out);
-    } else {
-        multiply_pos(x, x, out);
-    }
-}
-
-fn u32tou64(a: &[u32]) -> Vec<u64> {
-    let mut r = Vec::with_capacity(1 + a.len()/2);
-    r.push(a[0] as u64);
-    if a[0] & 0x8000 != 0 {
-        r[0] |= 0xFFFF0000;
-    }
-    let mut i = 1;
-    let mut j = 1;
-    while i < a.len() - 1 {
-        let mut x = a[i] as u64;
-        x = x & 0xFFFF;
-        r.push(x << 16);
-        x = a[i + 1] as u64;
-        x = x & 0xFFFF;
-        r[j] |= x;
-        i += 2;
-        j += 1;
-    }
-
-    if i < a.len() {
-        r.push(((a[i] as u64) & 0xFFFF) << 16);
-    }
-    r
 }
