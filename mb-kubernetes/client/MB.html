@@ -2711,14 +2711,14 @@ function setUpArrowKeys() {
 To zoom in, double-click on the image or drag on it to draw a box.  For more info, instructions, and examples, <a href="MB-info.html">click here</a>.
 </p><p>
 Based on a browser-only Mandelbrot Set viewer by <a href=http://math.hws.edu/eck/index.html>David Eck</a>,
-this revised client/server version can be hosted in Docker on a PC or, on a Kubernetes cluster. The GitHub repository is <a href="https://github.com/wpwoodjr/Mandelbrot-for-Docker-and-Kubernetes/tree/master/mb-kubernetes">here</a>.
+this revised client/server version can be installed locally on a PC, in Docker, or on a Kubernetes cluster. The GitHub repository is <a href="https://github.com/wpwoodjr/Mandelbrot-for-Docker-and-Kubernetes/tree/master/mb-kubernetes">here</a>.
 </p><p>
 Calculating the Mandelbrot Set is very computationally intensive, however it is parallelizable.
 Increasing the number of "Workers" below brings in more CPU threads to calculate rows of the image. 
 <br>
 To see, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>, 
 then vary the number of "Workers" to speed it up or slow it down.
-When running on Kubernetes, increasing the workers also brings in more pods to speed up the computation.
+When hosted on Kubernetes, increasing the workers also brings in more pods to speed up the computation.
 </p>
 
 <p id="message"></p>

@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::process::exit;
 
 use std::env;
-// static mut IMAGE_QUALITY: usize = 1;
+static mut IMAGE_QUALITY: usize = 1;
 static mut NUM_SLICES: usize = 2;
 static mut U_TYPE: usize = 128;
 
@@ -29,26 +29,31 @@ Arguments:
 
 Options:
   -h, --help     Show this help message and exit
-  -r, --rayon    Number of slices for Rayon to parallelize over on each Javascript "worker";
-                 only affects high precision images; defaults to 2
+  -r, --rayon    Number of Rayon threads for each Javascript "worker"; only affects high precision images;
+                 defaults to 2
+  -q, --quality  Set image quality from 2 (best) to 0 (worst); only affects high precision images;
+                 lower quality may be faster in certain situations; defaults to 1
   --u32          Use 32 bit unsigned integers for high precision calculations (slowest)
   --u64          Use 64 bit unsigned integers for high precision calculations
-  --u128         Use 128 bit unsigned integers for high precision calculations"#;
-//   -q, --quality  Set image quality from 0 (best) to 5 (worst); only affects high precision images;
-//                  defaults to 1
+  --u128         Use 128 bit unsigned integers for high precision calculations (default)"#;
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            // "-q" | "--quality" => {
-            //     if i + 1 < args.len() {
-            //         i += 1;
-            //         unsafe { IMAGE_QUALITY = args[i].parse().unwrap() };
-            //     } else {
-            //         println!("missing value for --quality!");
-            //         exit(1);
-            //     }
-            // }
+            "-q" | "--quality" => {
+                if i + 1 < args.len() {
+                    i += 1;
+                    let quality = args[i].parse::<usize>().unwrap();
+                    if quality > 2 {
+                        println!("quality must be a number between 0 and 2!");
+                        exit(1);
+                    }
+                    unsafe { IMAGE_QUALITY = 2 - quality };
+                } else {
+                    println!("missing value for --quality!");
+                    exit(1);
+                }
+            }
             "-r" | "--rayon" => {
                 if i + 1 < args.len() {
                     i += 1;
@@ -82,8 +87,9 @@ Options:
         i += 1;
     }
 
-    println!("Mandelbrot server running on URL {url} with {} Rayon parallel slice(s) and {} bit unsigned integers for high precision calculations.",
+    println!("Mandelbrot server running on URL {url} with {} Rayon thread(s), image quality {}, and {} bit unsigned integers for high precision calculations.",
         unsafe { NUM_SLICES },
+        unsafe { 2 - IMAGE_QUALITY },
         unsafe { U_TYPE },
     );
     web_server(&url);
@@ -242,24 +248,27 @@ exports.computeMandelbrotHP = function(mandelbrotCoords) {
 */
 async fn compute_mandelbrot_hp(mandelbrot_coords_hp: web::Json<MandelbrotCoordsHP>) -> HttpResponse {
 
+    // ignoring the last u32 chunk seems to be a small speed optimization which reduces precision but doesn't affect image quality
+    let u32_chunks = mandelbrot_coords_hp.xmin.len() - unsafe { IMAGE_QUALITY };
+
     let iteration_counts = match unsafe { U_TYPE } {
         32 => {
             let xmin = u32_to_t::<u32>(&mandelbrot_coords_hp.xmin);
             let dx = u32_to_t::<u32>(&mandelbrot_coords_hp.dx);
             let y = u32_to_t::<u32>(&mandelbrot_coords_hp.ymax);
-            compute_mandelbrot_hp_rayon(&xmin, &dx, &y, mandelbrot_coords_hp.columns, mandelbrot_coords_hp.maxIterations)
+            compute_mandelbrot_hp_rayon(&xmin, &dx, &y, mandelbrot_coords_hp.columns, mandelbrot_coords_hp.maxIterations, u32_chunks)
         }
         64 => {
             let xmin = u32_to_t::<u64>(&mandelbrot_coords_hp.xmin);
             let dx = u32_to_t::<u64>(&mandelbrot_coords_hp.dx);
             let y = u32_to_t::<u64>(&mandelbrot_coords_hp.ymax);
-            compute_mandelbrot_hp_rayon(&xmin, &dx, &y, mandelbrot_coords_hp.columns, mandelbrot_coords_hp.maxIterations)
+            compute_mandelbrot_hp_rayon(&xmin, &dx, &y, mandelbrot_coords_hp.columns, mandelbrot_coords_hp.maxIterations, u32_chunks)
         }
         128 => {
             let xmin = u32_to_t::<u128>(&mandelbrot_coords_hp.xmin);
             let dx = u32_to_t::<u128>(&mandelbrot_coords_hp.dx);
             let y = u32_to_t::<u128>(&mandelbrot_coords_hp.ymax);
-            compute_mandelbrot_hp_rayon(&xmin, &dx, &y, mandelbrot_coords_hp.columns, mandelbrot_coords_hp.maxIterations)
+            compute_mandelbrot_hp_rayon(&xmin, &dx, &y, mandelbrot_coords_hp.columns, mandelbrot_coords_hp.maxIterations, u32_chunks)
         }
         _ => panic!("illegal size!")
     };
@@ -267,7 +276,7 @@ async fn compute_mandelbrot_hp(mandelbrot_coords_hp: web::Json<MandelbrotCoordsH
 }
 
 use rayon::prelude::*;
-fn compute_mandelbrot_hp_rayon<T>(xmin: &[T], dx: &[T], y: &[T], columns: usize, max_iter: i32) -> Vec<i32>
+fn compute_mandelbrot_hp_rayon<T>(xmin: &[T], dx: &[T], y: &[T], columns: usize, max_iter: i32, u32_chunks: usize) -> Vec<i32>
 where T: Sync + Zero + Copy,
     // add, sq, multiply, negate, incr, count_iterations requirements
     T: One + AddAssign + BitAndAssign + Sub<Output = T> + PartialEq +
@@ -277,10 +286,12 @@ where T: Sync + Zero + Copy,
     T: std::fmt::LowerHex,
 {
     let num_size = xmin.len();
-
-    // ignoring the last u32 chunk seems to be a small speed optimization which reduces precision but doesn't affect image quality
-    let chunks = num_size;// - unsafe { IMAGE_QUALITY };
-
+    // chunks: 1 for the integral part, plus however many T elements are needed for the fractional part
+    let chunks = 1 + {
+        let t_to_u32_size_ratio = size_of::<T>()/size_of::<u32>();
+        (u32_chunks - 1 + t_to_u32_size_ratio - 1)/t_to_u32_size_ratio
+    };
+    // println!("{} {} {}", u32_chunks - 1 + unsafe { IMAGE_QUALITY }, u32_chunks - 1, chunks - 1 );
     let num_slices = unsafe { NUM_SLICES };
     let slice_size = columns/num_slices;
 
