@@ -8,7 +8,7 @@
 use actix_rt::System;
 use actix_web::{web, App, HttpResponse, HttpServer, HttpRequest, Result};
 use actix_files::NamedFile;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize};
 use std::path::PathBuf;
 use std::process::exit;
 
@@ -121,7 +121,7 @@ fn web_server(url: &str) {
 }
 
 // *** low precision *** //
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize)]
 #[allow(non_snake_case)]
 struct MandelbrotCoords {
     columns: usize,
@@ -189,7 +189,7 @@ macro_rules! t_bit_info {
     };
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize)]
 #[allow(non_snake_case)]
 struct MandelbrotCoordsHP {
     columns: usize,
@@ -404,6 +404,7 @@ where T: Zero + BitAnd + Shr<usize, Output = T> + Shl<usize, Output = T> + Copy 
 
     let (_, t_low_bits) = t_bit_info!();
     let t_8_test = (t_low_bits >> 3) << 3;
+    // it's called the "what test" because I haven't figured out what it does :)
     let t_8_what_test = (t_low_bits >> 4) << 4;
 
     // while count < max_iterations && zx*zx + zy*zy < 8.0 {
@@ -412,8 +413,6 @@ where T: Zero + BitAnd + Shr<usize, Output = T> + Shl<usize, Output = T> + Copy 
         sq(&hp_data.zy, &mut hp_data.work3, &mut hp_data.work2);
         add(&hp_data.work1, &hp_data.work2, &mut hp_data.work3);
         if (hp_data.work3[0] & t_8_test) != T::zero() && (hp_data.work3[0] & t_8_test) != t_8_what_test {
-            // dbg!(&hp_data.zx, &hp_data.zy, &hp_data.work1, &hp_data.work2, &hp_data.work3, );
-            // panic!("here");
             return count;
         }
 
@@ -594,9 +593,10 @@ where T: Zero + AddAssign + Mul<Output = T> + Shr<usize, Output = T> + BitAndAss
     let count = out.len();
 
     if x[0] == T::zero() {
-        for i in 0..count {
-            out[i] = T::zero();
-        }
+        // for i in 0..count {
+        //    out[i] = T::zero();
+        // }
+        out.fill(T::zero());
     } else {
         let mut carry = T::zero();
         let mut i = count;
