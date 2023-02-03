@@ -1068,10 +1068,14 @@ async function pageExists(url) {
 
 function checkRemoteCanComputeMB() {
     pageExists("/remoteCanComputeMB").then(result => {
-        if (! result) {
+        if (result) {
+            document.getElementById("remote").disabled = false;
+        } else {
             console.log("remote web server does not support Mandelbrot calculations");
-            document.getElementById("local").checked = true;
-            changeLocalOrRemote();
+            if (document.getElementById("remote").checked) {
+                document.getElementById("local").checked = true;
+                changeLocalOrRemote();
+            }
         }
     });
 }
@@ -1099,10 +1103,6 @@ function changeLocalOrRemote() {
         newWorkers(workerCount);
     }
     document.getElementById("threadCountSelect").value = "" + newWorkerCount;
-
-    if (localOrRemote == "remote") {
-        checkRemoteCanComputeMB();
-    }
 }
 
 function changeMaxIterations() {
@@ -2708,10 +2708,7 @@ function init() {
     checkForExample();
     undoList = [];
     undoCount = 0;
-    let localOrRemote = document.getElementById("local").checked ? "local" : "remote";
-    if (localOrRemote == "remote") {
-        checkRemoteCanComputeMB();
-    }
+    checkRemoteCanComputeMB();
 }
 
 var arrowTimeout;
@@ -2831,7 +2828,7 @@ When the web server is hosted on Kubernetes, increasing the workers also brings 
         <label title="Run calculations locally in the browser or on the remote web server.">
         <input type="radio" id="local" name="location" value="local">
         <label for="local">Local</label>
-        <input type="radio" id="remote" name="location" value="remote">
+        <input type="radio" id="remote" name="location" value="remote" disabled>
         <label for="remote">Remote</label></label>
       </p>
       <p>
