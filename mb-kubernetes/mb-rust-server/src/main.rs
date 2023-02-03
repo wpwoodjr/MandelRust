@@ -174,7 +174,7 @@ fn count_iterations(x: f64, y: f64, max_iterations: i32) -> i32 {
 }
 
 // *** high precision *** //
-use std::ops::{ BitAnd, BitAndAssign, BitOrAssign, Shl, Shr, AddAssign, Sub, Mul };
+use std::ops::{ BitAnd, BitXor, BitAndAssign, BitOrAssign, Shl, Shr, AddAssign, Sub, Mul };
 use num::traits::{ Zero, One, AsPrimitive };
 use core::cmp::PartialEq;
 use core::mem::size_of;
@@ -183,8 +183,8 @@ macro_rules! t_bit_info {
     () => {
         {
             let t_size_bits = size_of::<T>()*8;
-            let low_bits = u64::MAX >> (64 - t_size_bits/2);
-            (t_size_bits, low_bits.as_())
+            let t_low_bits = u64::MAX >> (64 - t_size_bits/2);
+            (t_size_bits, t_low_bits.as_())
         }
     };
 }
@@ -319,26 +319,16 @@ where T: Sync + Zero + Copy,
 }
 
 fn u32_to_t<T>(a: &[u32]) -> Vec<T>
-where T: BitOrAssign + Shl<usize, Output = T> + From<u32> + Copy + 'static,
-    u128: AsPrimitive<T>,
+where T: BitOrAssign + BitXor<Output = T> + Shl<usize, Output = T> + From<u32> + Copy + 'static,
     u64: AsPrimitive<T>
 {
-    let (t_size_bits, _) = t_bit_info!();
+    let (t_size_bits, t_low_bits) = t_bit_info!();
     let mut r = vec![];
 
-    r.push(T::from(a[0]));
+    r.push(a[0].into());
     if a[0] & 0x8000 != 0 {
-        let mut neg_mask = u128::MAX >> 64;
-        neg_mask >>=
-            match t_size_bits {
-                32 => 64,
-                64 => 48,
-                128 => 16,
-                _ => panic!("unsupported type in u32_to_t<T>")
-            };
-        neg_mask <<= 16;
-        // r[0] |= unsafe { std::mem::transmute_copy(&neg_mask) };
-        r[0] |= neg_mask.as_();
+        let neg_mask = t_low_bits ^ 0xFFFF.into();
+        r[0] |= neg_mask;
     }
 
     let mut i = 1;
