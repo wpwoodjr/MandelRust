@@ -1049,25 +1049,36 @@ function changeWorkerCount() {
         startJob();
     }
     try {
-      localStorage.setItem("mandelbrotWorkerCount", "" + ct);
+      localStorage.setItem("mandelbrotWorkerCount" + (document.getElementById("local").checked ? "local" : "remote"), "" + ct);
+    //   console.log("workers set " + (document.getElementById("local").checked ? "local" : "remote") + " " + ct);
     }
     catch(e) {
     }
 }
 
 function changeLocalOrRemote() {
-    if (running) {
-        stopJob();
-        newWorkers(workerCount);
-        startJob();
-    } else {
-        newWorkers(workerCount);
-    }
+    let newWorkerCount = workerCount;
     try {
-        localStorage.setItem("mandelbrotLocalOrRemote", document.getElementById("local").checked ? "local" : "remote");
+        let localOrRemote = document.getElementById("local").checked ? "local" : "remote";
+        localStorage.setItem("mandelbrotLocalOrRemote", localOrRemote);
+        let ct = Number(localStorage.getItem("mandelbrotWorkerCount" + localOrRemote));
+        // console.log("workers get " + (document.getElementById("local").checked ? "local" : "remote") + " " + ct);
+        if (! isNaN(ct) && ct > 0) {
+            newWorkerCount = ct;
+        }
     }
     catch(e) {
     }
+    if (running) {
+        stopJob();
+        workerCount = newWorkerCount;
+        newWorkers(workerCount);
+        startJob();
+    } else {
+        workerCount = newWorkerCount;
+        newWorkers(workerCount);
+    }
+    document.getElementById("threadCountSelect").value = "" + newWorkerCount;
 }
 
 function changeMaxIterations() {
@@ -2622,20 +2633,21 @@ function init() {
     document.getElementById("imagesize").onchange = changeImageSize;
     document.getElementById("applysize").onclick = doCustomSize;
     try {
-      var ct = Number(localStorage.getItem("mandelbrotWorkerCount"));
-      if (!isNaN(ct) && ct > 0) {
-          workerCount = ct;
-      }
-    }
-    catch(e) {
-    }
-    try {
-        let remote = localStorage.getItem("mandelbrotLocalOrRemote");
-        if (remote == "remote") {
+        let item = localStorage.getItem("mandelbrotLocalOrRemote");
+        if (item == "remote") {
             document.getElementById("remote").checked = true;
         } else {
             document.getElementById("local").checked = true;
         }
+    }
+    catch(e) {
+    }
+    try {
+      var ct = Number(localStorage.getItem("mandelbrotWorkerCount" + (document.getElementById("local").checked ? "local" : "remote")));
+    //   console.log("workers get (init) " + (document.getElementById("local").checked ? "local" : "remote") + " " + ct);
+      if (!isNaN(ct) && ct > 0) {
+          workerCount = ct;
+      }
     }
     catch(e) {
     }
@@ -2744,17 +2756,19 @@ function setUpArrowKeys() {
 
 <h2>Explore the <a href=MB.html>Mandelbrot Set</a></h2>
 <p>
-To zoom in, double-click on the image or drag on it to draw a box.  For more info, instructions, and examples, <a href="MB-info.html">click here</a>.
+Use page down and page up to zoom in and out, or the arrow keys to pan.  Double-clicking the image zooms 2X, or drag on it to draw a box.  For more info, instructions, and examples, <a href="MB-info.html">click here</a>.
 </p><p>
 Based on a browser-only Mandelbrot Set viewer by <a href=http://math.hws.edu/eck/index.html>David Eck</a>,
-this revised client/server version can be installed locally on a PC, in Docker, or on a Kubernetes cluster. The GitHub repository is <a href="https://github.com/wpwoodjr/Mandelbrot-for-Docker-and-Kubernetes/tree/master/mb-kubernetes">here</a>.
+this revised version can run calculations on a web server installed locally on a PC, in Docker, or on a Kubernetes cluster.
+By default it runs only in the browser; if the web server is installed then selecting "Remote" below will run calculations on the remote web server.
+The GitHub repository is <a href="https://github.com/wpwoodjr/Mandelbrot-for-Docker-and-Kubernetes/tree/master/mb-kubernetes">here</a>.
 </p><p>
 Calculating the Mandelbrot Set is very computationally intensive, however it is parallelizable.
 Increasing the number of "Workers" below brings in more CPU threads to calculate rows of the image. 
 <br>
 To see, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>, 
 then vary the number of "Workers" to speed it up or slow it down.
-When hosted on Kubernetes, increasing the workers also brings in more pods to speed up the computation.
+When the web server is hosted on Kubernetes, increasing the workers also brings in more pods to speed up the computation.
 </p>
 
 <p id="message"></p>
