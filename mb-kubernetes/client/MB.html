@@ -1056,10 +1056,30 @@ function changeWorkerCount() {
     }
 }
 
+async function pageExists(url) {
+    try {
+        const response = await fetch(url);
+        // console.log(response);
+        return response.ok;
+    } catch (error) {
+        return false;
+    }
+}
+
+function checkRemoteCanComputeMB() {
+    pageExists("/remoteCanComputeMB").then(result => {
+        if (! result) {
+            console.log("remote web server does not support Mandelbrot calculations");
+            document.getElementById("local").checked = true;
+            changeLocalOrRemote();
+        }
+    });
+}
+
 function changeLocalOrRemote() {
     let newWorkerCount = workerCount;
+    let localOrRemote = document.getElementById("local").checked ? "local" : "remote";
     try {
-        let localOrRemote = document.getElementById("local").checked ? "local" : "remote";
         localStorage.setItem("mandelbrotLocalOrRemote", localOrRemote);
         let ct = Number(localStorage.getItem("mandelbrotWorkerCount" + localOrRemote));
         // console.log("workers get " + (document.getElementById("local").checked ? "local" : "remote") + " " + ct);
@@ -1079,6 +1099,10 @@ function changeLocalOrRemote() {
         newWorkers(workerCount);
     }
     document.getElementById("threadCountSelect").value = "" + newWorkerCount;
+
+    if (localOrRemote == "remote") {
+        checkRemoteCanComputeMB();
+    }
 }
 
 function changeMaxIterations() {
@@ -2684,6 +2708,10 @@ function init() {
     checkForExample();
     undoList = [];
     undoCount = 0;
+    let localOrRemote = document.getElementById("local").checked ? "local" : "remote";
+    if (localOrRemote == "remote") {
+        checkRemoteCanComputeMB();
+    }
 }
 
 var arrowTimeout;

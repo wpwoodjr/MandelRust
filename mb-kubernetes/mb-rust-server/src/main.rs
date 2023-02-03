@@ -104,13 +104,17 @@ async fn redirect() -> Result<HttpResponse> {
     Ok(HttpResponse::MovedPermanently().append_header(("Location", "/MB.html")).finish())
 }
 
+async fn ping() -> Result<HttpResponse> {
+    Ok(HttpResponse::Ok().into())
+}
+
 fn web_server(url: &str) {
     let sys = System::new();
     let server = HttpServer::new(|| {
         App::new()
-            // .route("/static", web::get().to(static_html))
             .route("/mb-compute", web::post().to(compute_mandelbrot))
             .route("/mb-computeHP", web::post().to(compute_mandelbrot_hp))
+            .route("/remoteCanComputeMB", web::get().to(ping))
             .route("/", web::get().to(redirect))
             .route("/{filename:.*}", web::get().to(file))
     })
