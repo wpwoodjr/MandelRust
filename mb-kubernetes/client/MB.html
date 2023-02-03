@@ -13,7 +13,7 @@
     is clicked.  All of the ideas and some of the code were ported from
     an older program that was written in java.
 
-    This file depends on the scripts mandelbrot-worker-remote.js and Daniel Trebbien's
+    This file depends on the scripts mandelbrot-worker-remote.js, mandelbrot-worker-local.js, and Daniel Trebbien's
     BigDecimal-all-last.min.js.
 
     August, 2019. Added Palette Editor.
@@ -31,11 +31,12 @@
     Jul/Aug 2019: Rewrote job processing to be client/server, also fixed y-value issue
     Jul/Aug 2019: Changed HP_CUTOFF from 16 to 15 to avoid artifacts at the limits of f64 precision
     Jul/Aug 2019: Added "High Precision" toggle
-    Jan 2023:     Rewrote JavaScript server in Rust to get 10 times speedup in high precision computations
+    Jan/Feb 2023: Rewrote JavaScript server in Rust to get 10 times speedup in high precision computations
                   When zooming, the zoomed area is displayed using image interpolation while calculations are done
                   Left, right, up, and down arrows shift the image appropriately; page down and page up zoom in and out
                   Max image width/height is now 7680 (8K)
                   Fixed off by factor of 10 error in zoom out by 10,000 and 100,000
+                  Added option to run calculations locally on the browser in JavaScript, or on the backend Rust server
 
 -->
 <html>
@@ -338,9 +339,12 @@ function newWorkers(count) {
        }
     }
     workers = [];
+    let jsWorker = "mandelbrot-worker-remote.js";
+    if (document.getElementById("local").checked) {
+        jsWorker = "mandelbrot-worker-local.js"
+    }
     for (i = 0; i < count; i++) {
-       workers[i] = new Worker("mandelbrot-worker-remote.js");
-       //workers[i] = new Worker("mandelbrot-worker-local.js");
+       workers[i] = new Worker(jsWorker);
        workers[i].onmessage = jobFinished;
     }
 }
@@ -1046,6 +1050,21 @@ function changeWorkerCount() {
     }
     try {
       localStorage.setItem("mandelbrotWorkerCount", "" + ct);
+    }
+    catch(e) {
+    }
+}
+
+function changeLocalOrRemote() {
+    if (running) {
+        stopJob();
+        newWorkers(workerCount);
+        startJob();
+    } else {
+        newWorkers(workerCount);
+    }
+    try {
+        localStorage.setItem("mandelbrotLocalOrRemote", document.getElementById("local").checked ? "local" : "remote");
     }
     catch(e) {
     }
@@ -2610,6 +2629,16 @@ function init() {
     }
     catch(e) {
     }
+    try {
+        let remote = localStorage.getItem("mandelbrotLocalOrRemote");
+        if (remote == "remote") {
+            document.getElementById("remote").checked = true;
+        } else {
+            document.getElementById("local").checked = true;
+        }
+    }
+    catch(e) {
+    }
     document.getElementById("threadCountSelect").value = "" + workerCount;
     document.getElementById("threadCountSelect").onchange = changeWorkerCount;
     document.getElementById("maxIterSelect").onchange = changeMaxIterations;
@@ -2625,6 +2654,8 @@ function init() {
     document.getElementById("secondpass").onchange = changeSecondPass;
     document.getElementById("highPrecision").checked = false;
     document.getElementById("highPrecision").onchange = changeHighPrecision;
+    document.getElementById("local").onchange = changeLocalOrRemote;
+    document.getElementById("remote").onchange = changeLocalOrRemote;
     document.getElementById("zoomInAmount").value = "0.1";
     document.getElementById("zoomOutAmount").value = "10";
     document.getElementById("zoomin").onclick = doZoomIn;
@@ -2754,7 +2785,17 @@ When hosted on Kubernetes, increasing the workers also brings in more pods to sp
           <option value="48">48</option>
           <option value="64">64</option>
       </select></label></p>
-      <p><label title="If checked, high precision arithmetic will be used even when its not needed (slower)."><input type="checkbox" id="highPrecision">High Precision</label></p>
+      <p>
+        <label title="Run calculations locally in the browser or on the remote web server.">
+        <input type="radio" id="local" name="location" value="local">
+        <label for="local">Local</label>
+        <input type="radio" id="remote" name="location" value="remote">
+        <label for="remote">Remote</label></label>
+      </p>
+      <p>
+        <label title="If checked, high precision arithmetic will be used even when its not needed (slower).">
+        <input type="checkbox" id="highPrecision">High Precision</label>
+      </p>
    </div>
    <div class="group">
       <p><button id="undo">Undo</button></p>
