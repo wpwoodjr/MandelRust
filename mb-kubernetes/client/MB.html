@@ -28,7 +28,7 @@
     August, 2022.  Use localStorage to save workerCount between sessions.
 
     Changes by Bill Wood:
-    Jul/Aug 2019: Rewrote job processing to be client/server, also fixed y-value issue
+    Jul/Aug 2019: Rewrote job processing to be client/server, also fixed y-value issue as above
     Jul/Aug 2019: Changed HP_CUTOFF from 16 to 15 to avoid artifacts at the limits of f64 precision
     Jul/Aug 2019: Added "High Precision" toggle
     Jan/Feb 2023: Rewrote JavaScript server in Rust to get 10 times speedup in high precision computations
@@ -37,6 +37,8 @@
                   Max image width/height is now 7680 (8K)
                   Fixed off by factor of 10 error in zoom out by 10,000 and 100,000
                   Added option to run calculations locally on the browser in JavaScript, or on the backend Rust server
+                  Added undo (ctrl-z) and redo (ctrl-shift-z and ctrl-y) key bindings
+                  Fixed small bug where dx value was being used to increment yval instead of dy value in HP calculations
 
 -->
 <html>
@@ -150,7 +152,7 @@ var repaintTimeout;
 var /* BigDecimal */ xmin_requested, ymin_requested, xmax_requested, ymax_requested;
 var /* BigDecimal */ xmin, ymin, xmax, ymax;
 var /* BigDecimal */ dx, dy;
-var /* Uint32Array */ xminArray, yvalArray, dxArray;
+var /* Uint32Array */ xminArray, yValArray, dxArray;
 
 var jobs;
 var jobsCompleted;
@@ -371,6 +373,7 @@ function stopJob() {
 }
 
 let maxRowsPerJob = 32;
+let maxRowsPerJobHP = 4;
 
 function startJob() {
     // console.log("startJob",zoomTimeout != null,running, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
@@ -398,24 +401,27 @@ function startJob() {
     if (highPrecision) {
         digits = xmin.scale();
         chunks = Math.floor((digits * log2of10)/16 + 2);
-        dxArray = new ArrayType(chunks+1);
         xminArray = new ArrayType(chunks+1);
+        dxArray = new ArrayType(chunks+1);
+        let dyArray = new ArrayType(chunks+1);
         convert(xminArray, xmin, chunks+1);
         convert(dxArray,dx,chunks+1);
-        for ( var row = 0; row < rows; row++) {
-            let ytmp = yVal.subtract(dx.multiply(new BigDecimal(row.toString())));
-            var yValArray = new ArrayType(chunks+1);
+        convert(dyArray, dy, chunks+1);
+        let local = document.getElementById("local").checked;
+        let rowsPerJobHP = local ? 1 : Math.min(maxRowsPerJobHP, Math.floor(rows/workerCount));
+        for (let row = 0; row < rows; row += rowsPerJobHP) {
+            let ytmp = yVal.subtract(dy.multiply(new BigDecimal(row.toString())));
+            yValArray = new ArrayType(chunks+1);
             convert(yValArray, ytmp, chunks+1);
-            jobs[rows - 1- row] = {
+            jobs.push({
                 row: row,
                 columns: columns,
                 xmin: xminArray,
                 dx: dxArray,
                 yVal: yValArray,
-                dy: 0,
-                nrows: 1
-            };
-            //yVal = yVal.subtract(dy);
+                dy: dyArray,
+                nrows: Math.min(rowsPerJobHP, rows - row)
+            });
         }
     }
     else {
@@ -437,8 +443,9 @@ function startJob() {
                 nrows: Math.min(rowsPerJob, rows - row)
             });
         }
-        jobs.reverse();     // keep original order
     }
+    jobs.reverse();     // keep original order
+
     if (interlaced) {
         var sortedJobs = jobs;
         jobs = [];
@@ -546,24 +553,27 @@ function startSecondPass() {
     if (highPrecision) {
         digits = xmin.scale();
         chunks = Math.floor((digits * log2of10)/16 + 2);
-        dxArray = new ArrayType(chunks+1);
         xminArray = new ArrayType(chunks+1);
+        dxArray = new ArrayType(chunks+1);
+        let dyArray = new ArrayType(chunks+1);
         convert(xminArray, xStart, chunks+1);
         convert(dxArray,dx,chunks+1);
-        for ( var row = 0; row < rows; row++) {
-            let ytmp = yVal.subtract(dx.multiply(new BigDecimal(row.toString())));
-            var yValArray = new ArrayType(chunks+1);
+        convert(dyArray, dy, chunks+1);
+        let local = document.getElementById("local").checked;
+        let rowsPerJobHP = local ? 1 : Math.min(maxRowsPerJobHP, Math.floor(rows/workerCount));
+        for (let row = 0; row < rows; row += rowsPerJobHP) {
+            let ytmp = yVal.subtract(dy.multiply(new BigDecimal(row.toString())));
+            yValArray = new ArrayType(chunks+1);
             convert(yValArray, ytmp, chunks+1);
-            jobs[rows - 1- row] = {
+            jobs.push({
                 row: row,
                 columns: columns,
                 xmin: xminArray,
                 dx: dxArray,
                 yVal: yValArray,
-                dy: 0,
-                nrows: 1
-            };
-            //yVal = yVal.subtract(dy);
+                dy: dyArray,
+                nrows: Math.min(rowsPerJobHP, rows - row)
+            });
         }
     }
     else {
@@ -2718,6 +2728,10 @@ function setUpArrowKeys() {
         if (event.target.nodeName === "INPUT" && event.target.type === "text") {
             return;
         }
+        // prevent too many of these slowing down response
+        if (arrowTimeout) {
+            return;
+        }
         switch (event.key) {
             case "ArrowLeft":
             case "ArrowRight":
@@ -2725,7 +2739,14 @@ function setUpArrowKeys() {
             case "ArrowDown":
             case "PageDown":
             case "PageUp":
+                stopJob();
                 break;
+            case "z":
+            case "Z":
+            case "y":
+                if (event.ctrlKey) {
+                    break;
+                }
             default:
                 // quit when this doesn't handle the key event
                 return;
@@ -2733,12 +2754,8 @@ function setUpArrowKeys() {
 
         // Cancel the default action to avoid it being handled twice
         event.preventDefault();
-        // prevent too many of these slowing down response
-        if (arrowTimeout) {
-            return;
-        }
-        stopJob();
 
+        let doStart = true;
         const shiftLR = Math.max(1, Math.round(canvas.width/32));
         const shiftUD = Math.max(1, Math.round(canvas.height/32));
         switch (event.key) {
@@ -2765,11 +2782,24 @@ function setUpArrowKeys() {
             case "PageDown":
                 doZoomInOnRect(shiftLR, shiftUD, canvas.width - shiftLR*2, canvas.height - shiftUD*2, false);
                 break;
+
+            case "z":
+                doUndo();
+                doStart = false;
+                break;
+
+            case "y":
+            case "Z":
+                doRedo();
+                doStart = false;
+                break;
         }
 
         arrowTimeout = setTimeout(function () {
             arrowTimeout = null;
-            startJob();
+            if (doStart) {
+                startJob();
+            }
         }, 0);
     });
 }

@@ -1,4 +1,5 @@
 optimize redraw on undo
+set an undo for arrow keys?
 
 >check for other uses of arrow keys
 >why goes to idle state when window is hidden

@@ -198,11 +198,11 @@ macro_rules! t_bit_info {
 struct MandelbrotCoordsHP {
     columns: usize,
     // firstRow: usize,
-    // rows: usize,
+    rows: usize,
     xmin: Vec<u32>,
     dx: Vec<u32>,
     ymax: Vec<u32>,
-    // dy: Vec<u32>,
+    dy: Vec<u32>,
     maxIterations: i32,
 }
 
@@ -259,28 +259,30 @@ async fn compute_mandelbrot_hp(mandelbrot_coords_hp: web::Json<MandelbrotCoordsH
         32 => {
             let xmin = u32_to_t::<u32>(&mandelbrot_coords_hp.xmin);
             let dx = u32_to_t::<u32>(&mandelbrot_coords_hp.dx);
-            let y = u32_to_t::<u32>(&mandelbrot_coords_hp.ymax);
-            compute_mandelbrot_hp_rayon(&xmin, &dx, &y, mandelbrot_coords_hp.columns, mandelbrot_coords_hp.maxIterations, u32_chunks)
+            let yval = u32_to_t::<u32>(&mandelbrot_coords_hp.ymax);
+            let dy = u32_to_t::<u32>(&mandelbrot_coords_hp.dy);
+            compute_mandelbrot_hp_t(&xmin, &dx, &yval, &dy, mandelbrot_coords_hp.rows, mandelbrot_coords_hp.columns, mandelbrot_coords_hp.maxIterations, u32_chunks)
         }
         64 => {
             let xmin = u32_to_t::<u64>(&mandelbrot_coords_hp.xmin);
             let dx = u32_to_t::<u64>(&mandelbrot_coords_hp.dx);
-            let y = u32_to_t::<u64>(&mandelbrot_coords_hp.ymax);
-            compute_mandelbrot_hp_rayon(&xmin, &dx, &y, mandelbrot_coords_hp.columns, mandelbrot_coords_hp.maxIterations, u32_chunks)
+            let yval = u32_to_t::<u64>(&mandelbrot_coords_hp.ymax);
+            let dy = u32_to_t::<u64>(&mandelbrot_coords_hp.dy);
+            compute_mandelbrot_hp_t(&xmin, &dx, &yval, &dy, mandelbrot_coords_hp.rows, mandelbrot_coords_hp.columns, mandelbrot_coords_hp.maxIterations, u32_chunks)
         }
         128 => {
             let xmin = u32_to_t::<u128>(&mandelbrot_coords_hp.xmin);
             let dx = u32_to_t::<u128>(&mandelbrot_coords_hp.dx);
-            let y = u32_to_t::<u128>(&mandelbrot_coords_hp.ymax);
-            compute_mandelbrot_hp_rayon(&xmin, &dx, &y, mandelbrot_coords_hp.columns, mandelbrot_coords_hp.maxIterations, u32_chunks)
+            let yval = u32_to_t::<u128>(&mandelbrot_coords_hp.ymax);
+            let dy = u32_to_t::<u128>(&mandelbrot_coords_hp.dy);
+            compute_mandelbrot_hp_t(&xmin, &dx, &yval, &dy, mandelbrot_coords_hp.rows, mandelbrot_coords_hp.columns, mandelbrot_coords_hp.maxIterations, u32_chunks)
         }
         _ => panic!("illegal size!")
     };
-    HttpResponse::Ok().json(vec![iteration_counts; 1])
+    HttpResponse::Ok().json(iteration_counts)
 }
 
-use rayon::prelude::*;
-fn compute_mandelbrot_hp_rayon<T>(xmin: &[T], dx: &[T], y: &[T], columns: usize, max_iter: i32, u32_chunks: usize) -> Vec<i32>
+fn compute_mandelbrot_hp_t<T>(xmin: &[T], dx: &[T], yval: &[T], dy: &[T], rows: usize, columns: usize, max_iter: i32, u32_chunks: usize) -> Vec<Vec<i32>>
 where T: Sync + Zero + Copy,
     // add, sq, multiply, negate, incr, count_iterations requirements
     T: One + AddAssign + BitAndAssign + Sub<Output = T> + PartialEq +
@@ -289,37 +291,30 @@ where T: Sync + Zero + Copy,
     u64: AsPrimitive<T>,
     T: std::fmt::LowerHex,
 {
-    let num_size = xmin.len();
     // chunks: 1 for the integral part, plus however many T elements are needed for the fractional part
     let chunks = 1 + {
         let t_to_u32_size_ratio = size_of::<T>()/size_of::<u32>();
         (u32_chunks - 1 + t_to_u32_size_ratio - 1)/t_to_u32_size_ratio
     };
     // println!("{} {} {}", u32_chunks - 1 + unsafe { IMAGE_QUALITY }, u32_chunks - 1, chunks - 1 );
-    let num_slices = unsafe { NUM_SLICES };
-    let slice_size = columns/num_slices;
 
-    let mut x_vals = vec![vec![T::zero(); num_size]; columns];
-    x_vals[0].copy_from_slice(&xmin);
-    for i in 1..columns {
-        for j in 0..num_size {
-            x_vals[i][j] = x_vals[i - 1][j];
+    let mut x_val = xmin.to_vec();
+    let mut y_val = yval.to_vec();
+    let mut dy_neg = vec![T::zero(); xmin.len()];
+    negate(&dy, &mut dy_neg);
+
+    let mut hp_data = HPData::new(chunks);
+    let mut iteration_counts = vec![vec![0; columns]; rows];
+
+    for i in 0..rows {
+        for j in 0..columns {
+            iteration_counts[i][j] = count_iterations_hp(&mut hp_data, &x_val[0..chunks], &y_val[0..chunks], max_iter);
+            incr(&mut x_val, &dx);
         }
-        incr(&mut x_vals[i], &dx);
+        incr(&mut y_val, &dy_neg);
+        x_val.copy_from_slice(xmin);
     }
-
-    x_vals
-        .par_chunks(slice_size)
-        .map(| x_vals | {
-            let mut hp_data = HPData::new(chunks);
-            let mut iteration_counts = vec![0; x_vals.len()];
-            for i in 0..x_vals.len() {
-                iteration_counts[i] = count_iterations_hp(&mut hp_data, &x_vals[i][0..chunks], &y[0..chunks], max_iter);
-            }
-            iteration_counts
-        })
-        .flatten()
-        .collect()
+    iteration_counts
 }
 
 fn u32_to_t<T>(a: &[u32]) -> Vec<T>

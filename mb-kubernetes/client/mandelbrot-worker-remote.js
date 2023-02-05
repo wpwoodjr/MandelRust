@@ -1,10 +1,5 @@
-let /* boolean */ highPrecision;
-let /* int */ maxIterations, jobNumber, workerNumber;
-
-//let url = "http://localhost:8080/v1/mandelbrot/compute";
-//let url = "https://mandelbrot.stagek8s.gsk.com/v1/mandelbrot/compute";
-let url = "mb-compute";
-let retryLimit = 5;
+let jobNumber, workerNumber;
+const retryLimit = 5;
 
 function doIterationCounts(coords, url, retryCount) {
     let iterationCounts;
@@ -15,11 +10,6 @@ function doIterationCounts(coords, url, retryCount) {
         client.open("POST", url, false);
         client.setRequestHeader("Content-Type", "application/json");
         client.setRequestHeader("Accept", "application/json");
-        if (highPrecision) {
-            coords.ymax = array_from(coords.ymax);
-            coords.xmin = array_from(coords.xmin);
-            coords.dx = array_from(coords.dx);
-        }
         client.send(JSON.stringify(coords));
 
         if (client.status == 200) {
@@ -50,6 +40,9 @@ function doIterationCounts(coords, url, retryCount) {
     postMessage(returnData);
 }
 
+let highPrecision;
+let maxIterations;
+const url = "mb-compute";
 onmessage = function(msg) {
     let data = msg.data;
     if ( data[0] == "setup" ) {
@@ -60,12 +53,11 @@ onmessage = function(msg) {
     } else if ( data[0] == "task" ) {
         let firstRow = data[1];
         let columns = data[2];
-        let xmin = data[3];
-        let dx = data[4];
-        let ymax = data[5];
-        let dy = data[6];
+        let xmin = highPrecision ? array_from(data[3]) : data[3];
+        let dx = highPrecision ? array_from(data[4]) : data[4];
+        let ymax = highPrecision ? array_from(data[5]) : data[5];
+        let dy = highPrecision ? array_from(data[6]) : data[6];
         let nrows = data[7];
-        //console.log(workerNumber,xmin,dx,columns,ymax,dy,maxIterations,highPrecision);
 
         doIterationCounts({
                 xmin: xmin, dx: dx, columns: columns, ymax: ymax, dy: dy, firstRow: firstRow, rows: nrows, maxIterations: maxIterations
