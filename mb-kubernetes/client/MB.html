@@ -29,11 +29,11 @@
 
     Changes by Bill Wood:
     Jul/Aug 2019: Rewrote job processing to be client/server, also fixed y-value issue as above
-    Jul/Aug 2019: Changed HP_CUTOFF from 16 to 15 to avoid artifacts at the limits of f64 precision
-    Jul/Aug 2019: Added "High Precision" toggle
+                  Changed HP_CUTOFF from 16 to 15 to avoid artifacts at the limits of f64 precision
+                  Added "High Precision" toggle and rows/second info
     Jan/Feb 2023: Rewrote JavaScript server in Rust to get 10 times speedup in high precision computations
                   When zooming, the zoomed area is displayed using image interpolation while calculations are done
-                  Left, right, up, and down arrows shift the image appropriately; page down and page up zoom in and out
+                  Left, right, up, and down arrow key bindings shift the image appropriately; page down and page up zoom in and out
                   Max image width/height is now 7680 (8K)
                   Fixed off by factor of 10 error in zoom out by 10,000 and 100,000
                   Added option to run calculations locally on the browser in JavaScript, or on the backend Rust server
@@ -2668,10 +2668,10 @@ function init() {
     document.getElementById("applysize").onclick = doCustomSize;
     try {
         let item = localStorage.getItem("mandelbrotLocalOrRemote");
-        if (item == "remote") {
-            document.getElementById("remote").checked = true;
-        } else {
+        if (item == "local") {
             document.getElementById("local").checked = true;
+        } else {
+            document.getElementById("remote").checked = true;
         }
     }
     catch(e) {
