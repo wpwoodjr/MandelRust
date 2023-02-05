@@ -1076,11 +1076,24 @@ async function pageExists(url) {
     }
 }
 
+function initLocalOrRemote() {
+    try {
+        let item = localStorage.getItem("mandelbrotLocalOrRemote");
+        if (item == "local") {
+            document.getElementById("local").checked = true;
+        } else {
+            document.getElementById("remote").checked = true;
+        }
+    }
+    catch(e) {
+        document.getElementById("remote").checked = true;
+    }
+}
+
 function checkRemoteCanComputeMB() {
     pageExists("/remoteCanComputeMB").then(result => {
-        if (result) {
-            document.getElementById("remote").disabled = false;
-        } else {
+        if (! result) {
+            document.getElementById("remote").disabled = true;
             console.log("remote web server does not support Mandelbrot calculations");
             if (document.getElementById("remote").checked) {
                 document.getElementById("local").checked = true;
@@ -2666,16 +2679,8 @@ function init() {
     document.getElementById("interlaced").checked = interlaced;
     document.getElementById("imagesize").onchange = changeImageSize;
     document.getElementById("applysize").onclick = doCustomSize;
-    try {
-        let item = localStorage.getItem("mandelbrotLocalOrRemote");
-        if (item == "local") {
-            document.getElementById("local").checked = true;
-        } else {
-            document.getElementById("remote").checked = true;
-        }
-    }
-    catch(e) {
-    }
+    // must run before worker count init
+    initLocalOrRemote();
     try {
       var ct = Number(localStorage.getItem("mandelbrotWorkerCount" + (document.getElementById("local").checked ? "local" : "remote")));
     //   console.log("workers get (init) " + (document.getElementById("local").checked ? "local" : "remote") + " " + ct);
@@ -2728,10 +2733,8 @@ function setUpArrowKeys() {
         if (event.target.nodeName === "INPUT" && event.target.type === "text") {
             return;
         }
-        // prevent too many of these slowing down response
-        if (arrowTimeout) {
-            return;
-        }
+
+        let doStartStop = false;
         switch (event.key) {
             case "ArrowLeft":
             case "ArrowRight":
@@ -2739,7 +2742,7 @@ function setUpArrowKeys() {
             case "ArrowDown":
             case "PageDown":
             case "PageUp":
-                stopJob();
+                doStartStop = true;
                 break;
             case "z":
             case "Z":
@@ -2754,6 +2757,15 @@ function setUpArrowKeys() {
 
         // Cancel the default action to avoid it being handled twice
         event.preventDefault();
+
+        // prevent too many of these slowing down response
+        if (arrowTimeout) {
+            return;
+        }
+
+        if (doStartStop) {
+            stopJob();
+        }
 
         let doStart = true;
         const shiftLR = Math.max(1, Math.round(canvas.width/32));
@@ -2785,19 +2797,17 @@ function setUpArrowKeys() {
 
             case "z":
                 doUndo();
-                doStart = false;
                 break;
 
             case "y":
             case "Z":
                 doRedo();
-                doStart = false;
                 break;
         }
 
         arrowTimeout = setTimeout(function () {
             arrowTimeout = null;
-            if (doStart) {
+            if (doStartStop) {
                 startJob();
             }
         }, 0);
@@ -2858,7 +2868,7 @@ When the web server is hosted on Kubernetes, increasing the workers also brings 
         <label title="Run calculations locally in the browser or on the remote web server.">
         <input type="radio" id="local" name="location" value="local">
         <label for="local">Local</label>
-        <input type="radio" id="remote" name="location" value="remote" disabled>
+        <input type="radio" id="remote" name="location" value="remote">
         <label for="remote">Remote</label></label>
       </p>
       <p>
