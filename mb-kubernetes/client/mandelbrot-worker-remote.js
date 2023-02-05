@@ -32,7 +32,10 @@ function doIterationCounts(coords, url, retryCount) {
             return;
         } else {
             console.log("XMLHttpRequest failure, retry limit exceeded!\n" + error);
-            iterationCounts = [array_fill(new Array(coords.columns), -1)];
+            iterationCounts = [];
+            for (let i = 0; i < coords.rows; i++) {
+                iterationCounts[i] = array_fill(new Array(coords.columns), -1);
+            }
         }
     }
 
