@@ -2824,9 +2824,9 @@ function setUpArrowKeys() {
 Use page down and page up to zoom in and out, or the arrow keys to pan.  Double-clicking the image zooms 2X, or drag on it to draw a box.  For more info, instructions, and examples, <a href="MB-info.html">click here</a>.
 </p><p>
 Based on a browser-only Mandelbrot Set viewer by <a href=http://math.hws.edu/eck/index.html>David Eck</a>,
-this revised version can run calculations on a web server installed locally on a PC, in Docker, or on a Kubernetes cluster.
-By default it runs only in the browser; if the web server is installed then selecting "Remote" below will run calculations on the remote web server.
-The GitHub repository is <a href="https://github.com/wpwoodjr/Mandelbrot-for-Docker-and-Kubernetes/tree/master/mb-kubernetes">here</a>.
+this revised version can run calculations in the browser or on a backend web server.  By default it tries to use the web server;
+if the web server doesn't support calculations it runs in the browser.
+See the <a href="https://github.com/wpwoodjr/Mandelbrot-for-Docker-and-Kubernetes/tree/master/mb-kubernetes">GitHub repository</a> for more information.
 </p><p>
 Calculating the Mandelbrot Set is very computationally intensive, however it is parallelizable.
 Increasing the number of "Workers" below brings in more CPU threads to calculate rows of the image. 
@@ -2867,9 +2867,9 @@ When the web server is hosted on Kubernetes, increasing the workers also brings 
       <p>
         <label title="Run calculations locally in the browser or on the remote web server.">
         <input type="radio" id="local" name="location" value="local">
-        <label for="local">Local</label>
+        <label for="local">Browser</label>
         <input type="radio" id="remote" name="location" value="remote">
-        <label for="remote">Remote</label></label>
+        <label for="remote">Server</label></label>
       </p>
       <p>
         <label title="If checked, high precision arithmetic will be used even when its not needed (slower).">
