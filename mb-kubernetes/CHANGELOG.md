@@ -1,20 +1,18 @@
 ## David Eck
-    August, 2019. Added Palette Editor.
-    January, 2020. Improved Palette Editor.
-    April, 2020.  Cleaned up standard palettes, removed a few, added Dark Colors palette.
-    May, 2020.  Change maximum image width and height from 2500 to 10000 (but that
-        doesn't necessarily mean very large images will work on every device).
-    October, 2021.  Fixed a bug in startJob() and startSecondPass() that showed up
-        when the change in y-value from one line to the next is very small.  This was
-        done previously by successive subtraction, which introduced errors.  Thanks to
-        Robert Munafo for finding and fixing the bug.
-    August, 2022.  Use localStorage to save workerCount between sessions.
+* August, 2019. Added Palette Editor.
+* January, 2020. Improved Palette Editor.
+* April, 2020.  Cleaned up standard palettes, removed a few, added Dark Colors palette.
+* May, 2020.  Change maximum image width and height from 2500 to 10000 (but that doesn't necessarily mean very large images will work on every device).
+* October, 2021.  Fixed a bug in startJob() and startSecondPass() that showed up when the change in y-value from one line to the next is very small.  This was done previously by successive subtraction, which introduced errors.  Thanks to Robert Munafo for finding and fixing the bug.
+* August, 2022.  Use localStorage to save workerCount between sessions.
 
 ## Bill Wood
 ### Jul/Aug 2019
-* Rewrote job processing to be client/server, also fixed y-value issue as above
+* Rewrote job processing to be client/server
+* Fixed y-value issue as above
 * Changed HP_CUTOFF from 16 to 15 to avoid artifacts at the limits of f64 precision
-* Added "High Precision" toggle and rows/second info
+* Added "High Precision" toggle
+* Added rows/second display
 
 ### Jan/Feb 2023
 * Rewrote JavaScript server in Rust to get 10 times speedup in high precision computations
