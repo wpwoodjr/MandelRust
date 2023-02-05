@@ -14,7 +14,7 @@ use std::process::exit;
 
 use std::env;
 static mut IMAGE_QUALITY: usize = 1;
-static mut NUM_SLICES: usize = 2;
+static mut NUM_THREADS: usize = 2;
 static mut U_TYPE: usize = 128;
 
 fn main() {
@@ -57,8 +57,8 @@ Options:
             "-r" | "--rayon" => {
                 if i + 1 < args.len() {
                     i += 1;
-                    unsafe { NUM_SLICES = args[i].parse().unwrap() };
-                    if unsafe { NUM_SLICES } == 0 {
+                    unsafe { NUM_THREADS = args[i].parse().unwrap() };
+                    if unsafe { NUM_THREADS } == 0 {
                         println!("number of Rayon slices must be > 0!");
                         exit(1);
                     }
@@ -88,7 +88,7 @@ Options:
     }
 
     println!("Mandelbrot server running on URL {url} with {} Rayon thread(s), image quality {}, and {} bit unsigned integers for high precision calculations.",
-        unsafe { NUM_SLICES },
+        unsafe { NUM_THREADS },
         unsafe { 2 - IMAGE_QUALITY },
         unsafe { U_TYPE },
     );
@@ -282,6 +282,7 @@ async fn compute_mandelbrot_hp(mandelbrot_coords_hp: web::Json<MandelbrotCoordsH
     HttpResponse::Ok().json(iteration_counts)
 }
 
+use rayon::prelude::*;
 fn compute_mandelbrot_hp_t<T>(xmin: &[T], dx: &[T], yval: &[T], dy: &[T], rows: usize, columns: usize, max_iter: i32, u32_chunks: usize) -> Vec<Vec<i32>>
 where T: Sync + Zero + Copy,
     // add, sq, multiply, negate, incr, count_iterations requirements
@@ -298,23 +299,34 @@ where T: Sync + Zero + Copy,
     };
     // println!("{} {} {}", u32_chunks - 1 + unsafe { IMAGE_QUALITY }, u32_chunks - 1, chunks - 1 );
 
-    let mut x_val = xmin.to_vec();
-    let mut y_val = yval.to_vec();
     let mut dy_neg = vec![T::zero(); xmin.len()];
     negate(&dy, &mut dy_neg);
-
-    let mut hp_data = HPData::new(chunks);
-    let mut iteration_counts = vec![vec![0; columns]; rows];
-
-    for i in 0..rows {
-        for j in 0..columns {
-            iteration_counts[i][j] = count_iterations_hp(&mut hp_data, &x_val[0..chunks], &y_val[0..chunks], max_iter);
-            incr(&mut x_val, &dx);
-        }
-        incr(&mut y_val, &dy_neg);
-        x_val.copy_from_slice(xmin);
+    let mut y_vals = vec![vec![T::zero(); xmin.len()]; rows];
+    y_vals[0] = yval.to_vec();
+    for i in 1..rows {
+        (0..xmin.len()).for_each(| j | y_vals[i][j] = y_vals[i - 1][j]);
+        incr(&mut y_vals[i], &dy_neg);
     }
-    iteration_counts
+
+    let slice_size = core::cmp::max(1, rows/unsafe { NUM_THREADS });
+    y_vals
+        .par_chunks(slice_size)
+        .map(| y_vals | {
+            let mut x_val = xmin.to_vec();
+            let rows = y_vals.len();
+            let mut hp_data = HPData::new(chunks);
+            let mut iteration_counts = vec![vec![0; columns]; rows];
+            for i in 0..rows {
+                for j in 0..columns {
+                    iteration_counts[i][j] = count_iterations_hp(&mut hp_data, &x_val[0..chunks], &y_vals[i][0..chunks], max_iter);
+                    incr(&mut x_val, &dx);
+                }
+                x_val.copy_from_slice(xmin);
+            }
+            iteration_counts
+        })
+        .flatten()
+        .collect()
 }
 
 fn u32_to_t<T>(a: &[u32]) -> Vec<T>
