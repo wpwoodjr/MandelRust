@@ -16,14 +16,21 @@ onmessage = function(msg) {
         let xmin = data[3];
         let dx = data[4];
         let ymax = data[5];
+        let dy = data[6];
         let nrows = data[7];
         if (highPrecision) {
             //console.log(workerNumber,xmin,dx,columnCount,ymax,maxIterations,highPrecision);
-            createHPData(xmin, dx, columnCount);
-            let iterationCounts = new Array(columnCount);
-            for (var i = 0; i < columnCount; i++)
-                iterationCounts[i] = countIterationsHP(xs[i], ymax, maxIterations);
-            postMessage([ jobNumber, firstRow, [iterationCounts], workerNumber, nrows ]);
+            createHPData(xmin, dx, dy, columnCount);
+            let returnIterations = new Array(nrows);
+            for (let i = 0; i < nrows; i++) {
+                let iterationCounts = new Array(columnCount);
+                for (let j = 0; j < columnCount; j++) {
+                    iterationCounts[j] = countIterationsHP(xs[j], ymax, maxIterations);
+                }
+                returnIterations[i] = iterationCounts;
+                add(ymax, dy_neg, ymax.length);
+            }
+            postMessage([ jobNumber, firstRow, returnIterations, workerNumber, nrows ]);
         } else {
             let dy = data[6];
             let returnIterations = new Array(nrows);
@@ -91,7 +98,7 @@ function arraycopy( sourceArray, sourceStart, destArray, destStart, count ) {
 // ------- support for high-precision calculation ------------
 
 var  /* int[][] */ xs;
-var /* int[] */ y;
+var /* int[] */ dy_neg;
 
 var /* int[] */ work1,work2,work3;
 var /* int[] */ zx, zy;
@@ -100,9 +107,13 @@ var /* int */ chunks;
 
 var /* double */ log2of10 = Math.log(10)/Math.log(2);
 
-function createHPData(xmin, dx, columnCount) {
+function createHPData(xmin, dx, dy, columnCount) {
     chunks = xmin.length - 1;
-    y = new ArrayType(chunks+1);
+
+    dy_neg = new ArrayType(chunks+1);
+    arraycopy(dy, 0, dy_neg, 0, chunks+1);
+    negate(dy_neg, chunks+1);
+
     xs = new Array(columnCount);
     xs[0] = xmin; // must have xs.length = chunks+1
     for (var i = 1; i < columnCount; i++) {
@@ -116,6 +127,7 @@ function createHPData(xmin, dx, columnCount) {
             add(xs[i],dx,chunks+1);
         }
     }
+
     zx = new ArrayType(chunks);
     zy = new ArrayType(chunks);
     work1 = new ArrayType(chunks);
