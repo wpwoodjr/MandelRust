@@ -59,7 +59,7 @@ Options:
                     i += 1;
                     unsafe { NUM_THREADS = args[i].parse().unwrap() };
                     if unsafe { NUM_THREADS } == 0 {
-                        println!("number of Rayon slices must be > 0!");
+                        println!("number of Rayon threads must be > 0!");
                         exit(1);
                     }
                 } else {
