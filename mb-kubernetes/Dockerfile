@@ -6,16 +6,18 @@ RUN apk add curl build-base \
 && sh <(curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs) -y
 
 # build
+COPY mb-arith mb-arith
+
 COPY mb-rust-server mb-rust-server
-RUN ls -lat
 RUN source "$HOME/.cargo/env" \
-&& cd mb-rust-server \
+&& cd /mb-rust-server \
 && cargo build --release \
 && target/release/mb-rust-server --help
 
 COPY mb-wasm mb-wasm
 RUN source "$HOME/.cargo/env" \
-&& cd mb-wasm \
+&& cd /mb-wasm \
+&& rustup target add wasm32-unknown-unknown \
 && cargo build --target wasm32-unknown-unknown --release
 
 # install web app and server
@@ -25,7 +27,7 @@ WORKDIR /usr/src/app
 # copy app files and server
 COPY client .
 COPY --from=builder /mb-rust-server/target/release/mb-rust-server .
-COPY --from=builder /target/wasm32-unknown-unknown/release/mb_wasm.wasm mb-wasm.wasm
+COPY --from=builder /mb-wasm/target/wasm32-unknown-unknown/release/mb_wasm.wasm mb-wasm.wasm
 
 # create a user to run as
 RUN addgroup --gid 1001 -S app \

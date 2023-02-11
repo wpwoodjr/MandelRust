@@ -27,7 +27,7 @@ class WasmMemory {
         this.capacity = this.memory.buffer.byteLength/Uint32Array.BYTES_PER_ELEMENT;
         this.length = 0;
         this.byteLength = 0;
-        console.log(`creating new WasmMemory32 with capacity ${this.capacity}`)
+        // console.log(`creating new WasmMemory32 with capacity ${this.capacity}`)
     }
     newArrayU32(length) {
         // while (length + this.length > this.capacity) {
