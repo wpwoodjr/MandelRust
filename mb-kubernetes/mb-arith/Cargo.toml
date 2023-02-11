@@ -1,15 +1,12 @@
 [package]
-name = "mb-rust-server"
+name = "mb-arith"
 version = "0.1.0"
 edition = "2021"
 authors = ["Bill Wood <wpwoodjr@gmail.com>"]
 
 [dependencies]
-actix-web = "*"
-actix-rt = "*"
-actix-files = "*"
-serde = { version = "*", features = ["derive"] }
-mb-arith = { path = "../mb-arith" }
+num = "*"
+rayon = "*"
 
 [profile.release]
 opt-level = 3

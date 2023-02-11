@@ -39,6 +39,7 @@
                   Added option to run calculations locally on the browser in JavaScript, or on the backend Rust server
                   Added undo (ctrl-z) and redo (ctrl-shift-z and ctrl-y) key bindings
                   Fixed small bug where dx value was being used to increment yval instead of dy value in HP calculations
+                  Rewrote browser-side computations from JavaScript to Rust WASM
 
 -->
 <html>
@@ -201,6 +202,13 @@ var digits, chunks;
 var /* BigDecimal */ twoTo16 = new BigDecimal("65536");
 var log2of10 = Math.log(10)/Math.log(2);
 
+let compute_mandelbrot;
+WebAssembly
+    .compileStreaming(fetch("mb-wasm.wasm"))
+    .then(wasmModule => {
+        compute_mandelbrot = wasmModule;
+        init();
+    });
 
 function convert( /* int[] */ x, /* BigDecimal */ X, /* int */ count) {
     var neg = false;
@@ -333,7 +341,10 @@ function repaint() {
     }
 }
 
+const jsRemoteWorker = "mandelbrot-worker-remote-v2.0.js"
+const jsLocalWorker = "mandelbrot-worker-local-v2.2.js"
 function newWorkers(count) {
+    // console.log("newWorkers from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     var i;
     if (workers) {
        for (i = 0; i < workers.length; i++) {
@@ -341,34 +352,30 @@ function newWorkers(count) {
        }
     }
     workers = [];
-    let jsWorker = "mandelbrot-worker-remote-v2.0.js";
-    if (document.getElementById("local").checked) {
-        jsWorker = "mandelbrot-worker-local-v2.1.js"
-    }
+    let jsWorker = document.getElementById("local").checked ? jsLocalWorker : jsRemoteWorker;
     for (i = 0; i < count; i++) {
-       workers[i] = new Worker(jsWorker);
-       workers[i].onmessage = jobFinished;
+        workers[i] = new Worker(jsWorker);
+        workers[i].onmessage = jobFinished;
+        workers[i].postMessage([ "wasm", i, compute_mandelbrot ]);
     }
 }
 
 function stopJob() {
     // console.log("stopJob", running, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     if (running) {
-        if (zoomTimeout) {
-            clearInterval(zoomTimeout);
-            zoomTimeout = null;
+        jobNum++;
+        running = false;
+        document.getElementById("stop").disabled = true;
+        if (repaintTimeout) {
+            clearTimeout(repaintTimeout);
+            repaintTimeout = null;
         }
-       jobNum++;
-       running = false;
-       document.getElementById("stop").disabled = true;
-       if (repaintTimeout)
-          clearTimeout(repaintTimeout);
-       repaintTimeout = null;
-       repaint();
-       if (timePerJob < 0 || timePerJob > 150) {
-           //console.log("Making new workers");
-           newWorkers(workerCount);
-       }
+        repaint();
+        // whatever we put here isn't enough time for deep explorations
+        if (timePerJob < 0 || timePerJob > 150) {
+            // console.log("Making new workers, timePerJob = ", timePerJob);
+            newWorkers(workerCount);
+        }
     }
 }
 
@@ -1048,7 +1055,7 @@ function Mouser(canvas, startDrag, continueDrag, endDrag, mouseMoveOnCanvasOnly)
 function changeWorkerCount() {
     var ct = Number(document.getElementById("threadCountSelect").value);
     if (workers && ct == workers.length)
-       return;
+        return;
     var restart  = running;
     if (running) {
         stopJob();
@@ -1059,8 +1066,8 @@ function changeWorkerCount() {
         startJob();
     }
     try {
-      localStorage.setItem("mandelbrotWorkerCount" + (document.getElementById("local").checked ? "local" : "remote"), "" + ct);
-    //   console.log("workers set " + (document.getElementById("local").checked ? "local" : "remote") + " " + ct);
+        localStorage.setItem("mandelbrotWorkerCount" + (document.getElementById("local").checked ? "local" : "remote"), "" + ct);
+        // console.log("workers set " + (document.getElementById("local").checked ? "local" : "remote") + " " + ct);
     }
     catch(e) {
     }
@@ -2815,7 +2822,6 @@ function setUpArrowKeys() {
 }
 </script>
 </head>
-<body onload="init()">
 
 <noscript><b>Sorry, this page requires JavaScript.</b></noscript>
 

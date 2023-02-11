@@ -1,17 +1,18 @@
 [package]
-name = "mb-rust-server"
+name = "mb-wasm"
 version = "0.1.0"
 edition = "2021"
 authors = ["Bill Wood <wpwoodjr@gmail.com>"]
 
+[lib]
+crate-type = ["cdylib"]
+
 [dependencies]
-actix-web = "*"
-actix-rt = "*"
-actix-files = "*"
-serde = { version = "*", features = ["derive"] }
 mb-arith = { path = "../mb-arith" }
 
 [profile.release]
 opt-level = 3
+panic = "abort"
 lto = true
 codegen-units = 1
+strip = "symbols"
