@@ -3,8 +3,6 @@
     By Bill Wood, Jan/Feb 2023
 */
 
-use mb_arith::*;
-
 pub fn set_panic_hook() {
     // When the `console_error_panic_hook` feature is enabled, we can call the
     // `set_panic_hook` function at least once during initialization, and then
@@ -16,6 +14,31 @@ pub fn set_panic_hook() {
     console_error_panic_hook::set_once();
 }
 
+
+// *** alloc/dealloc for JavaScript *** //
+// https://radu-matei.com/blog/practical-guide-to-wasm-memory/
+use std::alloc::{alloc, dealloc, Layout};
+
+#[no_mangle]
+pub extern "C" fn malloc(size: u32) -> *mut u8 {
+    let align = std::mem::align_of::<usize>();
+    unsafe {
+        let layout = Layout::from_size_align_unchecked(size as usize, align);
+        alloc(layout)
+    }
+}
+
+#[no_mangle]
+pub extern "C"  fn dalloc(ptr: *mut u8, size: u32) {
+    let align = std::mem::align_of::<usize>();
+    unsafe {
+        let layout = Layout::from_size_align_unchecked(size as usize, align);
+        dealloc(ptr, layout);
+    }
+}
+
+
+use mb_arith::*;
 
 // *** low precision *** //
 #[no_mangle]
@@ -30,54 +53,35 @@ pub extern "C" fn compute_mandelbrot(xmin: f64, dx: f64, columns: u32, y: f64, m
 
 
 // *** high precision *** //
-type UInt = u32;
-const ZERO: UInt = 0;
-const T_LOW_BITS: UInt = 0xFFFF;
-const T_8_TEST: UInt = (T_LOW_BITS >> 3) << 3;
-// it's called the "what test" because I haven't figured out what it does :)
-const T_8_WHAT_TEST: UInt = (T_LOW_BITS >> 4) << 4;
+use core::mem::size_of;
+type UInt = u64;
 
 #[no_mangle]
-pub extern "C" fn count_iterations_hp(x: *const u32, y: *const u32, max_iterations: i32, len: u32, mem_offset: *mut u32) -> i32 {
+pub extern "C" fn compute_mandelbrot_hp(xmin: *const u32, len: u32, dx: *const u32, columns: u32, y: *const u32, max_iterations: i32, iteration_counts: *mut i32) {
 
     let len = len as usize;
-    let x = unsafe { std::slice::from_raw_parts(x, len - 1) };
-    let y = unsafe { std::slice::from_raw_parts(y, len - 1) };
- 
-    let chunks = len - 1;
-    let zx = unsafe { std::slice::from_raw_parts_mut(mem_offset, chunks) };
-    let zy = unsafe { std::slice::from_raw_parts_mut(mem_offset.add(chunks), chunks) };
-    let work1 = unsafe { std::slice::from_raw_parts_mut(mem_offset.add(2*chunks), chunks) };
-    let work2 = unsafe { std::slice::from_raw_parts_mut(mem_offset.add(3*chunks), chunks) };
-    let work3 = unsafe { std::slice::from_raw_parts_mut(mem_offset.add(4*chunks), chunks) };
-    let work4 = unsafe { std::slice::from_raw_parts_mut(mem_offset.add(5*chunks), chunks) };
+    let xmin = unsafe { std::slice::from_raw_parts(xmin, len) };
+    let dx = unsafe { std::slice::from_raw_parts(dx, len) };
+    let y = unsafe { std::slice::from_raw_parts(y, len) };
+    let columns = columns as usize;
+    let iteration_counts = unsafe { std::slice::from_raw_parts_mut(iteration_counts, columns) };
 
-    let mut count = 0;
-    zx.copy_from_slice(x);
-    zy.copy_from_slice(y);
+    // ignore lowest 16 bits for efficiency during Mandelbrot calculation, has no impact on image quality
+    // use all bits for incrementing x_val though
+    let u32_chunks = len - 1;
+    // chunks: 1 for the integral part, plus however many T elements are needed for the fractional part
+    let chunks = 1 + {
+        let t_to_u32_size_ratio = size_of::<UInt>()/size_of::<u32>();
+        (u32_chunks - 1 + t_to_u32_size_ratio - 1)/t_to_u32_size_ratio
+    };
 
-    // while count < max_iterations && zx*zx + zy*zy < 8.0 {
-    while count < max_iterations {
-        sq(zx, work3, work1);
-        sq(zy, work3, work2);
-        add(work1, work2, work3);
-        if (work3[0] & T_8_TEST) != ZERO && (work3[0] & T_8_TEST) != T_8_WHAT_TEST {
-            return count;
-        }
+    let mut x_val = u32_to_t::<UInt>(xmin);
+    let dx = u32_to_t::<UInt>(dx);
+    let y = u32_to_t::<UInt>(y);
+    let mut hp_data = HPData::new(chunks);
 
-        // let new_zx = zx*zx - zy*zy + x;
-        negate(work2, work3);
-        add(work1, work3, work2);
-        add(work2, x, work1);
-
-        // zy = 2.0*zx*zy + y;
-        add(zx, zx, work2);
-        // zx = new_zx;
-        zx.copy_from_slice(work1);
-        multiply(work2, zy, work1, work3, work4);
-        add(work4, y, zy);
-
-        count += 1;
+    for i in 0..columns {
+        iteration_counts[i] = count_iterations_hp(&mut hp_data, &x_val[0..chunks], &y[0..chunks], max_iterations);
+        incr(&mut x_val, &dx);
     }
-    -1
 }

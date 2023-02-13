@@ -42,7 +42,7 @@ macro_rules! t_bit_info {
     };
 }
 
-struct HPData<T> {
+pub struct HPData<T> {
     work1: Vec<T>,
     work2: Vec<T>,
     work3: Vec<T>,
@@ -52,7 +52,7 @@ struct HPData<T> {
 }
 
 impl<T> HPData<T> {
-    fn new(chunks: usize) -> HPData::<T>
+    pub fn new(chunks: usize) -> HPData::<T>
     where T: Zero + Copy,
     {
         HPData::<T> {
@@ -64,53 +64,6 @@ impl<T> HPData<T> {
             zy: vec![T::zero(); chunks],
         }
     }
-}
-
-use rayon::prelude::*;
-pub fn compute_mandelbrot_hp_t<T>(xmin: &[T], dx: &[T], yval: &[T], dy: &[T], rows: usize, columns: usize, max_iter: i32, u32_chunks: usize, num_threads: usize) -> Vec<Vec<i32>>
-where T: Sync + Zero + Copy,
-    // add, sq, multiply, negate, incr, count_iterations requirements
-    T: One + AddAssign + BitAndAssign + Sub<Output = T> + PartialEq +
-        BitAnd + Shr<usize, Output = T> + Shl<usize, Output = T> + Copy + 'static,
-    <T as BitAnd>::Output: PartialEq<T>,
-    u64: AsPrimitive<T>,
-    T: std::fmt::LowerHex,
-{
-    // chunks: 1 for the integral part, plus however many T elements are needed for the fractional part
-    let chunks = 1 + {
-        let t_to_u32_size_ratio = size_of::<T>()/size_of::<u32>();
-        (u32_chunks - 1 + t_to_u32_size_ratio - 1)/t_to_u32_size_ratio
-    };
-    // println!("{} {} {}", u32_chunks - 1 + unsafe { IMAGE_QUALITY }, u32_chunks - 1, chunks - 1 );
-
-    let mut dy_neg = vec![T::zero(); xmin.len()];
-    negate(&dy, &mut dy_neg);
-    let mut y_vals = vec![vec![T::zero(); xmin.len()]; rows];
-    y_vals[0] = yval.to_vec();
-    for i in 1..rows {
-        (0..xmin.len()).for_each(| j | y_vals[i][j] = y_vals[i - 1][j]);
-        incr(&mut y_vals[i], &dy_neg);
-    }
-
-    let slice_size = core::cmp::max(1, rows/num_threads);
-    y_vals
-        .par_chunks(slice_size)
-        .map(| y_vals | {
-            let mut x_val = xmin.to_vec();
-            let rows = y_vals.len();
-            let mut hp_data = HPData::new(chunks);
-            let mut iteration_counts = vec![vec![0; columns]; rows];
-            for i in 0..rows {
-                for j in 0..columns {
-                    iteration_counts[i][j] = count_iterations_hp(&mut hp_data, &x_val[0..chunks], &y_vals[i][0..chunks], max_iter);
-                    incr(&mut x_val, &dx);
-                }
-                x_val.copy_from_slice(xmin);
-            }
-            iteration_counts
-        })
-        .flatten()
-        .collect()
 }
 
 pub fn u32_to_t<T>(a: &[u32]) -> Vec<T>
@@ -175,7 +128,7 @@ function arraycopy( sourceArray, sourceStart, destArray, destStart, count ) {
    }
 }
 */
-fn count_iterations_hp<T>(hp_data: &mut HPData<T>, x: &[T], y: &[T], max_iterations: i32) -> i32
+pub fn count_iterations_hp<T>(hp_data: &mut HPData<T>, x: &[T], y: &[T], max_iterations: i32) -> i32
 where T: Zero + BitAnd + Shr<usize, Output = T> + Shl<usize, Output = T> + Copy + 'static,
     <T as BitAnd>::Output: PartialEq<T>,
     u64: AsPrimitive<T>,

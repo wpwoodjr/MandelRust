@@ -9,6 +9,8 @@ actix-web = "*"
 actix-rt = "*"
 actix-files = "*"
 serde = { version = "*", features = ["derive"] }
+rayon = "*"
+num = "*"
 mb-arith = { path = "../mb-arith" }
 
 [profile.release]

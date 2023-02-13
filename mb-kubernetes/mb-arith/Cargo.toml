@@ -6,7 +6,6 @@ authors = ["Bill Wood <wpwoodjr@gmail.com>"]
 
 [dependencies]
 num = "*"
-rayon = "*"
 
 [profile.release]
 opt-level = 3
