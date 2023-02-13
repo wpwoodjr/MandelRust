@@ -342,7 +342,7 @@ function repaint() {
 }
 
 const jsRemoteWorker = "mandelbrot-worker-remote-v2.0.js"
-const jsLocalWorker = "mandelbrot-worker-local-v2.2.js"
+const jsLocalWorker = "mandelbrot-worker-local-wasm.js"
 function newWorkers(count) {
     // console.log("newWorkers from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     var i;
