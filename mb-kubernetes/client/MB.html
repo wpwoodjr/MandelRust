@@ -237,8 +237,6 @@ function convert( /* int[] */ x, /* BigDecimal */ X, /* int */ count) {
     }
 }
 
-
-
 function setLimits(x1, x2, y1, y2, recordUndo) {
     var oldLimits = [xmin_requested,xmax_requested,ymin_requested,ymax_requested];
     xmin_requested = x1;
@@ -307,7 +305,6 @@ function checkAspect() {  // adjust requested x/y limits to match aspect ratio o
     }
 }
 
-
 function doDraw() {
     // console.log("doDraw from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     if (zoomTimeout) {
@@ -320,24 +317,22 @@ function doDraw() {
     }
 }
 
-let startTime, rowsCompleted;
+let startTime, rowsCompleted, rowsPerSecond;
 
 function repaint() {
     // console.log("repaint from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     doDraw();
-    let elapsedSecs = (Date.now() - startTime)/1000.0;
-    let rowsPerSecond = (rowsCompleted/elapsedSecs).toPrecision(3) + " rows per second";
+    let rpsText = rowsPerSecond.toPrecision(3) + " rows per second";
     if (running) {
-        repaintTimeout = setTimeout(repaint, 500);
+        repaintTimeout = setTimeout(repaint, 750);
         let pass = state == COMPUTING_SECOND_PASS ? " second pass" : "";
-        rowsPerSecond = " at " + rowsPerSecond;
         let prec = highPrecision? "high precision, " + digits + " digits" : "normal precision";
         document.getElementById("status").innerHTML =
-                    "Computing" + pass + ", " + prec + 
-                    (elapsedSecs == 0 ? "" : ("...  Completed " + jobsCompleted + " of " + canvas.height + " rows" + rowsPerSecond));
+                    "Computing" + pass + ", " + prec +
+                    "...  Completed " + jobsCompleted + " of " + canvas.height + " rows at " + rpsText;
     }
     else {
-        document.getElementById("status").innerHTML = "Idle (" + rowsPerSecond + ")";
+        document.getElementById("status").innerHTML = "Idle (" + rpsText + ")";
     }
 }
 
@@ -345,15 +340,14 @@ const jsRemoteWorker = "mandelbrot-worker-remote-v2.0.js"
 const jsLocalWorker = "mandelbrot-worker-local-wasm.js"
 function newWorkers(count) {
     // console.log("newWorkers from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
-    var i;
     if (workers) {
-       for (i = 0; i < workers.length; i++) {
+       for (let i = 0; i < workers.length; i++) {
           workers[i].terminate();
        }
     }
     workers = [];
     let jsWorker = document.getElementById("local").checked ? jsLocalWorker : jsRemoteWorker;
-    for (i = 0; i < count; i++) {
+    for (let i = 0; i < count; i++) {
         workers[i] = new Worker(jsWorker);
         workers[i].onmessage = jobFinished;
         workers[i].postMessage([ "wasm", i, compute_mandelbrot ]);
@@ -371,9 +365,8 @@ function stopJob() {
             repaintTimeout = null;
         }
         repaint();
-        // whatever we put here isn't enough time for deep explorations
         if (timePerJob < 0 || timePerJob > 150) {
-            // console.log("Making new workers, timePerJob = ", timePerJob);
+            console.log("Making new workers, timePerJob = ", timePerJob);
             newWorkers(workerCount);
         }
     }
@@ -468,6 +461,7 @@ function startJob() {
     }
     startTime = Date.now();
     rowsCompleted = 0;
+    rowsPerSecond = 0;
     jobsCompleted = 0;
     for (var i = 0; i < workerCount; i++) {
         var j = jobs.pop();
@@ -519,8 +513,9 @@ function jobFinished(msg) {
             //}
         }
     }
-    jobsCompleted += nRows;
     rowsCompleted += nRows;
+    rowsPerSecond = rowsCompleted/((Date.now() - startTime)/1000.0);
+    jobsCompleted += nRows;
     timePerJob = ( (new Date().getTime()) - jobStartTime) / jobsCompleted;
     if (state == COMPUTING_FIRST_PASS) {
         if (jobsCompleted == canvas.height) {
@@ -618,7 +613,7 @@ function startSecondPass() {
     document.getElementById("stop").disabled = false;
     var prec = highPrecision? "high precision, " + digits + " digits" : "normal precision";
     document.getElementById("status").innerHTML = "Computing 2nd Pass, " + prec + "...";
-    repaintTimeout = setTimeout(repaint,500);
+    repaintTimeout = setTimeout(repaint,750);
     timePerJob = -1;
     jobStartTime = new Date().getTime();
     state = COMPUTING_SECOND_PASS;

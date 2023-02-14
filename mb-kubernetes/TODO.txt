@@ -1,7 +1,7 @@
 optimize redraw on undo
 set an undo for arrow keys?
 look at code for restarting workers in stopJob
-is non-arith server version faster 150 vs 130 on link?
+>is non-arith server version faster 150 vs 130 on link? no
 Mul not needing to be a trait bound?
 
 >add build.sh for comput_mandelbrot.wasm
