@@ -150,7 +150,9 @@ where T: Zero + BitAnd + Shr<usize, Output = T> + Shl<usize, Output = T> + Copy 
         sq(&hp_data.zx, &mut hp_data.work3, &mut hp_data.work1);
         sq(&hp_data.zy, &mut hp_data.work3, &mut hp_data.work2);
         add(&hp_data.work1, &hp_data.work2, &mut hp_data.work3);
-        if (hp_data.work3[0] & t_8_test) != T::zero() && (hp_data.work3[0] & t_8_test) != t_8_what_test {
+        // let test8 = hp_data.work3[0] & t_8_test;
+        let test8 = unsafe { *hp_data.work3.get_unchecked(0) } & t_8_test;
+        if test8 != T::zero() && test8 != t_8_what_test {
             return count;
         }
 
@@ -191,19 +193,25 @@ where T: Zero + One + AddAssign + BitAnd + BitAndAssign + Sub<Output = T> + Copy
     let (_, t_low_bits) = t_bit_info!();
     let chunks = out.len();
     for i in 0..chunks {
-        out[i] = t_low_bits - x[i];
+        // out[i] = t_low_bits - x[i];
+        unsafe { *out.get_unchecked_mut(i) = t_low_bits - *x.get_unchecked(i); }
     }
 
     debug_assert!(chunks > 0);
     let mut i = chunks - 1;
-    out[i] += T::one();
+    // out[i] += T::one();
+    unsafe { *out.get_unchecked_mut(i) += T::one(); }
     let t_overflow_test = t_low_bits + T::one();
-    while i > 0 && out[i] & t_overflow_test != T::zero() {
-        out[i] &= t_low_bits;
-        out[i - 1] += T::one();
+    // while i > 0 && out[i] & t_overflow_test != T::zero() {
+    while i > 0 && unsafe { *out.get_unchecked(i) } & t_overflow_test != T::zero() {
+        // out[i] &= t_low_bits;
+        unsafe { *out.get_unchecked_mut(i) &= t_low_bits };
+        // out[i - 1] += T::one();
+        unsafe { *out.get_unchecked_mut(i - 1) += T::one() };
         i -= 1;
     }
-    out[0] &= t_low_bits;
+    // out[0] &= t_low_bits;
+    unsafe { *out.get_unchecked_mut(0) &= t_low_bits };
 }
 
 /*
@@ -226,9 +234,12 @@ where T: Zero + AddAssign + Shr<usize, Output = T> + BitAndAssign + Copy + 'stat
     let mut i = x.len();
     while i > 0 {
         i -= 1;
-        x[i] += dx[i] + carry;
-        carry = x[i] >> t_size_bits/2;
-        x[i] &= t_low_bits;
+        // x[i] += dx[i] + carry;
+        unsafe { *x.get_unchecked_mut(i) += *dx.get_unchecked(i) + carry };
+        // carry = x[i] >> t_size_bits/2;
+        carry = unsafe { *x.get_unchecked(i) } >> t_size_bits/2;
+        // x[i] &= t_low_bits;
+        unsafe { *x.get_unchecked_mut(i) &= t_low_bits };
     }
 }
 
@@ -241,9 +252,12 @@ where T: Zero + AddAssign + Shr<usize, Output = T> + BitAndAssign + Copy + 'stat
     let mut i = out.len();
     while i > 0 {
         i -= 1;
-        out[i] = x[i] + y[i] + carry;
-        carry = out[i] >> t_size_bits/2;
-        out[i] &= t_low_bits;
+        // out[i] = x[i] + y[i] + carry;
+        unsafe { *out.get_unchecked_mut(i) = *x.get_unchecked(i) + *y.get_unchecked(i) + carry };
+        // carry = out[i] >> t_size_bits/2;
+        carry = unsafe { *out.get_unchecked(i) } >> t_size_bits/2;
+        // out[i] &= t_low_bits;
+        unsafe { *out.get_unchecked_mut(i) &= t_low_bits };
     }
 }
 
@@ -303,8 +317,10 @@ where T: Zero + One + BitAnd + Shr<usize, Output = T> + Copy + 'static,
     let (_, t_low_bits) = t_bit_info!();
     let t_neg_test = (t_low_bits + T::one()) >> 1;
 
-    let negx = (x[0] & t_neg_test) != T::zero();
-    let negy = (y[0] & t_neg_test) != T::zero();
+    // let negx = (x[0] & t_neg_test) != T::zero();
+    let negx = (unsafe { *x.get_unchecked(0) } & t_neg_test) != T::zero();
+    // let negy = (y[0] & t_neg_test) != T::zero();
+    let negy = (unsafe { *y.get_unchecked(0) } & t_neg_test) != T::zero();
     if negx != negy {
         if negx {
             negate(x, work1);
@@ -330,7 +346,9 @@ where T: Zero + AddAssign + Mul<Output = T> + Shr<usize, Output = T> + BitAndAss
     let (t_size_bits, t_low_bits) = t_bit_info!();
     let count = out.len();
 
-    if x[0] == T::zero() {
+    // let x0 = x[0];
+    let x0 = unsafe { *x.get_unchecked(0) };
+    if x0 == T::zero() {
         // for i in 0..count {
         //    out[i] = T::zero();
         // }
@@ -340,27 +358,37 @@ where T: Zero + AddAssign + Mul<Output = T> + Shr<usize, Output = T> + BitAndAss
         let mut i = count;
         while i > 0 {
             i -= 1;
-            out[i] = x[0]*y[i] + carry;
-            carry = out[i] >> t_size_bits/2;
-            out[i] &= t_low_bits;
+            // out[i] = x0*y[i] + carry;
+            unsafe { *out.get_unchecked_mut(i) = x0* *y.get_unchecked(i) + carry };
+            // carry = out[i] >> t_size_bits/2;
+            carry = unsafe { *out.get_unchecked(i) } >> t_size_bits/2;
+            // out[i] &= t_low_bits;
+            unsafe { *out.get_unchecked_mut(i) &= t_low_bits };
         }
     }
 
     for j in 1..count {
         let mut i = count - j;
-        let mut carry = (x[j]*y[i]) >> t_size_bits/2;
+        // let mut carry = (x[j]*y[i]) >> t_size_bits/2;
+        let mut carry = unsafe { *x.get_unchecked(j)* *y.get_unchecked(i) } >> t_size_bits/2;
         let mut k = count - 1;
         while i > 0 {
             i -= 1;
-            out[k] += x[j]*y[i] + carry;
-            carry = out[k] >> t_size_bits/2;
-            out[k] &= t_low_bits;
+            // out[k] += x[j]*y[i] + carry;
+            unsafe { *out.get_unchecked_mut(k) += *x.get_unchecked(j)* *y.get_unchecked(i) + carry };
+            // carry = out[k] >> t_size_bits/2;
+            carry = unsafe { *out.get_unchecked(k) } >> t_size_bits/2;
+            // out[k] &= t_low_bits;
+            unsafe { *out.get_unchecked_mut(k) &= t_low_bits };
             k -= 1;
         }
         while carry != T::zero() {
-            out[k] += carry;
-            carry = out[k] >> t_size_bits/2;
-            out[k] &= t_low_bits;
+            // out[k] += carry;
+            unsafe { *out.get_unchecked_mut(k) += carry };
+            // carry = out[k] >> t_size_bits/2;
+            carry = unsafe { *out.get_unchecked(k) } >> t_size_bits/2;
+            // out[k] &= t_low_bits;
+            unsafe { *out.get_unchecked_mut(k) &= t_low_bits };
             if k == 0 {
                 break;
             }
@@ -378,7 +406,8 @@ where T: Zero + One + BitAnd + Shr<usize, Output = T> + Copy + 'static,
 {
     let (_, t_low_bits) = t_bit_info!();
     let t_neg_test = (t_low_bits + T::one()) >> 1;
-    let neg = (x[0] & t_neg_test) != T::zero();
+    // let neg = (x[0] & t_neg_test) != T::zero();
+    let neg = (unsafe { *x.get_unchecked(0) } & t_neg_test) != T::zero();
     if neg {
         negate(x, work);
         multiply_pos(work, work, out);
