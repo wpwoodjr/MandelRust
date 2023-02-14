@@ -320,7 +320,7 @@ function doDraw() {
 
 let startTime, rowsCompleted, rowsPerSecond;
 
-function repaint() {
+function repaint(dontUpdateStatusToIdle) {
     // console.log("repaint from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     doDraw();
     let rpsText = rowsPerSecond.toPrecision(3) + " rows per second";
@@ -332,7 +332,7 @@ function repaint() {
                     "Computing" + pass + ", " + prec +
                     "...  Completed " + jobsCompleted + " of " + canvas.height + " rows at " + rpsText;
     }
-    else {
+    else if (! dontUpdateStatusToIdle) {
         document.getElementById("status").innerHTML = "Idle (" + rpsText + ")";
     }
 }
@@ -355,7 +355,7 @@ function newWorkers(count) {
     }
 }
 
-function stopJob(dontCallRepaint) {
+function stopJob(dontUpdateStatusToIdle) {
     // console.log("stopJob", running, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     if (running) {
         jobNum++;
@@ -365,9 +365,7 @@ function stopJob(dontCallRepaint) {
             clearTimeout(repaintTimeout);
             repaintTimeout = null;
         }
-        if (! dontCallRepaint) {
-            repaint();
-        }
+        repaint(dontUpdateStatusToIdle);
         if (timePerJob < 0 || timePerJob > 150) {
             console.log("Making new workers, timePerJob = ", timePerJob);
             newWorkers(workerCount);
