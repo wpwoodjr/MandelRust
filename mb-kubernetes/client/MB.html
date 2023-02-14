@@ -149,6 +149,7 @@ var jobNum = 0;
 
 var running = false;
 var repaintTimeout;
+const repaintTimer = 750, repaintInitialTimer = 333;
 
 var /* BigDecimal */ xmin_requested, ymin_requested, xmax_requested, ymax_requested;
 var /* BigDecimal */ xmin, ymin, xmax, ymax;
@@ -324,7 +325,7 @@ function repaint() {
     doDraw();
     let rpsText = rowsPerSecond.toPrecision(3) + " rows per second";
     if (running) {
-        repaintTimeout = setTimeout(repaint, 750);
+        repaintTimeout = setTimeout(repaint, repaintTimer);
         let pass = state == COMPUTING_SECOND_PASS ? " second pass" : "";
         let prec = highPrecision? "high precision, " + digits + " digits" : "normal precision";
         document.getElementById("status").innerHTML =
@@ -354,7 +355,7 @@ function newWorkers(count) {
     }
 }
 
-function stopJob() {
+function stopJob(dontCallRepaint) {
     // console.log("stopJob", running, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     if (running) {
         jobNum++;
@@ -364,7 +365,9 @@ function stopJob() {
             clearTimeout(repaintTimeout);
             repaintTimeout = null;
         }
-        repaint();
+        if (! dontCallRepaint) {
+            repaint();
+        }
         if (timePerJob < 0 || timePerJob > 150) {
             console.log("Making new workers, timePerJob = ", timePerJob);
             newWorkers(workerCount);
@@ -477,7 +480,7 @@ function startJob() {
     var prec = highPrecision? "high precision, " + digits + " digits" : "normal precision";
     document.getElementById("status").innerHTML = "Computing, " + prec + "...";
     if (! zoomTimeout) {
-        repaintTimeout = setTimeout(repaint,333);
+        repaintTimeout = setTimeout(repaint, repaintInitialTimer);
     }
     timePerJob = -1;
     jobStartTime = new Date().getTime();
@@ -519,11 +522,13 @@ function jobFinished(msg) {
     timePerJob = ( (new Date().getTime()) - jobStartTime) / jobsCompleted;
     if (state == COMPUTING_FIRST_PASS) {
         if (jobsCompleted == canvas.height) {
-          state = DONE_FIRST_PASS;
-          stopJob();
-          if (document.getElementById("secondpass").checked) {
-             startSecondPass();
-          }
+            state = DONE_FIRST_PASS;
+            if (document.getElementById("secondpass").checked) {
+                stopJob(true);
+                startSecondPass();
+            } else {
+                stopJob();
+            }
        }
     }
     else {
@@ -611,9 +616,7 @@ function startSecondPass() {
     }
     running = true;
     document.getElementById("stop").disabled = false;
-    var prec = highPrecision? "high precision, " + digits + " digits" : "normal precision";
-    document.getElementById("status").innerHTML = "Computing 2nd Pass, " + prec + "...";
-    repaintTimeout = setTimeout(repaint,750);
+    repaintTimeout = setTimeout(repaint, repaintInitialTimer);
     timePerJob = -1;
     jobStartTime = new Date().getTime();
     state = COMPUTING_SECOND_PASS;
@@ -1239,7 +1242,6 @@ function doApplyCustomPaletteOffset() {
     }
 }
 function setPaletteOffset(fractionOffset) {
-    document.getElementById("status").innerHTML = "Idle";
     if (fractionOffset == paletteOffsetFraction) {
         return;
     }
