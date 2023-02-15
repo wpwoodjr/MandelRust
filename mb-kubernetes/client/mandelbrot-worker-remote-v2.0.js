@@ -24,7 +24,7 @@ function doIterationCounts(coords, url, retryCount) {
     if (error !== "") {
         if (retryCount < retryLimit) {
             retryCount++;
-            console.log("XMLHttpRequest failure, retrying " + retryCount + " of " + retryLimit + "...\n" + error);
+            // console.log("XMLHttpRequest failure, retrying " + retryCount + " of " + retryLimit + "...\n" + error);
             setTimeout(function() {
                     doIterationCounts(coords, url, retryCount);
                 },

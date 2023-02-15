@@ -145,7 +145,7 @@ var graphics;  // Graphics context for on-screen canvas.
 var ArrayType = window.Uint32Array || Array;
 
 var workers;
-var jobNum = 0;
+let jobNum = 0, highestJobNumFinished = 0;
 
 var running = false;
 var repaintTimeout;
@@ -157,9 +157,9 @@ var /* BigDecimal */ dx, dy;
 var /* Uint32Array */ xminArray, yValArray, dxArray;
 
 var jobs;
-var jobsCompleted;
 var workerCount = 1;
-var jobStartTime, timePerJob;
+let jobStartTime;
+let rowsCompleted, rowsPerSecond;
 var highPrecision;
 
 var COMPUTING_FIRST_PASS = 1, DONE_FIRST_PASS = 2, COMPUTING_SECOND_PASS = 3, IDLE = 4;
@@ -318,19 +318,24 @@ function doDraw() {
     }
 }
 
-let startTime, rowsCompleted, rowsPerSecond;
-
 function repaint(dontUpdateStatusToIdle) {
     // console.log("repaint from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     doDraw();
     let rpsText = rowsPerSecond.toPrecision(3) + " rows per second";
     if (running) {
         repaintTimeout = setTimeout(repaint, repaintTimer);
-        let pass = state == COMPUTING_SECOND_PASS ? " second pass" : "";
-        let prec = highPrecision? "high precision, " + digits + " digits" : "normal precision";
+        let rc = rowsCompleted;
+        let pass = "";
+        let ch = canvas.height;
+        if (state == COMPUTING_SECOND_PASS) {
+            rc -= ch;
+            ch += 1;
+            pass = " second pass";
+        }
+        let prec = highPrecision ? "high precision, " + digits + " digits" : "normal precision";
         document.getElementById("status").innerHTML =
                     "Computing" + pass + ", " + prec +
-                    "...  Completed " + jobsCompleted + " of " + canvas.height + " rows at " + rpsText;
+                    "...  Completed " + rc + " of " + ch + " rows at " + rpsText;
     }
     else if (! dontUpdateStatusToIdle) {
         document.getElementById("status").innerHTML = "Idle (" + rpsText + ")";
@@ -366,8 +371,9 @@ function stopJob(dontUpdateStatusToIdle) {
             repaintTimeout = null;
         }
         repaint(dontUpdateStatusToIdle);
-        if (timePerJob < 0 || timePerJob > 150) {
-            console.log("Making new workers, timePerJob = ", timePerJob);
+        if (highestJobNumFinished < jobNum - 1) {
+            // let timeSinceStart = Date.now() - jobStartTime;
+            // console.log("Making new workers - highestJobNumFinished =", highestJobNumFinished, "jobNum =", jobNum, "after", timeSinceStart, "ms");
             newWorkers(workerCount);
         }
     }
@@ -460,12 +466,10 @@ function startJob() {
             }
         }
     }
-    startTime = Date.now();
-    rowsCompleted = 0;
-    rowsPerSecond = 0;
-    jobsCompleted = 0;
-    for (var i = 0; i < workerCount; i++) {
-        var j = jobs.pop();
+
+    jobStartTime = Date.now();
+    for (let i = 0; i < workerCount; i++) {
+        let j = jobs.pop();
         j.workerNum = i;
         workers[i].postMessage(["setup",jobNum, maxIterations,highPrecision,i]);
         workers[i].postMessage([
@@ -473,6 +477,9 @@ function startJob() {
             j.xmin, j.dx, j.yVal, j.dy, j.nrows
         ]);
     }
+
+    rowsCompleted = 0;
+    rowsPerSecond = 0;
     running = true;
     document.getElementById("stop").disabled = false;
     var prec = highPrecision? "high precision, " + digits + " digits" : "normal precision";
@@ -480,14 +487,13 @@ function startJob() {
     if (! zoomTimeout) {
         repaintTimeout = setTimeout(repaint, repaintInitialTimer);
     }
-    timePerJob = -1;
-    jobStartTime = new Date().getTime();
     state = COMPUTING_FIRST_PASS;
     currentXML = currentExampletoXML();
 }
 
 function jobFinished(msg) {
     var job = msg.data;
+    highestJobNumFinished = Math.max(highestJobNumFinished, job[0]);
     if (job[0] != jobNum)
        return;
     if (jobs.length > 0) {
@@ -515,11 +521,9 @@ function jobFinished(msg) {
         }
     }
     rowsCompleted += nRows;
-    rowsPerSecond = rowsCompleted/((Date.now() - startTime)/1000.0);
-    jobsCompleted += nRows;
-    timePerJob = ( (new Date().getTime()) - jobStartTime) / jobsCompleted;
+    rowsPerSecond = rowsCompleted/((Date.now() - jobStartTime)/1000.0);
     if (state == COMPUTING_FIRST_PASS) {
-        if (jobsCompleted == canvas.height) {
+        if (rowsCompleted == canvas.height) {
             state = DONE_FIRST_PASS;
             if (document.getElementById("secondpass").checked) {
                 stopJob(true);
@@ -530,7 +534,7 @@ function jobFinished(msg) {
        }
     }
     else {
-        if (jobsCompleted == canvas.height + 1) {
+        if (rowsCompleted == 2*canvas.height + 1) {
             // all rows need to be present for averaging second pass if workerCount > 1
             for (let row = 0; row < canvas.height; row++) {
                 putRow(row);
@@ -602,7 +606,6 @@ function startSecondPass() {
         }
         //jobs.reverse();     // keep original order (don't need to since now we're waiting for all rows to finish before drawing)
     }
-    jobsCompleted = 0;
     for (var i = 0; i < workerCount; i++) {
         var j = jobs.pop();
         j.workerNum = i;
@@ -615,8 +618,6 @@ function startSecondPass() {
     running = true;
     document.getElementById("stop").disabled = false;
     repaintTimeout = setTimeout(repaint, repaintInitialTimer);
-    timePerJob = -1;
-    jobStartTime = new Date().getTime();
     state = COMPUTING_SECOND_PASS;
 }
 

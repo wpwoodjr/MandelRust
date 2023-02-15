@@ -110,7 +110,7 @@ onmessage = function(msg) {
         WebAssembly
             .instantiate(data[2], { } )
             .then(instance => {
-                console.log("loading wasm");
+                // console.log("loading wasm");
                 wasmMemory = new WasmMemory(instance.exports.memory);
                 // Hold onto the module's exports so that we can reuse them
                 compute_mandelbrot = instance.exports.compute_mandelbrot;
