@@ -1,9 +1,14 @@
 let jobNumber, workerNumber;
 const retryLimit = 5;
 
-function doIterationCounts(coords, url, retryCount) {
+function doIterationCounts(coords, url, retryCount, thisJobNum) {
     let iterationCounts;
     let error = "";
+
+    if (thisJobNum != jobNumber) {
+        // console.log("doIterationCounts current job number", jobNumber, ", stale job number", thisJobNum);
+        return;
+    }
 
     try {
         let client = new XMLHttpRequest();
@@ -26,7 +31,7 @@ function doIterationCounts(coords, url, retryCount) {
             retryCount++;
             // console.log("XMLHttpRequest failure, retrying " + retryCount + " of " + retryLimit + "...\n" + error);
             setTimeout(function() {
-                    doIterationCounts(coords, url, retryCount);
+                    doIterationCounts(coords, url, retryCount, thisJobNum);
                 },
                 retryCount*1000);
             return;
@@ -39,7 +44,7 @@ function doIterationCounts(coords, url, retryCount) {
         }
     }
 
-    let returnData = [ jobNumber, coords.firstRow, iterationCounts, workerNumber, coords.rows ];
+    let returnData = [ thisJobNum, coords.firstRow, iterationCounts, workerNumber, coords.rows ];
     postMessage(returnData);
 }
 
@@ -66,7 +71,7 @@ onmessage = function(msg) {
                 xmin: xmin, dx: dx, columns: columns, ymax: ymax, dy: dy, firstRow: firstRow, rows: nrows, maxIterations: maxIterations
             },
             highPrecision ? url + "HP" : url,
-            0);
+            0, jobNumber);
     }
 }
 
