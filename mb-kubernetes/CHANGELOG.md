@@ -23,3 +23,4 @@
 * Added option to run calculations locally on the browser in JavaScript, or on the backend Rust server
 * Added undo (ctrl-z) and redo (ctrl-shift-z and ctrl-y) key bindings
 * Fixed small bug where dx value was being used to increment yval instead of dy value in HP calculations
+* Rewrote Javascript code for browser calculations in Rust, compiled to WASM, for 7X speedup
