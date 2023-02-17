@@ -4,6 +4,8 @@ set an undo for arrow keys?
 >is non-arith server version faster 150 vs 130 on link? no
 Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore
+UCArray stuff
+Rename repo
 
 >add build.sh for comput_mandelbrot.wasm
 >check for other uses of arrow keys
