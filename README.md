@@ -1,9 +1,44 @@
 # Mandelbrot for Docker and Kubernetes
 
-This repo contains a full-featured web app to explore the Mandelbrot set.  Run it locally, or use Docker or a Kubernetes cluster as the backend for computation.
+![Mandala](mandala.png)
+
+## Overview
+This full-featured Mandelbrot web app is a client/server application using a local build, Docker, or a Kubernetes cluster to compute the Mandelbrot set, 
+with a browser-based client interface for viewing and navigating.
 
 ![Interface](interface.png)
 
-This repo contains David Eck's original client-side-only JavaScript version (with a few modifications) in [math.hws.edu](math.hws.edu), and a Docker or Kubernetes client/server version in [mb-kubernetes](mb-kubernetes).  The server is written in Rust for a big speed improvement over the original.
+Forked from a browser-only version by David Eck, at http://math.hws.edu/eck/index.html
 
-![Mandala](mandala.png)
+This version's backend web server has been rewritten from JavaScript to Rust and is much faster.
+
+![dancing](dancing.png)
+
+### Getting started
+#### Docker
+Clone or download this repo, then build and run in Docker as follows:
+```
+cd Mandelbrot-for-Docker-and-Kubernetes/mb-kubernetes
+./docker-build.sh
+./docker-run.sh
+```
+Then browse to `localhost:8001`.
+
+#### Local build/run
+If you don't want to use Docker, you can run the server locally.  A Rust compiler is a pre-requisite.  First, clone or download this repo. Then, build and run as follows:
+```
+cd Mandelbrot-for-Docker-and-Kubernetes/mb-kubernetes
+./local-build.sh
+./local-run.sh
+```
+Then browse to `localhost:8000`.
+
+#### Kubernetes
+Clone or download this repo, then build and deploy in Kubernetes as follows:
+```
+cd Mandelbrot-for-Docker-and-Kubernetes/mb-kubernetes
+... WIP ...
+```
+Once the application is deployed to Kubernetes, browse to `<url>`.
+
+![flaming](flaming.png)
