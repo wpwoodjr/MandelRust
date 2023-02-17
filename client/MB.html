@@ -1099,7 +1099,8 @@ function checkRemoteCanComputeMB() {
     pageExists("/remoteCanComputeMB").then(result => {
         if (! result) {
             document.getElementById("remote").disabled = true;
-            console.log("remote web server does not support Mandelbrot calculations");
+            document.getElementById("localRemote").title = "Mandelbrot web server is not available, calculations will be done in the browser.";
+            // console.log("remote web server does not support Mandelbrot calculations");
             if (document.getElementById("remote").checked) {
                 document.getElementById("local").checked = true;
                 changeLocalOrRemote();
@@ -2868,7 +2869,7 @@ When the web server is hosted on Kubernetes, increasing the workers also brings 
           <option value="64">64</option>
       </select></label></p>
       <p>
-        <label title="Run calculations locally in the browser or on the remote web server.">
+        <label id="localRemote" title="Run calculations locally in the browser or on the remote web server.">
         <input type="radio" id="local" name="location" value="local">
         <label for="local">Browser</label>
         <input type="radio" id="remote" name="location" value="remote">
