@@ -6,6 +6,7 @@ Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore
 UCArray stuff
 Rename repo
+Fix favicon issue
 
 >add build.sh for comput_mandelbrot.wasm
 >check for other uses of arrow keys
