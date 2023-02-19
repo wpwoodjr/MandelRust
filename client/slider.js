@@ -4,13 +4,14 @@
 */
 
 class Slider {
-  constructor(parentElement, name, label, callBack,
+  constructor(parentElement, name, label, changeCallback, inputCallback = null,
       title = "", logarithmic = false, initialValue = 0, minValue = 0, maxValue = 100,
       length = 3, stickyVals = null) {
     this.parentElement = parentElement;
     this.name = name;
     this.label = label;
-    this.callBack = callBack;
+    this.changeCallback = changeCallback;
+    this.inputCallback = inputCallback;
     this.title = title;
     this.logarithmic = logarithmic;
     this.initialValue = initialValue;
@@ -21,11 +22,12 @@ class Slider {
     this.length = length;
     this.stickyVals = stickyVals && stickyVals.length > 0 ? stickyVals : null;
     this.scale = 0;
+    this.lastInputValue = NaN;
     this.createStyleSheet();
     this.createTextInput();
     this.createSlider();
     this.textInput.value = initialValue;
-    this.validate(false);
+    this.validateText(false);
   }
 
   createSlider() {
@@ -39,7 +41,7 @@ class Slider {
     slider.title = this.title;
     if (this.logarithmic) {
       slider.step = 0.1;
-      // ensure slider.value == slider.min/maxValue at extremes
+      // ensure slider.value === slider.min/maxValue at extremes
       slider.value = Math.log2(this.minValue);
       slider.min = slider.value;
       slider.value = Math.log2(this.maxValue);
@@ -55,54 +57,68 @@ class Slider {
     slider.addEventListener('input', () => {
       // console.log("input:", slider.id, slider.value);
       let value = this.logarithmic ? (2**slider.valueAsNumber) : slider.valueAsNumber;
-      if (this.stickyVals != null) {
+      if (this.stickyVals) {
         let i = 1;
         while (i < this.stickyVals.length && value > this.stickyVals[i]) {
           i++;
         }
         value =
-          (i == this.stickyVals.length || value - this.stickyVals[i - 1] < this.stickyVals[i] - value)
+          (i === this.stickyVals.length || value - this.stickyVals[i - 1] < this.stickyVals[i] - value)
           ? this.stickyVals[i - 1]
           : this.stickyVals[i];
-      } else if (slider.value == slider.max) {
+      } else if (slider.value === slider.max) {
         value = this.maxValue;
-      } else if (slider.value == slider.min) {
+      } else if (slider.value === slider.min) {
         value = this.minValue;
       }
       this.textInput.value = value.toFixed(this.scale);
+      value = parseFloat(this.textInput.value);
+
+      if (this.inputCallback && this.lastInputValue !== value) {
+        this.inputCallback(value);
+      }
+      this.lastInputValue = value;
     });
 
     slider.addEventListener('change', () => {
       // console.log("change:", slider.id, slider.value);
-      this.validate(true);
+      let value = parseFloat(this.textInput.value);
+      this.slider.value = this.logarithmic ? Math.log2(value) : value;
+      if (value !== this.value) {
+        this.lastValue = this.value;
+        this.value = value;
+        if (this.changeCallback) {
+          this.changeCallback(value, this.lastValue);
+        }
+      }
     });
 
-    slider.addEventListener('keydown', (event) => {
-      if (! this.logarithmic || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) {
-        return;
-      }
+    // slider.addEventListener('keydown', (event) => {
+    //   if (! this.logarithmic || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) {
+    //     return;
+    //   }
       // event.preventDefault();
       // console.log("keydown:", event.key, slider.value);
       // let sv = slider.value;
       // slider.value = Math.log2(parseFloat(this.textInput.value));
       // while (true) {
       //   if (event.key === 'ArrowLeft') {
-      //     if (slider.value == slider.min) {
+      //     if (slider.value === slider.min) {
       //       return;
       //     }
       //     slider.value = slider.value - slider.step;
       //   } else {
-      //     if (slider.value == slider.max) {
+      //     if (slider.value === slider.max) {
       //       return;
       //     }
       //     slider.value = slider.value + slider.step;
       //   }
       //   console.log(slider.value);
-      //   if (sv != slider.value) {
+      //   if (sv !== slider.value) {
 
       //   }
       // }
-    });
+    // });
 
     this.slider = slider;
     sliderContainer.appendChild(slider);
@@ -139,7 +155,7 @@ class Slider {
 
     textInput.addEventListener('change', () => {
       // console.log("change:", textInput.id, textInput.value);
-      this.validate(true);
+      this.validateText(true);
     });
 
     textInput.addEventListener('keydown', (event) => {
@@ -155,19 +171,24 @@ class Slider {
     this.parentElement.appendChild(textInputContainer);
   }
 
-  validate(doCallBack) {
+  validateText(doCallbacks) {
     let value = parseFloat(this.textInput.value);
-    // keep current value if not finite
+    // keep current value if not a number
     value = isFinite(value) ? value : this.value;
     value = Math.min(Math.max(this.minValue, value), this.maxValue);
     this.textInput.value = value.toFixed(this.scale);
     value = parseFloat(this.textInput.value);
     this.slider.value = this.logarithmic ? Math.log2(value) : value;
-    if (value != this.value) {
+    if (value !== this.value) {
       this.lastValue = this.value;
       this.value = value;
-      if (doCallBack) {
-        this.callBack(value);
+      if (doCallbacks) {
+        if (this.inputCallback) {
+          this.inputCallback(value);
+        }
+        if (this.changeCallback) {
+          this.changeCallback(value, this.lastValue);
+        }
       }
     }
   }
@@ -182,7 +203,7 @@ class Slider {
 
   setValue(value) {
     this.textInput.value = value;
-    this.validate(false);
+    this.validateText(false);
     return this.value;
   }
 
