@@ -2,6 +2,8 @@
   Class to create a slider which is tied to a text input field
   Bill Wood (with a little assist from ChatGPT), Feb 2023
 */
+const keyLeft = 1;
+const keyRight = 2;
 
 class Slider {
   constructor(parentElement, name, label, changeCallback, inputCallback = null,
@@ -21,8 +23,10 @@ class Slider {
     this.maxValue = maxValue;
     this.length = length;
     this.stickyVals = stickyVals && stickyVals.length > 0 ? stickyVals : null;
-    this.scale = 0;
+    this.step = 1;
+    this.scale = Math.log10(1/this.step);
     this.lastInputValue = NaN;
+    this.keydown = null;
     this.createStyleSheet();
     this.createTextInput();
     this.createSlider();
@@ -40,7 +44,7 @@ class Slider {
     slider.className = 'slider';
     slider.title = this.title;
     if (this.logarithmic) {
-      slider.step = 0.1;
+      slider.step = this.step/10;
       // ensure slider.value === slider.min/maxValue at extremes
       slider.value = Math.log2(this.minValue);
       slider.min = slider.value;
@@ -48,7 +52,7 @@ class Slider {
       slider.max = slider.value;
       slider.value = Math.log2(this.initialValue);
     } else {
-      slider.step = 1;
+      slider.step = this.step;
       slider.value = this.initialValue;
       slider.min = this.minValue;
       slider.max = this.maxValue;
@@ -57,7 +61,7 @@ class Slider {
     slider.addEventListener('input', () => {
       // console.log("input:", slider.id, slider.value);
       let value = this.logarithmic ? (2**slider.valueAsNumber) : slider.valueAsNumber;
-      if (this.stickyVals) {
+      if (this.stickyVals && ! this.keydown) {
         let i = 1;
         while (i < this.stickyVals.length && value > this.stickyVals[i]) {
           i++;
@@ -66,6 +70,7 @@ class Slider {
           (i === this.stickyVals.length || value - this.stickyVals[i - 1] < this.stickyVals[i] - value)
           ? this.stickyVals[i - 1]
           : this.stickyVals[i];
+        value = Math.min(this.maxValue, Math.max(this.minValue, value));
       } else if (slider.value === slider.max) {
         value = this.maxValue;
       } else if (slider.value === slider.min) {
@@ -73,6 +78,14 @@ class Slider {
       }
       this.textInput.value = value.toFixed(this.scale);
       value = parseFloat(this.textInput.value);
+
+      // handle case where value doesn't change because logarithmic
+      if (this.keydown && this.lastInputValue === value) {
+        value += (this.keydown == keyLeft ? -this.step : this.step);
+        this.textInput.value = value.toFixed(this.scale);
+        value = parseFloat(this.textInput.value);
+      }
+      this.keydown = null;
 
       if (this.inputCallback && this.lastInputValue !== value) {
         this.inputCallback(value);
@@ -93,32 +106,25 @@ class Slider {
       }
     });
 
-    // slider.addEventListener('keydown', (event) => {
-    //   if (! this.logarithmic || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) {
-    //     return;
-    //   }
-      // event.preventDefault();
-      // console.log("keydown:", event.key, slider.value);
-      // let sv = slider.value;
-      // slider.value = Math.log2(parseFloat(this.textInput.value));
-      // while (true) {
-      //   if (event.key === 'ArrowLeft') {
-      //     if (slider.value === slider.min) {
-      //       return;
-      //     }
-      //     slider.value = slider.value - slider.step;
-      //   } else {
-      //     if (slider.value === slider.max) {
-      //       return;
-      //     }
-      //     slider.value = slider.value + slider.step;
-      //   }
-      //   console.log(slider.value);
-      //   if (sv !== slider.value) {
+    slider.addEventListener('keydown', (event) => {
+      switch (event.key) {
+        case "ArrowLeft":
+        case "ArrowDown":
+        case "PageDown":
+        case "Home":
+          this.keydown = keyLeft;
+          // console.log("keydown:", this.keydown, event.key, slider.value);
+          break;
 
-      //   }
-      // }
-    // });
+        case "ArrowRight":
+        case "ArrowUp":
+        case "PageUp":
+        case "End":
+          this.keydown = keyRight;
+          // console.log("keydown:", this.keydown, event.key, slider.value);
+          break;
+      }
+    });
 
     this.slider = slider;
     sliderContainer.appendChild(slider);
