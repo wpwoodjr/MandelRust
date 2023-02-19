@@ -128,6 +128,7 @@
    }
 </style>
 <script src="BigDecimal-all-last.min.js"></script>
+<script src="slider.js"></script>
 <script>
 
 "use strict";
@@ -168,7 +169,7 @@ var state = IDLE;
 
 var dragbox = null;
 
-var maxIterations;
+let maxIterSlider;
 var palette;
 var stretchPalette;
 var fixedPaletteLength;
@@ -472,7 +473,7 @@ function startJob() {
     for (let i = 0; i < workerCount; i++) {
         let j = jobs.pop();
         j.workerNum = i;
-        workers[i].postMessage(["setup",jobNum, maxIterations,highPrecision,i]);
+        workers[i].postMessage(["setup",jobNum, maxIterSlider.getValue(),highPrecision,i]);
         workers[i].postMessage([
             "task", j.row, j.columns,
             j.xmin, j.dx, j.yVal, j.dy, j.nrows
@@ -610,7 +611,7 @@ function startSecondPass() {
     for (var i = 0; i < workerCount; i++) {
         var j = jobs.pop();
         j.workerNum = i;
-        workers[i].postMessage(["setup",jobNum, maxIterations,highPrecision,i]);
+        workers[i].postMessage(["setup",jobNum, maxIterSlider.getValue(),highPrecision,i]);
         workers[i].postMessage([
             "task", j.row, j.columns,
             j.xmin, j.dx, j.yVal, j.dy, j.nrows
@@ -679,12 +680,10 @@ function setDefaults() {
     setLimits(new BigDecimal("-2.2"), new BigDecimal("0.8"), new BigDecimal("-1.2"), new BigDecimal("1.2"), false);
     stretchPalette = false;
     fixedPaletteLength = 250;
-    maxIterations = 500;
+    maxIterSlider.setValue(maxIterSlider.initialValue);
     paletteOffsetFraction = 0;
     palette = new Palette();
     createPaletteColors();
-    document.getElementById("maxIterSelect").value = "500";
-    document.getElementById("custommaxiter").style.display = "none";
     document.getElementById("custompallen").style.display = "none";
     document.getElementById("custoffset").style.display = "none";
     document.getElementById("customsize").style.display = "none";
@@ -715,7 +714,7 @@ function remapColors() {
 }
 
 function createPaletteColors() {
-    var length = stretchPalette ? maxIterations : fixedPaletteLength;
+    var length = stretchPalette ? maxIterSlider.getValue() : fixedPaletteLength;
     paletteLength = length;
     var offset = Math.round(paletteOffsetFraction * paletteLength);
     paletteColors = palette.makeRGBs(paletteLength,offset);
@@ -1134,53 +1133,27 @@ function changeLocalOrRemote() {
     document.getElementById("threadCountSelect").value = "" + newWorkerCount;
 }
 
-function changeMaxIterations() {
-    var val = document.getElementById("maxIterSelect").value;
-    var iter;
-    if (val == "Custom") {
-        document.getElementById("maxiterinput").value = "" + maxIterations;
-        document.getElementById("custommaxiter").style.display = "inline";
-    }
-    else {
-        document.getElementById("custommaxiter").style.display = "none";
-        iter = Number(val);
-        setMaxIterations(iter);
-    }
-}
-function setMaxIterations(iter) {
-    if (iter == maxIterations)
-       return;
-    var oldval = maxIterations;
+function setMaxIterations() {
     stopJob();
-    maxIterations = iter;
     createPaletteColors();
     startJob();
-    addUndoItem("Change MaxIterations", oldval, maxIterations);
+    addUndoItem("Change MaxIterations", maxIterSlider.getLastValue(), maxIterSlider.getValue());
 }
-function doCustomMaxIterations() {
-    var iter = Math.round(Number(document.getElementById("maxiterinput").value.trim()));
-    if (isNaN(iter) || iter < 10) {
-        document.getElementById("status").innerHTML = "Illegal value for max iterations.  Must be an integer greater than 9.";
-        return;
-    }
-    setMaxIterations(iter);
-}
-
 
 function changePaletteLength() {
     var val = document.getElementById("paletteLengthSelect").value;
     var len;
     if (val == "Custom") {
-        var length = stretchPalette ? maxIterations : fixedPaletteLength;
+        var length = stretchPalette ? maxIterSlider.getValue() : fixedPaletteLength;
         stretchPalette = false;
         fixedPaletteLength = length;
         document.getElementById("palleninput").value = "" + length;
         document.getElementById("custompallen").style.display = "inline";
     }
     else if (val == "Match") {
-        var oldval = [stretchPalette, stretchPalette ? maxIterations : fixedPaletteLength];
+        var oldval = [stretchPalette, stretchPalette ? maxIterSlider.getValue() : fixedPaletteLength];
         stretchPalette = true;
-        if (paletteLength != maxIterations) {
+        if (paletteLength != maxIterSlider.getValue()) {
             stopJob();
             createPaletteColors();
             startJob();
@@ -1418,16 +1391,8 @@ function applyUndoItem(name, value) {
          remapColors();
          break;
       case "Change MaxIterations":
-         setMaxIterations(value);
-         if ([25,50,100,250,500,1000,2500,5000,10000,25000,50000].indexOf(value) < 0) {
-             document.getElementById("custommaxiter").style.display = "inline";
-             document.getElementById("maxIterSelect").value = "Custom";
-             document.getElementById("maxiterinput").value = "" + value;
-         }
-         else {
-             document.getElementById("custommaxiter").style.display = "none";
-             document.getElementById("maxIterSelect").value = "" + value;
-         }
+         value = maxIterSlider.setValue(value);
+         setMaxIterations();
          break;
       case "Change Palette":
          palette = value.copy();
@@ -1720,7 +1685,7 @@ function showPaletteEditor() {
         colorSliders[0].onchange = function(v) { newColorSliderValue(0,v); };
         colorSliders[1].onchange = function(v) { newColorSliderValue(1,v); };
         colorSliders[2].onchange = function(v) { newColorSliderValue(2,v); };
-        paletteLengthSlider = new SliderAndInput(document.getElementById("lengthslider"), document.getElementById("editorlengthinput"), 1, maxIterations, paletteLength, true, true);
+        paletteLengthSlider = new SliderAndInput(document.getElementById("lengthslider"), document.getElementById("editorlengthinput"), 1, maxIterSlider.getValue(), paletteLength, true, true);
         paletteOffsetSlider = new SliderAndInput(document.getElementById("offsetslider"), document.getElementById("editoroffsetinput"), 0, 100, paletteOffsetFraction*100);
         paletteLengthSlider.onchange = newPaletteMappingInEditor;
         paletteOffsetSlider.onchange = newPaletteMappingInEditor;
@@ -1732,7 +1697,7 @@ function showPaletteEditor() {
     histogram = new Histogram();
     palettePreview = new PalettePreview();
     installPaletteInEditor(palette);
-    paletteLengthSlider.reset(1,maxIterations,paletteLength);
+    paletteLengthSlider.reset(1,maxIterSlider.getValue(),paletteLength);
     paletteOffsetSlider.setValue(paletteOffsetFraction*100);
     document.getElementById("applyPaletteEdit").disabled = true;
     document.getElementById("revertPaletteEdit").disabled = true;
@@ -1890,7 +1855,7 @@ function newColorSliderValue(componentIndex,value) {
 
 function redrawHistogramPalette() {
      var hg = histogramPalette.getContext('2d');
-     var onecopy = paletteLengthInEditor/maxIterations * (histogramPalette.width-2);
+     var onecopy = paletteLengthInEditor/maxIterSlider.getValue() * (histogramPalette.width-2);
      for (var i = 1; i < histogramPalette.width-1; i++) {
          var fraction = ((i-1) % onecopy) / onecopy;
          var index = Math.max(0, Math.min(colorsInEditor.length,Math.round(fraction * colorsInEditor.length)));
@@ -2196,7 +2161,7 @@ function Histogram() {
    var canvas = document.getElementById("histogram");
    var histogramWidth = canvas.width - 15;
    var histogramHeight = canvas.height - 15;
-   var histogramCounts = new Int32Array(maxIterations+1);
+   var histogramCounts = new Int32Array(maxIterSlider.getValue()+1);
    for (var j = 0; j < savedIterationCounts.length; j++) {
        if (savedIterationCounts[j]) {
           var counts = savedIterationCounts[j];
@@ -2465,7 +2430,7 @@ function currentExampletoXML() {
             "   <ymax>" + ymax_requested.toString() + "</ymax>\n</limits>\n" +
             palette.toXMLString() +
             "<palette_mapping length='" + paletteLength + "' offset='" + offset + "'/>\n" +
-            "<max_iterations value='" + maxIterations + "'/>\n" +
+            "<max_iterations value='" + maxIterSlider.getValue() + "'/>\n" +
             "</mandelbrot_settings_2>\n";
 }
 
@@ -2515,16 +2480,7 @@ function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError
           length = iterations;
       }
       palette = colors;
-      maxIterations = Math.round(iterations);
-      if ([25,50,100,250,500,1000,2500,5000,10000,25000,50000].indexOf(maxIterations) < 0) {
-          document.getElementById("custommaxiter").style.display = "inline";
-          document.getElementById("maxIterSelect").value = "Custom";
-          document.getElementById("maxiterinput").value = "" + iterations;
-      }
-      else {
-          document.getElementById("custommaxiter").style.display = "none";
-          document.getElementById("maxIterSelect").value = "" + maxIterations;
-      }
+      maxIterSlider.setValue(Math.round(iterations));
       length = Math.round(length);
       if (length == 0) {
          stretchPalette = true;
@@ -2697,8 +2653,6 @@ function init() {
     }
     document.getElementById("threadCountSelect").value = "" + workerCount;
     document.getElementById("threadCountSelect").onchange = changeWorkerCount;
-    document.getElementById("maxIterSelect").onchange = changeMaxIterations;
-    document.getElementById("maxiterapply").onclick = doCustomMaxIterations;
     document.getElementById("paletteLengthSelect").onchange = changePaletteLength;
     document.getElementById("pallenapply").onclick = doCustomPaletteLength;
     document.getElementById("paletteOffsetSelect").onchange = changePaletteOffset;
@@ -2724,6 +2678,19 @@ function init() {
     setUpDragging();
     setUpArrowKeys();
     changeWorkerCount(); // has to be done before setDefaults
+    maxIterSlider = new Slider(
+        document.getElementById("maxIterDiv"),
+        "maxIterSlider",
+        "Max Iterations:",
+        (newMaxIters) => setMaxIterations(),
+        "How many steps in the Mandelbrot iteration before giving up and coloring the pixel black.",
+        true,
+        500,
+        1,
+        1000000,
+        6,
+        [25,50,100,250,500,1000,2500,5000,10000,25000,50000,100000]
+        );
     setDefaults();
     checkForExample();
     undoList = [];
@@ -2731,11 +2698,11 @@ function init() {
     checkRemoteCanComputeMB();
 }
 
-var arrowTimeout;
+let arrowTimeout;
 function setUpArrowKeys() {
     document.addEventListener("keydown", function(event) {
         // quit when in a text box
-        if (event.target.nodeName === "INPUT" && event.target.type === "text") {
+        if (event.target.nodeName === "INPUT" && (event.target.type === "text" || event.target.type === "range")) {
             return;
         }
 
@@ -2818,6 +2785,7 @@ function setUpArrowKeys() {
         }, 0);
     });
 }
+
 </script>
 </head>
 
@@ -2901,21 +2869,7 @@ When the web server is hosted on Kubernetes, increasing the workers also brings 
           <option value="Custom">Custom</option>
       </select></label><span id="customsize" style="display:none"><br><input type="text" maxlength="4" size="4" id="customwidth">x<input type="text" maxlength="4" size="4" id="customheight"> <button id="applysize">Apply</button></span></p>
    </div>
-   <div class="group">
-      <p><label title="How many steps in the Mandelbrot iteration before giving up and coloring the pixel black.">MaxIterations: <select id="maxIterSelect">
-         <option value="25">25</option>
-         <option value="50">50</option>
-         <option value="100">100</option>
-         <option value="250">250</option>
-         <option value="500">500</option>
-         <option value="1000">1000</option>
-         <option value="2500">2500</option>
-         <option value="5000">5000</option>
-         <option value="10000">10000</option>
-         <option value="25000">25000</option>
-         <option value="50000">50000</option>
-         <option value="Custom">Custom</option>
-      </select></label><span id="custommaxiter" style="display:none"><br><input type="text" maxlength="6" size="5" id="maxiterinput"> <button id="maxiterapply">Apply</button></span></p>
+   <div class="group" id="maxIterDiv">
    </div>
    <div class="group">
       <p><button id="showpaletteedit" title="Show a popup dialog box that gives greater control over the palette.">Show Palette Editor</button>

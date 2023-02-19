@@ -77,6 +77,33 @@ class Slider {
       this.validate(true);
     });
 
+    slider.addEventListener('keydown', (event) => {
+      if (! this.logarithmic || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) {
+        return;
+      }
+      // event.preventDefault();
+      // console.log("keydown:", event.key, slider.value);
+      // let sv = slider.value;
+      // slider.value = Math.log2(parseFloat(this.textInput.value));
+      // while (true) {
+      //   if (event.key === 'ArrowLeft') {
+      //     if (slider.value == slider.min) {
+      //       return;
+      //     }
+      //     slider.value = slider.value - slider.step;
+      //   } else {
+      //     if (slider.value == slider.max) {
+      //       return;
+      //     }
+      //     slider.value = slider.value + slider.step;
+      //   }
+      //   console.log(slider.value);
+      //   if (sv != slider.value) {
+
+      //   }
+      // }
+    });
+
     this.slider = slider;
     sliderContainer.appendChild(slider);
     this.parentElement.appendChild(sliderContainer);

@@ -5,8 +5,12 @@ set an undo for arrow keys?
 Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore
 UCArray stuff
-Rename repo
-Fix favicon issue
+>Rename repo
+>Fix favicon issue
+Stop doesn't go to idle state
+1000000 iters then back to 500 takes forever
+Arrow keys can't be used in slider
+>Fix setMaxIterations redundant stuff
 
 >add build.sh for comput_mandelbrot.wasm
 >check for other uses of arrow keys
