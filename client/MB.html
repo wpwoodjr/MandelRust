@@ -169,11 +169,11 @@ var state = IDLE;
 
 var dragbox = null;
 
-let maxIterSlider;
+let maxIterSlider, mainPaletteOffsetSlider;
 var palette;
 var stretchPalette;
 var fixedPaletteLength;
-var paletteLength, paletteOffsetFraction;
+var paletteLength;
 var paletteColors;
 
 var savedIterationCounts;
@@ -680,15 +680,13 @@ function setDefaults() {
     setLimits(new BigDecimal("-2.2"), new BigDecimal("0.8"), new BigDecimal("-1.2"), new BigDecimal("1.2"), false);
     stretchPalette = false;
     fixedPaletteLength = 250;
-    maxIterSlider.setValue(maxIterSlider.initialValue);
-    paletteOffsetFraction = 0;
+    maxIterSlider.setDefault();
+    mainPaletteOffsetSlider.setDefault();
     palette = new Palette();
     createPaletteColors();
     document.getElementById("custompallen").style.display = "none";
-    document.getElementById("custoffset").style.display = "none";
     document.getElementById("customsize").style.display = "none";
     document.getElementById("paletteLengthSelect").value = "250";
-    document.getElementById("paletteOffsetSelect").value = "0";
     document.getElementById("imagesize").value = "800 600";
     if (canvas.width != 800 || canvas.height != 600) {
       canvas.width = 800;
@@ -713,10 +711,11 @@ function remapColors() {
     currentXML = currentExampletoXML();
 }
 
-function createPaletteColors() {
+function createPaletteColors(newPaletteOffset) {
     var length = stretchPalette ? maxIterSlider.getValue() : fixedPaletteLength;
     paletteLength = length;
-    var offset = Math.round(paletteOffsetFraction * paletteLength);
+    let offset = newPaletteOffset ? newPaletteOffset/100 : mainPaletteOffsetSlider.getValue()/100;
+    offset = Math.round(offset * paletteLength);
     paletteColors = palette.makeRGBs(paletteLength,offset);
 }
 
@@ -1192,37 +1191,14 @@ function doCustomPaletteLength() {
     setFixedPaletteLength(val);
 }
 
-function changePaletteOffset() {
-    var val = document.getElementById("paletteOffsetSelect").value;
-    if (val == "Custom") {
-        var current = 100 * paletteOffsetFraction;
-        document.getElementById("offsetinput").value = (current == Math.round(current))? current : current.toPrecision(3);
-        document.getElementById("custoffset").style.display = "inline";
-    }
-    else {
-        var fractionOffset = Number(val);
-        setPaletteOffset(fractionOffset);
-        document.getElementById("custoffset").style.display = "none";
-    }
-}
-function doApplyCustomPaletteOffset() {
-    var val = Number(document.getElementById("offsetinput").value.trim());
-    if (isNaN(val) || val < 0 || val > 100) {
-        document.getElementById("status").innerHTML =
-             "Illegal value for percentage offset.  Must be a number in the range 0 to 100.";
-    }
-    else {
-       setPaletteOffset(val/100);
-    }
-}
-function setPaletteOffset(fractionOffset) {
-    if (fractionOffset == paletteOffsetFraction) {
-        return;
-    }
-    addUndoItem("Change PaletteOffset", paletteOffsetFraction, fractionOffset);
-    paletteOffsetFraction = fractionOffset;
-    createPaletteColors();
+function doPaletteOffset(newPaletteOffset) {
+    createPaletteColors(newPaletteOffset);
     remapColors();
+}
+
+function finishDoPaletteOffset() {
+    currentXML = currentExampletoXML();
+    addUndoItem("Change PaletteOffset", mainPaletteOffsetSlider.getLastValue()/100, mainPaletteOffsetSlider.getValue()/100);
 }
 
 function changeInterlaced() {
@@ -1362,7 +1338,7 @@ function applyUndoItem(name, value) {
          installExampleFromXML(value,false,true);
          break;
       case "Change PaletteOffset":
-         setPaletteOffset(value);
+         mainPaletteOffsetSlider.setValue(value*100);
          createPaletteColors();
          remapColors();
          break;
@@ -1402,7 +1378,7 @@ function applyUndoItem(name, value) {
       case "Edit Palette":
         palette = value[0].copy();
         setPaletteLength(value[1],value[2]);
-        setPaletteOffset(value[3]);
+        mainPaletteOffsetSlider.setValue(value[3]*100);
         createPaletteColors();
         remapColors();
         break;
@@ -1426,19 +1402,6 @@ function applyUndoItem(name, value) {
                 document.getElementById("custompallen").style.display = "none";
                 document.getElementById("paletteLengthSelect").value = "" + length;
              }
-         }
-    }
-    function setPaletteOffset(fraction) {
-         paletteOffsetFraction = fraction;
-         if ([0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9].indexOf(fraction) < 0) {
-              document.getElementById("paletteOffsetSelect").value = "Custom";
-              document.getElementById("custoffset").style.display = "inline";
-              fraction *= 100;
-              document.getElementById("offsetinput").value = (fraction == Math.round(fraction))? fraction : fraction.toPrecision(3);
-         }
-         else {
-              document.getElementById("paletteOffsetSelect").value = "" + fraction;
-              document.getElementById("custoffset").style.display = "none";
          }
     }
 }
@@ -1686,7 +1649,7 @@ function showPaletteEditor() {
         colorSliders[1].onchange = function(v) { newColorSliderValue(1,v); };
         colorSliders[2].onchange = function(v) { newColorSliderValue(2,v); };
         paletteLengthSlider = new SliderAndInput(document.getElementById("lengthslider"), document.getElementById("editorlengthinput"), 1, maxIterSlider.getValue(), paletteLength, true, true);
-        paletteOffsetSlider = new SliderAndInput(document.getElementById("offsetslider"), document.getElementById("editoroffsetinput"), 0, 100, paletteOffsetFraction*100);
+        paletteOffsetSlider = new SliderAndInput(document.getElementById("offsetslider"), document.getElementById("editoroffsetinput"), 0, 100, mainPaletteOffsetSlider.getValue());
         paletteLengthSlider.onchange = newPaletteMappingInEditor;
         paletteOffsetSlider.onchange = newPaletteMappingInEditor;
     }
@@ -1698,13 +1661,13 @@ function showPaletteEditor() {
     palettePreview = new PalettePreview();
     installPaletteInEditor(palette);
     paletteLengthSlider.reset(1,maxIterSlider.getValue(),paletteLength);
-    paletteOffsetSlider.setValue(paletteOffsetFraction*100);
+    paletteOffsetSlider.setValue(mainPaletteOffsetSlider.getValue());
     document.getElementById("applyPaletteEdit").disabled = true;
     document.getElementById("revertPaletteEdit").disabled = true;
     function applyAndClose() {
         var newval = [paletteInEditor, false, paletteLengthInEditor, paletteOffsetFractionInEditor];
         addUndoItem("Edit Palette", 
-                       [copyOfCurrentPalette, stretchPalette, fixedPaletteLength, paletteOffsetFraction], 
+                       [copyOfCurrentPalette, stretchPalette, fixedPaletteLength, mainPaletteOffsetSlider.getValue()/100], 
                        newval);
         applyUndoItem("Edit Palette", newval);
         dismiss();
@@ -1768,7 +1731,7 @@ function installPaletteInEditor(palette,length,offsetFraction) {
     document.getElementById("lockcolors").checked = locked;
     paletteLengthInEditor = (typeof length != "undefined")? length : paletteLength;
     paletteLengthSlider.setValue(paletteLengthInEditor);
-    paletteOffsetFractionInEditor = (typeof offsetFraction != "undefined")? offsetFraction : paletteOffsetFraction;
+    paletteOffsetFractionInEditor = (typeof offsetFraction != "undefined")? offsetFraction : mainPaletteOffsetSlider.getValue()/100;
     paletteOffsetSlider.setValue(paletteOffsetFractionInEditor*100);
     colorEditCanvas.colorsChanged();
     colorEditCanvas.select(0);
@@ -2421,7 +2384,7 @@ SliderAndInput.prototype.draw = function() {
 //-------------------------------------------------------------------------------------------
 
 function currentExampletoXML() {
-    var offset = Math.round(paletteOffsetFraction * paletteLength);
+    var offset = Math.round(mainPaletteOffsetSlider.getValue()/100 * paletteLength);
     return "<?xml version='1.0'?>\n<mandelbrot_settings_2>\n" +
             "<image_size width='" + canvas.width + "' height='" + canvas.height + "'/>\n" +
             "<limits>\n   <xmin>" + xmin_requested.toString() + "</xmin>\n" +
@@ -2500,19 +2463,10 @@ function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError
              document.getElementById("paletteLengthSelect").value = "" + length;
           }
       }
-      paletteOffsetFraction = offset/length;
-      paletteOffsetFraction = paletteOffsetFraction - Math.floor(paletteOffsetFraction);
-      paletteOffsetFraction = Math.round(10000*paletteOffsetFraction)/10000;
-      if (offset == 0) {
-           document.getElementById("custoffset").style.display = "none";
-           document.getElementById("paletteOffsetSelect").value = "0";
-      }
-      else {
-           document.getElementById("custoffset").style.display = "inline";
-           document.getElementById("paletteOffsetSelect").value = "Custom";
-           var current = 100*paletteOffsetFraction;
-           document.getElementById("offsetinput").value = (current == Math.round(current))? current : current.toPrecision(3);
-      }
+      let tmp = offset/length;
+      tmp = tmp - Math.floor(tmp);
+      tmp = Math.round(10000*tmp)/10000;
+      mainPaletteOffsetSlider.setValue(tmp*100);
       createPaletteColors();
       if (respectSize) {
          setImageSize(width,height);
@@ -2655,8 +2609,6 @@ function init() {
     document.getElementById("threadCountSelect").onchange = changeWorkerCount;
     document.getElementById("paletteLengthSelect").onchange = changePaletteLength;
     document.getElementById("pallenapply").onclick = doCustomPaletteLength;
-    document.getElementById("paletteOffsetSelect").onchange = changePaletteOffset;
-    document.getElementById("offsetapply").onclick = doApplyCustomPaletteOffset;
     document.getElementById("standardPaletteButton").onclick = doApplyStandardPalette;
     document.getElementById("standardPaletteSelect").value = "EarthAndSky";
     document.getElementById("showpaletteedit").onclick=showPaletteEditor;
@@ -2683,6 +2635,7 @@ function init() {
         "maxIterSlider",
         "Max Iterations:",
         (newMaxIters) => setMaxIterations(),
+        null,
         "How many steps in the Mandelbrot iteration before giving up and coloring the pixel black.",
         true,
         500,
@@ -2690,6 +2643,20 @@ function init() {
         1000000,
         6,
         [25,50,100,250,500,1000,2500,5000,10000,25000,50000,100000]
+        );
+    mainPaletteOffsetSlider = new Slider(
+        document.getElementById("mainPaletteOffset"),
+        "mainPaletteOffsetSlider",
+        "Pallete Offset %:",
+        (newPaletteOffset, oldPaletteOffset) => finishDoPaletteOffset(),
+        (newPaletteOffset) => doPaletteOffset(newPaletteOffset),
+        "Offsets the colors within the palette to get a different mapping.",
+        false,
+        0,
+        0,
+        100,
+        3,
+        null
         );
     setDefaults();
     checkForExample();
@@ -2885,19 +2852,7 @@ When the web server is hosted on Kubernetes, increasing the workers also brings 
             <option value="5000">5000</option>
             <option value="Custom">Custom</option>
       </select></label><span id="custompallen" style="display:none"><br><input type="text" maxlength="5" size="4" id="palleninput"><button id="pallenapply">Apply</button></span>
-      <p><label title="Offsets the colors within the palette to get a different mapping.">PaletteOffset: <select id="paletteOffsetSelect">
-            <option value="0">None</option>
-            <option value="0.1">10%</option>
-            <option value="0.2">20%</option>
-            <option value="0.3">30%</option>
-            <option value="0.4">40%</option>
-            <option value="0.5">50%</option>
-            <option value="0.6">60%</option>
-            <option value="0.7">70%</option>
-            <option value="0.8">80%</option>
-            <option value="0.9">90%</option>
-            <option value="Custom">Custom</option>
-      </select></label><span id="custoffset" style="display:none"><br><input type="text" id="offsetinput" maxlength="6" size="5"><b>%</b> &nbsp;<button id="offsetapply">Apply</button></span></p>
+      <p id="mainPaletteOffset"></p>
       <p style="margin-bottom:4px"><button id="standardPaletteButton" title="Click here to apply the palette of colors selected in the popup menu below.">Apply Standard Palette:</button></p>
       <p style="margin-top:0"><select id="standardPaletteSelect" style="margin-left:70px" title="Some palettes of colors to be applied to the Mandelbrot image.  Click the above button to apply the selected palette.">
             <option value="Spectrum">Spectrum</option>

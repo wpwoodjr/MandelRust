@@ -213,6 +213,10 @@ class Slider {
     return this.value;
   }
 
+  setDefault() {
+    return this.setValue(this.initialValue);
+  }
+
   createStyleSheet() {
     if (document.getElementById("slider-style")) {
       return;

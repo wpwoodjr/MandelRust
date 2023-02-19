@@ -9,8 +9,11 @@ UCArray stuff
 >Fix favicon issue
 Stop doesn't go to idle state
 1000000 iters then back to 500 takes forever
-Arrow keys can't be used in slider
+>Arrow keys can't be used in slider
 >Fix setMaxIterations redundant stuff
+>Does setMaxIterations handle undo/redo correctly?
+>setPaletteOffset should only do undo on change, not input
+>setPaletteOffset use slider not custom globals
 
 >add build.sh for comput_mandelbrot.wasm
 >check for other uses of arrow keys
