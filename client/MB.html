@@ -170,6 +170,7 @@ var state = IDLE;
 var dragbox = null;
 
 let maxIterSlider, mainPaletteOffsetSlider;
+let zoomInSlider, zoomOutSlider;
 var palette;
 var stretchPalette;
 var fixedPaletteLength;
@@ -1281,11 +1282,11 @@ function changeHighPrecision() {
 }
 
 function doZoomIn() {
-    zoom(canvas.width/2, canvas.height/2, document.getElementById("zoomInAmount").value, false);
+    zoom(canvas.width/2, canvas.height/2, 1/zoomInSlider.getValue(), false);
 }
 
 function doZoomOut() {
-    zoom(canvas.width/2, canvas.height/2, document.getElementById("zoomOutAmount").value, false);
+    zoom(canvas.width/2, canvas.height/2, zoomOutSlider.getValue(), false);
 }
 
 //---------------------- Undo/Redo ---------------------------------------
@@ -2618,10 +2619,6 @@ function init() {
     document.getElementById("highPrecision").onchange = changeHighPrecision;
     document.getElementById("local").onchange = changeLocalOrRemote;
     document.getElementById("remote").onchange = changeLocalOrRemote;
-    document.getElementById("zoomInAmount").value = "0.1";
-    document.getElementById("zoomOutAmount").value = "10";
-    document.getElementById("zoomin").onclick = doZoomIn;
-    document.getElementById("zoomout").onclick = doZoomOut;
     document.getElementById("importXML").onclick = importXML;
     document.getElementById("undo").onclick = doUndo;
     document.getElementById("undo").disabled = true;
@@ -2634,9 +2631,10 @@ function init() {
         document.getElementById("maxIterDiv"),
         "maxIterSlider",
         "Max Iterations:",
+        "How many steps in the Mandelbrot iteration before giving up and coloring the pixel black.",
         (newMaxIters) => setMaxIterations(),
         null,
-        "How many steps in the Mandelbrot iteration before giving up and coloring the pixel black.",
+        null,
         true,
         500,
         1,
@@ -2648,15 +2646,46 @@ function init() {
         document.getElementById("mainPaletteOffset"),
         "mainPaletteOffsetSlider",
         "Pallete Offset %:",
+        "Offsets the colors within the palette to get a different mapping.",
         (newPaletteOffset, oldPaletteOffset) => finishDoPaletteOffset(),
         (newPaletteOffset) => doPaletteOffset(newPaletteOffset),
-        "Offsets the colors within the palette to get a different mapping.",
+        null,
         false,
         0,
         0,
         100,
         3,
         null
+        );
+    zoomInSlider = new Slider(
+        document.getElementById("zoomIn"),
+        "zoomInSlider",
+        "Zoom in by",
+        "Sets the zoom in amount and then zooms.",
+        (newZoom, oldZoom) => doZoomIn(),
+        null,
+        () => doZoomIn(),
+        true,
+        10,
+        2,
+        100000,
+        6,
+        [2,5,10,20,50,100,1000,10000,100000]
+        );
+    zoomOutSlider = new Slider(
+        document.getElementById("zoomOut"),
+        "zoomOutSlider",
+        "Zoom out by",
+        "Sets the zoom out amount and then zooms.",
+        (newZoom, oldZoom) => doZoomOut(),
+        null,
+        () => doZoomOut(),
+        true,
+        10,
+        2,
+        100000,
+        6,
+        [2,5,10,20,50,100,1000,10000,100000]
         );
     setDefaults();
     checkForExample();
@@ -2871,28 +2900,8 @@ When the web server is hosted on Kubernetes, increasing the workers also brings 
       </select></p>
    </div>
    <div class="group">
-      <p><button id="zoomin">Zoom in by: </button> <select id="zoomInAmount">
-           <option value="0.5">2 X</option>
-           <option value="0.2">5 X</option>
-           <option value="0.1">10 X</option>
-           <option value="0.05">20 X</option>
-           <option value="0.02">50 X</option>
-           <option value="0.01">100 X</option>
-           <option value="0.001">1,000 X</option>
-           <option value="0.0001">10,000 X</option>
-           <option value="0.00001">100,000 X</option>
-      </select></p>
-      <p><button id="zoomout">Zoom out by: </button> <select id="zoomOutAmount">
-           <option value="2">2 X</option>
-           <option value="5">5 X</option>
-           <option value="10">10 X</option>
-           <option value="20">20 X</option>
-           <option value="50">50 X</option>
-           <option value="100">100 X</option>
-           <option value="1000">1,000 X</option>
-           <option value="10000">10,000 X</option>
-           <option value="100000">100,000 X</option>
-      </select></p>
+      <p id="zoomIn"></p>
+      <p id="zoomOut"></p>
    </div>
    <div class="group">
       <p><button id="importXML" title="Put up an input box into which you can copy-and-paste the XML code for an example, or get the XML for the current example.">Show XML Import/Export</button></p>

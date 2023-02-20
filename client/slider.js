@@ -6,15 +6,16 @@ const keyLeft = 1;
 const keyRight = 2;
 
 class Slider {
-  constructor(parentElement, name, label, changeCallback, inputCallback = null,
-      title = "", logarithmic = false, initialValue = 0, minValue = 0, maxValue = 100,
+  constructor(parentElement, name, label, title, changeCallback, inputCallback = null, clickCallback = null,
+      logarithmic = false, initialValue = 0, minValue = 0, maxValue = 100,
       length = 3, stickyVals = null) {
     this.parentElement = parentElement;
     this.name = name;
     this.label = label;
+    this.title = title;
     this.changeCallback = changeCallback;
     this.inputCallback = inputCallback;
-    this.title = title;
+    this.clickCallback = clickCallback;
     this.logarithmic = logarithmic;
     this.initialValue = initialValue;
     this.value = NaN;
@@ -135,11 +136,14 @@ class Slider {
     const textInputContainer = document.createElement('div');
     textInputContainer.className = 'textInput-container';
 
-    const label = document.createElement('label');
+    const label = document.createElement(this.clickCallback ? 'button' : 'label');
     label.htmlFor = this.name + "-text";
     label.innerText = this.label;
     label.className = "textInput-label";
     label.title = this.title;
+    if (this.clickCallback) {
+      label.onclick = this.clickCallback;
+    }
 
     const textInput = document.createElement('input');
     textInput.id = label.htmlFor;
