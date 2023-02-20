@@ -54,9 +54,11 @@ class Slider {
       slider.value = Math.log2(this.initialValue);
     } else {
       slider.step = this.step;
+      slider.value = this.minValue;
+      slider.min = slider.value;
+      slider.value = this.maxValue;
+      slider.max = slider.value;
       slider.value = this.initialValue;
-      slider.min = this.minValue;
-      slider.max = this.maxValue;
     }
 
     slider.addEventListener('input', () => {
@@ -220,6 +222,20 @@ class Slider {
 
   setDefault() {
     return this.setValue(this.initialValue);
+  }
+
+  setMaxValue(value) {
+    this.maxValue = value;
+    let slider = this.slider;
+    slider.max = "";
+    if (this.logarithmic) {
+      // ensure slider.value === slider.min/maxValue at extremes
+      slider.value = Math.log2(value);
+    } else {
+      slider.value = value;
+    }
+    slider.max = slider.value;
+    this.setValue(this.getValue());
   }
 
   createStyleSheet() {
