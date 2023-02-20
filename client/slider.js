@@ -137,16 +137,17 @@ class Slider {
     textInputContainer.className = 'textInput-container';
 
     const label = document.createElement(this.clickCallback ? 'button' : 'label');
-    label.htmlFor = this.name + "-text";
     label.innerText = this.label;
     label.className = "textInput-label";
     label.title = this.title;
     if (this.clickCallback) {
       label.onclick = this.clickCallback;
+    } else {
+      label.htmlFor = this.name + "-text";
     }
 
     const textInput = document.createElement('input');
-    textInput.id = label.htmlFor;
+    textInput.id = this.name + "-text";
     textInput.type = 'text';
     textInput.className = "textInput";
     textInput.title = this.title;

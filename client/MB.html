@@ -126,6 +126,11 @@
      word-wrap: normal;
      overflow-x: scroll;
    }
+    body {
+        font-family: Arial, sans-serif;
+    }
+  </style>
+
 </style>
 <script src="BigDecimal-all-last.min.js"></script>
 <script src="slider.js"></script>
@@ -2670,7 +2675,7 @@ function init() {
         2,
         100000,
         6,
-        [2,5,10,20,50,100,1000,10000,100000]
+        [2,5,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000,100000]
         );
     zoomOutSlider = new Slider(
         document.getElementById("zoomOut"),
@@ -2685,7 +2690,7 @@ function init() {
         2,
         100000,
         6,
-        [2,5,10,20,50,100,1000,10000,100000]
+        [2,5,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000,100000]
         );
     setDefaults();
     checkForExample();
