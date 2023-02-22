@@ -174,7 +174,7 @@ var state = IDLE;
 
 var dragbox = null;
 
-let maxIterSlider, mainPaletteOffsetSlider;
+let maxIterSlider, mainPaletteOffsetSlider, mainPaletteLengthSlider;
 let zoomInSlider, zoomOutSlider;
 var palette;
 var stretchPalette;
@@ -685,8 +685,9 @@ function setDefaults() {
     stopJob();
     setLimits(new BigDecimal("-2.2"), new BigDecimal("0.8"), new BigDecimal("-1.2"), new BigDecimal("1.2"), false);
     stretchPalette = false;
-    fixedPaletteLength = 250;
     maxIterSlider.setDefault();
+    mainPaletteLengthSlider.setDefaultsFromMaxIter();
+    fixedPaletteLength = mainPaletteLengthSlider.getValue();
     mainPaletteOffsetSlider.setDefault();
     palette = new Palette();
     createPaletteColors();
@@ -1201,7 +1202,6 @@ function doPaletteOffset(newPaletteOffset) {
     createPaletteColors(newPaletteOffset);
     remapColors();
 }
-
 function finishDoPaletteOffset() {
     currentXML = currentExampletoXML();
     addUndoItem("Change PaletteOffset", mainPaletteOffsetSlider.getLastValue()/100, mainPaletteOffsetSlider.getValue()/100);
@@ -2632,66 +2632,93 @@ function init() {
     setUpDragging();
     setUpArrowKeys();
     changeWorkerCount(); // has to be done before setDefaults
+
     maxIterSlider = new Slider(
-        document.getElementById("maxIterDiv"),
         "maxIterSlider",
         "Max Iterations:",
         "How many steps in the Mandelbrot iteration before giving up and coloring the pixel black.",
-        (newMaxIters) => setMaxIterations(),
-        null,
-        null,
-        true,
-        500,
-        1,
-        1000000,
-        6,
-        [25,50,100,250,500,1000,2500,5000,10000,25000,50000,100000]
-        );
+        true, 500, 1, 999999, 6,
+        [3,5,10,25,50,100,250,500,1000,2500,5000,10000,25000,50000,100000]);
+    maxIterSlider.onInput = function (interimMaxIters) {
+        // check for palette length tracking maxIters
+        if (mainPaletteLengthSlider.isAtMax()) {
+            setFixedPaletteLength(interimMaxIters);
+        }
+    };
+    maxIterSlider.onChange = function (newMaxIters, oldMaxIters) {
+        setMaxIterations();
+        // check for palette length tracking maxIters
+        if (mainPaletteLengthSlider.isAtMax()) {
+            mainPaletteLengthSlider.setMaxValue(newMaxIters);
+            mainPaletteLengthSlider.setValue(newMaxIters);
+            // set new palette length, don't add undo for it
+            setFixedPaletteLength(newMaxIters);
+        // else update palette max if newMaxIters > current palette length
+        } else if (newMaxIters > mainPaletteLengthSlider.value) {
+            mainPaletteLengthSlider.setMaxValue(newMaxIters);
+        }
+    };
+
+    mainPaletteLengthSlider = new Slider(
+        "mainPaletteLengthSlider",
+        "Pallete Length:",
+        "Size of the color palette for pixels outside the Mandebrot set.",
+        true, 250, 1, 500, 6,
+        [2,3,4,5,6,7,8,9,10,12,15,20,25,35,50,75,100,175,250,350,400,500,750,1000,2500,5000,10000,999999999],
+        (value, slider) => value == slider.maxValue ? "MaxIter" : value);
+    mainPaletteLengthSlider.onInput = function (interimPaletteLength) {
+        // console.log("i", interimPaletteLength, this.maxValue, maxIterSlider.getValue());
+        if (this.isAtMax()) {
+            setFixedPaletteLength(maxIterSlider.value);
+        } else {
+            setFixedPaletteLength(interimPaletteLength);
+        }
+    };
+    mainPaletteLengthSlider.onChange = function (newPaletteLength, oldPaletteLength) {
+        // console.log("c", newPaletteLength, this.maxValue, maxIterSlider.getValue());
+        if (this.isAtMax()) {
+            this.setMaxValue(maxIterSlider.value);
+        }
+        changePaletteLength(oldPaletteLength);
+    };
+    mainPaletteLengthSlider.setDefaultsFromMaxIter = function () {
+        this.setMaxValue(maxIterSlider.value);
+        this.setValue(maxIterSlider.value/2);
+    };
+    mainPaletteLengthSlider.isAtMax = function() {
+        return this.slider.value === this.slider.max;
+    };
+
     mainPaletteOffsetSlider = new Slider(
-        document.getElementById("mainPaletteOffset"),
         "mainPaletteOffsetSlider",
-        "Pallete Offset %:",
+        "Pallete Offset:",
         "Offsets the colors within the palette to get a different mapping.",
-        (newPaletteOffset, oldPaletteOffset) => finishDoPaletteOffset(),
-        (newPaletteOffset) => doPaletteOffset(newPaletteOffset),
-        null,
-        false,
-        0,
-        0,
-        100,
-        3,
-        null
-        );
+        false, 0, 0, 100, 5,
+        [0,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100],
+        (value) => value + "%");
+    mainPaletteOffsetSlider.onInput = (interimOffset) => doPaletteOffset(interimOffset);
+    mainPaletteOffsetSlider.onChange = (newPaletteOffset, oldPaletteOffset) => finishDoPaletteOffset();
+
     zoomInSlider = new Slider(
-        document.getElementById("zoomIn"),
         "zoomInSlider",
         "Zoom in by",
         "Sets the zoom in amount and then zooms.",
-        (newZoom, oldZoom) => doZoomIn(),
-        null,
-        () => doZoomIn(),
-        true,
-        10,
-        2,
-        100000,
-        6,
-        [2,5,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000,100000]
-        );
+        true, 10, 2, 100000, 8,
+        [2,5,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000,100000],
+        (value) => value + " X",
+        () => doZoomIn());
+    zoomInSlider.onChange = (newZoom, oldZoom) => doZoomIn();
+
     zoomOutSlider = new Slider(
-        document.getElementById("zoomOut"),
         "zoomOutSlider",
         "Zoom out by",
         "Sets the zoom out amount and then zooms.",
-        (newZoom, oldZoom) => doZoomOut(),
-        null,
-        () => doZoomOut(),
-        true,
-        10,
-        2,
-        100000,
-        6,
-        [2,5,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000,100000]
-        );
+        true, 10, 2, 100000, 8,
+        [2,5,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000,100000],
+        (value) => value + " X",
+        () => doZoomOut());
+    zoomOutSlider.onChange = (newZoom, oldZoom) => doZoomOut();
+
     setDefaults();
     checkForExample();
     undoList = [];
@@ -2870,7 +2897,7 @@ When the web server is hosted on Kubernetes, increasing the workers also brings 
           <option value="Custom">Custom</option>
       </select></label><span id="customsize" style="display:none"><br><input type="text" maxlength="4" size="4" id="customwidth">x<input type="text" maxlength="4" size="4" id="customheight"> <button id="applysize">Apply</button></span></p>
    </div>
-   <div class="group" id="maxIterDiv">
+   <div class="group" id="maxIterSlider">
    </div>
    <div class="group">
       <p><button id="showpaletteedit" title="Show a popup dialog box that gives greater control over the palette.">Show Palette Editor</button>
@@ -2886,7 +2913,8 @@ When the web server is hosted on Kubernetes, increasing the workers also brings 
             <option value="5000">5000</option>
             <option value="Custom">Custom</option>
       </select></label><span id="custompallen" style="display:none"><br><input type="text" maxlength="5" size="4" id="palleninput"><button id="pallenapply">Apply</button></span>
-      <p id="mainPaletteOffset"></p>
+      <p id="mainPaletteLengthSlider" style="display:none"></p>
+      <p id="mainPaletteOffsetSlider"></p>
       <p style="margin-bottom:4px"><button id="standardPaletteButton" title="Click here to apply the palette of colors selected in the popup menu below.">Apply Standard Palette:</button></p>
       <p style="margin-top:0"><select id="standardPaletteSelect" style="margin-left:70px" title="Some palettes of colors to be applied to the Mandelbrot image.  Click the above button to apply the selected palette.">
             <option value="Spectrum">Spectrum</option>
@@ -2905,8 +2933,8 @@ When the web server is hosted on Kubernetes, increasing the workers also brings 
       </select></p>
    </div>
    <div class="group">
-      <p id="zoomIn"></p>
-      <p id="zoomOut"></p>
+      <p id="zoomInSlider"></p>
+      <p id="zoomOutSlider"></p>
    </div>
    <div class="group">
       <p><button id="importXML" title="Put up an input box into which you can copy-and-paste the XML code for an example, or get the XML for the current example.">Show XML Import/Export</button></p>

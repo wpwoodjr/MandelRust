@@ -6,16 +6,15 @@ const keyLeft = 1;
 const keyRight = 2;
 
 class Slider {
-  constructor(parentElement, name, label, title, changeCallback, inputCallback = null, clickCallback = null,
-      logarithmic = false, initialValue = 0, minValue = 0, maxValue = 100,
-      length = 3, stickyVals = null) {
-    this.parentElement = parentElement;
+  constructor(name, label, title,
+      logarithmic = false, initialValue = 0, minValue = 0, maxValue = 100, length = 3,
+      stickyVals = null,
+      textFormat = null,
+      onClick = null) {
+    this.parentElement = document.getElementById(name);
     this.name = name;
     this.label = label;
     this.title = title;
-    this.changeCallback = changeCallback;
-    this.inputCallback = inputCallback;
-    this.clickCallback = clickCallback;
     this.logarithmic = logarithmic;
     this.initialValue = initialValue;
     this.value = NaN;
@@ -24,6 +23,9 @@ class Slider {
     this.maxValue = maxValue;
     this.length = length;
     this.stickyVals = stickyVals && stickyVals.length > 0 ? stickyVals : null;
+    this.textFormat = textFormat ? textFormat : (value) => value;
+    this.shadowTextValue = initialValue;
+    this.onClick = onClick;
     this.step = 1;
     this.scale = Math.log10(1/this.step);
     this.lastInputValue = NaN;
@@ -31,7 +33,6 @@ class Slider {
     this.createStyleSheet();
     this.createTextInput();
     this.createSlider();
-    this.textInput.value = initialValue;
     this.validateText(false);
   }
 
@@ -47,9 +48,9 @@ class Slider {
     if (this.logarithmic) {
       slider.step = this.step/10;
       // ensure slider.value === slider.min/maxValue at extremes
-      slider.value = Math.log2(this.minValue);
+      slider.value = Math.floor(Math.log2(this.minValue)*10)/10;
       slider.min = slider.value;
-      slider.value = Math.log2(this.maxValue);
+      slider.value = Math.ceil(Math.log2(this.maxValue)*10)/10;
       slider.max = slider.value;
       slider.value = Math.log2(this.initialValue);
     } else {
@@ -63,48 +64,87 @@ class Slider {
 
     slider.addEventListener('input', () => {
       // console.log("input:", slider.id, slider.value);
-      let value = this.logarithmic ? (2**slider.valueAsNumber) : slider.valueAsNumber;
+      let newValue = this.logarithmic ? (2**slider.valueAsNumber) : slider.valueAsNumber;
       if (this.stickyVals && ! this.keydown) {
         let i = 1;
-        while (i < this.stickyVals.length && value > this.stickyVals[i]) {
+        while (i < this.stickyVals.length && newValue > this.stickyVals[i]) {
           i++;
         }
-        value =
-          (i === this.stickyVals.length || value - this.stickyVals[i - 1] < this.stickyVals[i] - value)
+        newValue =
+          (i === this.stickyVals.length || newValue - this.stickyVals[i - 1] < this.stickyVals[i] - newValue)
           ? this.stickyVals[i - 1]
           : this.stickyVals[i];
-        value = Math.min(this.maxValue, Math.max(this.minValue, value));
+        newValue = Math.min(this.maxValue, Math.max(this.minValue, newValue));
       } else if (slider.value === slider.max) {
-        value = this.maxValue;
+        newValue = this.maxValue;
       } else if (slider.value === slider.min) {
-        value = this.minValue;
+        newValue = this.minValue;
       }
-      this.textInput.value = value.toFixed(this.scale);
-      value = parseFloat(this.textInput.value);
+      this.shadowTextValue = newValue.toFixed(this.scale);
+      newValue = parseFloat(this.shadowTextValue);
 
       // handle case where value doesn't change because logarithmic
-      if (this.keydown && this.lastInputValue === value) {
-        value += (this.keydown == keyLeft ? -this.step : this.step);
-        this.textInput.value = value.toFixed(this.scale);
-        value = parseFloat(this.textInput.value);
+      if (this.keydown && this.lastInputValue === newValue) {
+        newValue += (this.keydown == keyLeft ? -this.step : this.step);
+        this.shadowTextValue = newValue.toFixed(this.scale);
+        newValue = parseFloat(this.shadowTextValue);
       }
       this.keydown = null;
 
-      if (this.inputCallback && this.lastInputValue !== value) {
-        this.inputCallback(value);
-      }
-      this.lastInputValue = value;
-    });
+      this.textInput.value = this.textFormat(this.shadowTextValue, this);
 
+      if (this.onInput && this.lastInputValue !== newValue) {
+        this.onInput(newValue);
+      }
+      this.lastInputValue = newValue;
+    });
+/*
+    slider.addEventListener('input', () => {
+      let newValue = this.logarithmic ? (2**slider.valueAsNumber) : slider.valueAsNumber;
+      // console.log("input:", slider.id, slider.value, newValue, slider.max);
+
+      // look for nearest sticky value
+      if (this.stickyVals && ! this.keydown) {
+        let i = 1;
+        while (i < this.stickyVals.length && newValue > this.stickyVals[i]) {
+          i++;
+        }
+        newValue =
+          (i === this.stickyVals.length
+            || newValue - this.stickyVals[i - 1] < Math.min(this.maxValue, this.stickyVals[i]) - newValue)
+          ? this.stickyVals[i - 1]
+          : this.stickyVals[i];
+      }
+
+      // handle case where value doesn't change because logarithmic
+      if (this.keydown && this.lastInputValue === newValue) {
+        newValue += (this.keydown == keyLeft ? -this.step : this.step);
+      }
+      this.keydown = null;
+
+      newValue = Math.min(this.maxValue, Math.max(this.minValue, newValue));
+      this.shadowTextValue = newValue.toFixed(this.scale);
+      newValue = parseFloat(this.shadowTextValue);
+      this.textInput.value = this.textFormat(this.shadowTextValue, this);
+
+      if (this.onInput && this.lastInputValue !== newValue) {
+        this.onInput(newValue);
+      }
+      this.lastInputValue = newValue;
+      // console.log("input end:", slider.id, slider.value, newValue, slider.max);
+    });
+*/
     slider.addEventListener('change', () => {
-      // console.log("change:", slider.id, slider.value);
-      let value = parseFloat(this.textInput.value);
-      this.slider.value = this.logarithmic ? Math.log2(value) : value;
-      if (value !== this.value) {
+      let newValue = parseFloat(this.shadowTextValue);
+      // console.log("change:", slider.id, slider.value, newValue, this.value);
+      // w/out this, 50 left arrow is higher than 50
+      // with this, slider can be moved to max position by it
+      slider.value = this.logarithmic ? Math.log2(newValue) : newValue;
+      if (newValue !== this.value) {
         this.lastValue = this.value;
-        this.value = value;
-        if (this.changeCallback) {
-          this.changeCallback(value, this.lastValue);
+        this.value = newValue;
+        if (this.onChange) {
+          this.onChange(newValue, this.lastValue);
         }
       }
     });
@@ -126,6 +166,10 @@ class Slider {
           this.keydown = keyRight;
           // console.log("keydown:", this.keydown, event.key, slider.value);
           break;
+
+        case "Enter":
+          slider.blur();
+          break;
       }
     });
 
@@ -138,12 +182,12 @@ class Slider {
     const textInputContainer = document.createElement('div');
     textInputContainer.className = 'textInput-container';
 
-    const label = document.createElement(this.clickCallback ? 'button' : 'label');
+    const label = document.createElement(this.onClick ? 'button' : 'label');
     label.innerText = this.label;
     label.className = "textInput-label";
     label.title = this.title;
-    if (this.clickCallback) {
-      label.onclick = this.clickCallback;
+    if (this.onClick) {
+      label.onclick = this.onClick;
     } else {
       label.htmlFor = this.name + "-text";
     }
@@ -155,11 +199,11 @@ class Slider {
     textInput.title = this.title;
     textInput.maxLength = this.length;
     textInput.style.width = `${this.length}ch`;
-    textInput.value = this.value;
 
     textInput.addEventListener('input', () => {
       // console.log("input:", textInput.id, textInput.value);
-      let value = parseFloat(textInput.value);
+      this.shadowTextValue = textInput.value;
+      let value = parseFloat(this.shadowTextValue);
       value = this.logarithmic ? Math.log2(value) : value;
       if (isFinite(value)) {
         this.slider.value = value;
@@ -169,6 +213,16 @@ class Slider {
     textInput.addEventListener('change', () => {
       // console.log("change:", textInput.id, textInput.value);
       this.validateText(true);
+    });
+
+    textInput.addEventListener('focus', () => {
+      // console.log("focus:", textInput.id, textInput.value);
+      textInput.value = this.shadowTextValue;
+    });
+
+    textInput.addEventListener('blur', () => {
+      // console.log("blur:", textInput.id, textInput.value);
+      textInput.value = this.textFormat(this.shadowTextValue, this);
     });
 
     textInput.addEventListener('keydown', (event) => {
@@ -185,22 +239,23 @@ class Slider {
   }
 
   validateText(doCallbacks) {
-    let value = parseFloat(this.textInput.value);
+    let value = parseFloat(this.shadowTextValue);
     // keep current value if not a number
     value = isFinite(value) ? value : this.value;
     value = Math.min(Math.max(this.minValue, value), this.maxValue);
-    this.textInput.value = value.toFixed(this.scale);
-    value = parseFloat(this.textInput.value);
+    this.shadowTextValue = value.toFixed(this.scale);
+    value = parseFloat(this.shadowTextValue);
     this.slider.value = this.logarithmic ? Math.log2(value) : value;
+    this.textInput.value = this.textFormat(this.shadowTextValue, this);
     if (value !== this.value) {
       this.lastValue = this.value;
       this.value = value;
       if (doCallbacks) {
-        if (this.inputCallback) {
-          this.inputCallback(value);
+        if (this.onInput) {
+          this.onInput(value);
         }
-        if (this.changeCallback) {
-          this.changeCallback(value, this.lastValue);
+        if (this.onChange) {
+          this.onChange(value, this.lastValue);
         }
       }
     }
@@ -215,7 +270,7 @@ class Slider {
   }
 
   setValue(value) {
-    this.textInput.value = value;
+    this.shadowTextValue = value;
     this.validateText(false);
     return this.value;
   }
