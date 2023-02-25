@@ -6,34 +6,34 @@ const keyLeft = 1;
 const keyRight = 2;
 
 class Slider {
-  constructor(name, label, title,
+  constructor(id, label, title,
       logarithmic = false, initialValue = 0, minValue = 0, maxValue = 100, length = 3,
       stickyVals = null,
       textFormat = null,
       onClick = null) {
-    this.parentElement = document.getElementById(name);
-    this.name = name;
+    this.parentElement = document.getElementById(id);
+    this.id = id;
     this.label = label;
     this.title = title;
     this.logarithmic = logarithmic;
     this.initialValue = initialValue;
     this.value = NaN;
-    this.lastValue = NaN;
     this.minValue = minValue;
     this.maxValue = maxValue;
     this.length = length;
     this.stickyVals = stickyVals && stickyVals.length > 0 ? stickyVals : null;
     this.textFormat = textFormat ? textFormat : (value) => value;
-    this.shadowTextValue = initialValue;
     this.onClick = onClick;
     this.step = 1;
     this.scale = Math.log10(1/this.step);
     this.lastInputValue = NaN;
     this.keydown = null;
+    this.lastChangeState = { };
+    this.atMax = null;
     this.createStyleSheet();
     this.createTextInput();
     this.createSlider();
-    this.validateText(false);
+    this.validateText(initialValue, false);
   }
 
   createSlider() {
@@ -41,7 +41,7 @@ class Slider {
     sliderContainer.className = 'slider-container';
 
     const slider = document.createElement('input');
-    slider.id = this.name + "-slider";
+    slider.id = this.id + "-slider";
     slider.type = 'range';
     slider.className = 'slider';
     slider.title = this.title;
@@ -63,89 +63,54 @@ class Slider {
     }
 
     slider.addEventListener('input', () => {
-      // console.log("input:", slider.id, slider.value);
       let newValue = this.logarithmic ? (2**slider.valueAsNumber) : slider.valueAsNumber;
-      if (this.stickyVals && ! this.keydown) {
-        let i = 1;
-        while (i < this.stickyVals.length && newValue > this.stickyVals[i]) {
-          i++;
-        }
-        newValue =
-          (i === this.stickyVals.length || newValue - this.stickyVals[i - 1] < this.stickyVals[i] - newValue)
-          ? this.stickyVals[i - 1]
-          : this.stickyVals[i];
-        newValue = Math.min(this.maxValue, Math.max(this.minValue, newValue));
-      } else if (slider.value === slider.max) {
-        newValue = this.maxValue;
-      } else if (slider.value === slider.min) {
-        newValue = this.minValue;
-      }
-      this.shadowTextValue = newValue.toFixed(this.scale);
-      newValue = parseFloat(this.shadowTextValue);
-
-      // handle case where value doesn't change because logarithmic
-      if (this.keydown && this.lastInputValue === newValue) {
-        newValue += (this.keydown == keyLeft ? -this.step : this.step);
-        this.shadowTextValue = newValue.toFixed(this.scale);
-        newValue = parseFloat(this.shadowTextValue);
-      }
-      this.keydown = null;
-
-      this.textInput.value = this.textFormat(this.shadowTextValue, this);
-
-      if (this.onInput && this.lastInputValue !== newValue) {
-        this.onInput(newValue);
-      }
-      this.lastInputValue = newValue;
-    });
-/*
-    slider.addEventListener('input', () => {
-      let newValue = this.logarithmic ? (2**slider.valueAsNumber) : slider.valueAsNumber;
-      // console.log("input:", slider.id, slider.value, newValue, slider.max);
-
-      // look for nearest sticky value
-      if (this.stickyVals && ! this.keydown) {
+      console.log("input 1:", slider.id, slider.value, newValue);
+      if (this.lastChangeState.sliderValue === slider.value) {
+        // don't change this.value if slider.value hasn't changed
+        newValue = this.lastChangeState.value;
+      } else if (this.stickyVals && ! this.keydown) {
         let i = 1;
         while (i < this.stickyVals.length && newValue > this.stickyVals[i]) {
           i++;
         }
         newValue =
           (i === this.stickyVals.length
-            || newValue - this.stickyVals[i - 1] < Math.min(this.maxValue, this.stickyVals[i]) - newValue)
-          ? this.stickyVals[i - 1]
-          : this.stickyVals[i];
+            || newValue - this.stickyVals[i - 1] < this.stickyVals[i] - newValue
+            || this.stickyVals[i] > this.maxValue)
+            ? this.stickyVals[i - 1]
+            : this.stickyVals[i];
+      } else if (slider.value === slider.max) {
+        newValue = this.maxValue;
+      } else if (slider.value === slider.min) {
+        newValue = this.minValue;
       }
+      newValue = this.toFixedValue(newValue);
+      console.log("input 2:", slider.id, slider.value, newValue);
 
-      // handle case where value doesn't change because logarithmic
+      // handle case where value doesn't change despite slider being moved - because logarithmic
+      if (this.keydown) console.log("kd:", slider.value, newValue, this.lastInputValue);
       if (this.keydown && this.lastInputValue === newValue) {
         newValue += (this.keydown == keyLeft ? -this.step : this.step);
+        newValue = this.toFixedValue(newValue);
+        slider.value = this.logarithmic ? Math.log2(newValue) : newValue;
       }
       this.keydown = null;
 
-      newValue = Math.min(this.maxValue, Math.max(this.minValue, newValue));
-      this.shadowTextValue = newValue.toFixed(this.scale);
-      newValue = parseFloat(this.shadowTextValue);
-      this.textInput.value = this.textFormat(this.shadowTextValue, this);
-
-      if (this.onInput && this.lastInputValue !== newValue) {
-        this.onInput(newValue);
+      this.atMax = slider.value === slider.max;
+      this.textInput.value = this.textFormat(newValue, this.atMax);
+      if (this.onInput) {
+        this.onInput(newValue, this.lastInputValue);
       }
       this.lastInputValue = newValue;
-      // console.log("input end:", slider.id, slider.value, newValue, slider.max);
     });
-*/
+
     slider.addEventListener('change', () => {
-      let newValue = parseFloat(this.shadowTextValue);
-      // console.log("change:", slider.id, slider.value, newValue, this.value);
-      // w/out this, 50 left arrow is higher than 50
-      // with this, slider can be moved to max position by it
-      slider.value = this.logarithmic ? Math.log2(newValue) : newValue;
-      if (newValue !== this.value) {
-        this.lastValue = this.value;
-        this.value = newValue;
-        if (this.onChange) {
-          this.onChange(newValue, this.lastValue);
-        }
+      let newValue = this.lastInputValue;
+      console.log("change:", slider.id, slider.value, newValue, this.value);
+      this.value = newValue;
+      this.saveLastChangeState();
+      if (this.onChange) {
+        this.onChange(newValue, this.lastChangeState.lastValue);
       }
     });
 
@@ -189,11 +154,11 @@ class Slider {
     if (this.onClick) {
       label.onclick = this.onClick;
     } else {
-      label.htmlFor = this.name + "-text";
+      label.htmlFor = this.id + "-text";
     }
 
     const textInput = document.createElement('input');
-    textInput.id = this.name + "-text";
+    textInput.id = this.id + "-text";
     textInput.type = 'text';
     textInput.className = "textInput";
     textInput.title = this.title;
@@ -202,8 +167,7 @@ class Slider {
 
     textInput.addEventListener('input', () => {
       // console.log("input:", textInput.id, textInput.value);
-      this.shadowTextValue = textInput.value;
-      let value = parseFloat(this.shadowTextValue);
+      let value = parseFloat(textInput.value);
       value = this.logarithmic ? Math.log2(value) : value;
       if (isFinite(value)) {
         this.slider.value = value;
@@ -211,18 +175,18 @@ class Slider {
     });
 
     textInput.addEventListener('change', () => {
-      // console.log("change:", textInput.id, textInput.value);
-      this.validateText(true);
+      console.log("change:", textInput.id, textInput.value);
+      this.validateText(textInput.value, true);
     });
 
     textInput.addEventListener('focus', () => {
       // console.log("focus:", textInput.id, textInput.value);
-      textInput.value = this.shadowTextValue;
+      textInput.value = this.value;
     });
 
     textInput.addEventListener('blur', () => {
-      // console.log("blur:", textInput.id, textInput.value);
-      textInput.value = this.textFormat(this.shadowTextValue, this);
+      console.log("blur:", textInput.id, textInput.value, this.value, this.maxValue);
+      textInput.value = this.textFormat(this.value, this.atMax);
     });
 
     textInput.addEventListener('keydown', (event) => {
@@ -238,24 +202,25 @@ class Slider {
     this.parentElement.appendChild(textInputContainer);
   }
 
-  validateText(doCallbacks) {
-    let value = parseFloat(this.shadowTextValue);
+  validateText(text, doCallbacks) {
+    let value = parseFloat(text);
     // keep current value if not a number
     value = isFinite(value) ? value : this.value;
     value = Math.min(Math.max(this.minValue, value), this.maxValue);
-    this.shadowTextValue = value.toFixed(this.scale);
-    value = parseFloat(this.shadowTextValue);
+    value = this.toFixedValue(value);
     this.slider.value = this.logarithmic ? Math.log2(value) : value;
-    this.textInput.value = this.textFormat(this.shadowTextValue, this);
-    if (value !== this.value) {
-      this.lastValue = this.value;
+    console.log("vT:", value, this.slider.value);
+    this.atMax = value === this.maxValue;
+    this.textInput.value = this.textFormat(value, this.atMax);
+    if (value !== this.value) {///? may not want to check this
       this.value = value;
+      this.saveLastChangeState();
       if (doCallbacks) {
         if (this.onInput) {
-          this.onInput(value);
+          this.onInput(value, this.lastChangeState.lastValue);
         }
         if (this.onChange) {
-          this.onChange(value, this.lastValue);
+          this.onChange(value, this.lastChangeState.lastValue);
         }
       }
     }
@@ -265,13 +230,13 @@ class Slider {
     return this.value;
   }
 
-  getLastValue() {
-    return this.lastValue;
-  }
+  // getLastValue() {
+  //   return this.lastChangeState.lastValue;
+  // }
 
   setValue(value) {
-    this.shadowTextValue = value;
-    this.validateText(false);
+    console.log("setValue from:", (new Error()).stack.split("\n")[2].trim().split(" ")[1], value);
+    this.validateText(value, false);
     return this.value;
   }
 
@@ -279,18 +244,53 @@ class Slider {
     return this.setValue(this.initialValue);
   }
 
-  setMaxValue(value) {
-    this.maxValue = value;
-    let slider = this.slider;
-    slider.max = "";
+  setMaxValue(newMaxValue, setValueToMax) {
+    console.log("setMV 1 new max:", newMaxValue, "old max:", this.maxValue, "cur value:", this.value, "slider value:", this.slider.value, "slider max:", this.slider.max);
+    this.maxValue = newMaxValue;
+    let saveSliderValue = this.slider.value;
+    this.slider.max = "";
     if (this.logarithmic) {
       // ensure slider.value === slider.min/maxValue at extremes
-      slider.value = Math.log2(value);
+      this.slider.value = Math.ceil(Math.log2(newMaxValue)*10)/10;
     } else {
-      slider.value = value;
+      this.slider.value = newMaxValue;
     }
-    slider.max = slider.value;
-    this.setValue(this.getValue());
+    this.slider.max = this.slider.value;
+    if (setValueToMax) {
+      this.value = newMaxValue;
+    // maintain original slider positioning if its < new slider max
+    // otherwise leave it at new slider max
+    } else if (parseFloat(saveSliderValue) < parseFloat(this.slider.max)) {
+      this.slider.value = saveSliderValue;
+    }
+    // keep this.value unchanged unless current value > new max value (or setValueToMax)
+    this.value = Math.min(this.value, this.maxValue);
+    this.value = this.toFixedValue(this.value);
+    this.atMax = this.value === this.maxValue;
+    this.textInput.value = this.textFormat(this.value, this.atMax);
+    this.saveLastChangeState();
+    console.log("setMV 2 new value:", this.value, "new slider value:", this.slider.value, "new slider max:", this.slider.max);
+  }
+
+  // isSliderAtMax() {
+  //   console.log("isSliderAtMax:", this.id, this.slider.value, this.slider.max, this.maxValue);
+  //   return this.slider.value === this.slider.max;
+  // }
+
+  // isValueAtMax() {
+  //   console.log("isValueAtMax:", this.id, this.value, this.maxValue);
+  //   return this.value === this.maxValue;
+  // }
+
+  saveLastChangeState() {
+    console.log("changeState:", this.id, this.value, this.slider.value);
+    this.lastChangeState.lastValue = this.lastChangeState.value;
+    this.lastChangeState.value = this.value;
+    this.lastChangeState.sliderValue = this.slider.value;
+  }
+
+  toFixedValue(value) {
+    return parseFloat(value.toFixed(this.scale));
   }
 
   createStyleSheet() {

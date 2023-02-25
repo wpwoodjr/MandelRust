@@ -1139,24 +1139,22 @@ function changeLocalOrRemote() {
     document.getElementById("threadCountSelect").value = "" + newWorkerCount;
 }
 
-function setMaxIterations() {
+function setMaxIterations(newMaxIters, oldMaxIters) {
     stopJob();
     createPaletteColors();
     startJob();
-    addUndoItem("Change MaxIterations", maxIterSlider.getLastValue(), maxIterSlider.getValue());
+    addUndoItem("Change MaxIterations", oldMaxIters, newMaxIters);
 }
 
-function changePaletteLength() {
-    var val = document.getElementById("paletteLengthSelect").value;
-    var len;
-    if (val == "Custom") {
+function changePaletteLength(newPaletteLength, oldPaletteLength) {
+    if (newPaletteLength == "Custom") {
         var length = stretchPalette ? maxIterSlider.getValue() : fixedPaletteLength;
         stretchPalette = false;
         fixedPaletteLength = length;
         document.getElementById("palleninput").value = "" + length;
         document.getElementById("custompallen").style.display = "inline";
     }
-    else if (val == "Match") {
+    else if (newPaletteLength == "Match") {
         var oldval = [stretchPalette, stretchPalette ? maxIterSlider.getValue() : fixedPaletteLength];
         stretchPalette = true;
         if (paletteLength != maxIterSlider.getValue()) {
@@ -1168,15 +1166,15 @@ function changePaletteLength() {
         document.getElementById("custompallen").style.display = "none";
     }
     else {
-       len = parseInt(val);
-       if (len != paletteLength) {
-          addUndoItem("Change PaletteLength", [stretchPalette, paletteLength], [false,len]);
-       }
-       setFixedPaletteLength(len);
+    //    if (newPaletteLength != paletteLength) {
+          addUndoItem("Change PaletteLength", [stretchPalette, oldPaletteLength], [false,newPaletteLength]);
+    //    }
+    //    setFixedPaletteLength(newPaletteLength);
        document.getElementById("custompallen").style.display = "none";
     }
 }
 function setFixedPaletteLength(len) {
+    console.log("setFixedPaletteLength:", len);
     fixedPaletteLength = len;
     stretchPalette = false;
     if (fixedPaletteLength != paletteLength) {
@@ -2639,14 +2637,14 @@ function init() {
         "How many steps in the Mandelbrot iteration before giving up and coloring the pixel black.",
         true, 500, 1, 999999, 6,
         [3,5,10,25,50,100,250,500,1000,2500,5000,10000,25000,50000,100000]);
-    maxIterSlider.onInput = function (interimMaxIters) {
+    maxIterSlider.onInput = function (interimMaxIters, lastInterimMaxIters) {
         // check for palette length tracking maxIters
         if (mainPaletteLengthSlider.isAtMax()) {
             setFixedPaletteLength(interimMaxIters);
         }
     };
     maxIterSlider.onChange = function (newMaxIters, oldMaxIters) {
-        setMaxIterations();
+        setMaxIterations(newMaxIters, oldMaxIters);
         // check for palette length tracking maxIters
         if (mainPaletteLengthSlider.isAtMax()) {
             mainPaletteLengthSlider.setMaxValue(newMaxIters);
@@ -2664,29 +2662,30 @@ function init() {
         "Pallete Length:",
         "Size of the color palette for pixels outside the Mandebrot set.",
         true, 250, 1, 500, 6,
-        [2,3,4,5,6,7,8,9,10,12,15,20,25,35,50,75,100,175,250,350,400,500,750,1000,2500,5000,10000,999999999],
-        (value, slider) => value == slider.maxValue ? "MaxIter" : value);
-    mainPaletteLengthSlider.onInput = function (interimPaletteLength) {
-        // console.log("i", interimPaletteLength, this.maxValue, maxIterSlider.getValue());
-        if (this.isAtMax()) {
-            setFixedPaletteLength(maxIterSlider.value);
-        } else {
-            setFixedPaletteLength(interimPaletteLength);
+        [2,3,4,5,6,7,8,9,10,12,15,20,25,35,50,75,100,150,200,250,350,500,750,1000,2500,5000,10000,999999999],
+        (value, slider) => slider.isAtMax() ? "MaxIter" : value);
+    mainPaletteLengthSlider.onInput = function (interimPaletteLength, lastInterimPaletteLength) {
+        console.log("i", interimPaletteLength, lastInterimPaletteLength);
+        if (interimPaletteLength != lastInterimPaletteLength) {
+            if (this.isAtMax()) {
+                setFixedPaletteLength(maxIterSlider.value);
+            } else {
+                setFixedPaletteLength(interimPaletteLength);
+            }
         }
     };
     mainPaletteLengthSlider.onChange = function (newPaletteLength, oldPaletteLength) {
-        // console.log("c", newPaletteLength, this.maxValue, maxIterSlider.getValue());
+        console.log("c", newPaletteLength, oldPaletteLength);
         if (this.isAtMax()) {
             this.setMaxValue(maxIterSlider.value);
         }
-        changePaletteLength(oldPaletteLength);
+        if (newPaletteLength != oldPaletteLength) {
+            changePaletteLength(newPaletteLength, oldPaletteLength);
+        }
     };
     mainPaletteLengthSlider.setDefaultsFromMaxIter = function () {
         this.setMaxValue(maxIterSlider.value);
         this.setValue(maxIterSlider.value/2);
-    };
-    mainPaletteLengthSlider.isAtMax = function() {
-        return this.slider.value === this.slider.max;
     };
 
     mainPaletteOffsetSlider = new Slider(
@@ -2913,7 +2912,7 @@ When the web server is hosted on Kubernetes, increasing the workers also brings 
             <option value="5000">5000</option>
             <option value="Custom">Custom</option>
       </select></label><span id="custompallen" style="display:none"><br><input type="text" maxlength="5" size="4" id="palleninput"><button id="pallenapply">Apply</button></span>
-      <p id="mainPaletteLengthSlider" style="display:none"></p>
+      <p id="mainPaletteLengthSlider"></p>
       <p id="mainPaletteOffsetSlider"></p>
       <p style="margin-bottom:4px"><button id="standardPaletteButton" title="Click here to apply the palette of colors selected in the popup menu below.">Apply Standard Palette:</button></p>
       <p style="margin-top:0"><select id="standardPaletteSelect" style="margin-left:70px" title="Some palettes of colors to be applied to the Mandelbrot image.  Click the above button to apply the selected palette.">
