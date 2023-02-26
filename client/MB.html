@@ -40,6 +40,7 @@
                   Added undo (ctrl-z) and redo (ctrl-shift-z and ctrl-y) key bindings
                   Fixed small bug where dx value was being used to increment yval instead of dy value in HP calculations
                   Rewrote browser-side computations from JavaScript to Rust WASM
+                  Added interactive sliders for control of max iterations, zoom level, palette offset, etc.
 
 -->
 <html>
@@ -130,8 +131,18 @@
         font-family: Arial, sans-serif;
     }
   </style>
-
 </style>
+
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-7MMVRWY57P"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-7MMVRWY57P');
+</script>
+
 <script src="BigDecimal-all-last.min.js"></script>
 <script src="slider.js"></script>
 <script>
