@@ -26,6 +26,7 @@ class Slider {
     this.onChange = options.onChange || null;
     this.onInput = options.onInput || null;
     this.notifyOnlyOnDifference = options.notifyOnlyOnChange === false ? false : true;
+    this.info = options.info || null;
 
     this.value = NaN;
     this.lastInputValue = NaN;
@@ -292,7 +293,6 @@ class Slider {
 
     this.textInput.value = this.textFormat(this.value);
     if (oldValue !== this.value) {
-      this.value = oldValue;
       this.saveLastChangeState();
     }
     console.log("setMV 2 new value:", this.value, "new slider value:", this.slider.value, "new slider max:", this.slider.max);
