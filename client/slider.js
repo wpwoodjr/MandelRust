@@ -21,25 +21,28 @@ class Slider {
     this.textLength = options.textLength || 3;
     this.stickyVals = options.stickyVals || null;
     this.textFormat = options.textFormat || ((value) => value);
+    this.textEdit = options.textEdit !== false;
     this.button = options.button || false;
     this.onClick = options.onClick || null;
     this.onChange = options.onChange || null;
     this.onInput = options.onInput || null;
-    this.notifyOnlyOnDifference = options.notifyOnlyOnChange === false ? false : true;
-    this.info = options.info || null;
+    this.notifyOnlyOnDifference = options.notifyOnlyOnDifference !== false;
+    this.data = options.data || {};
 
-    this.value = NaN;
-    this.lastInputValue = NaN;
     this.scale = Math.log10(1/this.step);
     this.minValue = this.toFixedValue(this.minValue);
     this.maxValue = this.toFixedValue(this.maxValue);
     this.initialValue = this.toFixedValue(this.initialValue);
     this.stickyVals = this.stickyVals && this.stickyVals.length > 0 ? this.stickyVals : null;
     this.keydown = null;
-    this.lastChangeState = { };
     this.createStyleSheet();
     this.createTextInput();
     this.createSlider();
+    this.value = NaN;
+    this.lastInputValue = NaN;
+    this.lastChangeState = {};
+    // initialize "current"
+    this.saveLastChangeState();
     this.setDefault();
   }
 
@@ -115,7 +118,7 @@ class Slider {
       // Two reasons for this...
         // 1) for keydown, handle case where newValue is the same at slider.max - 1 and slider.max
         // 2) for stickyVals, handle case where stickyVal picks maxValue but slider is not at max and then
-        //    in onChange slider is set to slider.max (stickyVal of 1000 and maxValue of 1000 causes this)
+        //    in this.onChange slider is set to slider.max (stickyVal of 1000 and maxValue of 1000 causes this)
         //    which can cause displayed input value (1000) not to match final value (eg "MaxIters")
       if (newValue === this.minValue) {
         slider.value = slider.min;
@@ -130,7 +133,7 @@ class Slider {
         this.onInput(newValue, this.lastInputValue);
       }
       this.lastInputValue = newValue;
-  });
+    });
 
     slider.addEventListener('change', () => {
       let newValue = this.lastInputValue;
@@ -221,7 +224,11 @@ class Slider {
 
     textInput.addEventListener('focus', () => {
       // console.log("focus:", textInput.id, textInput.value);
-      textInput.value = this.value;
+      if (this.textEdit) {
+        textInput.value = this.value;
+      } else {
+        textInput.blur();
+      }
     });
 
     textInput.addEventListener('blur', () => {
@@ -348,6 +355,7 @@ class Slider {
       sliderMax: this.slider.max,
       sliderValue: this.slider.value
     };
+    // console.log("lCS", this.id, this.lastChangeState);
   }
 
   restoreChangeState(cs) {
@@ -367,6 +375,25 @@ class Slider {
     if (this.onChange) {
       this.onChange(this.value, this.lastChangeState.prev.value);
     }
+  }
+
+  getState() {
+    let state = {
+      maxValue: this.maxValue,
+      value: this.value,
+      sliderValue: this.slider.value,
+      textInputValue: this.textInput.value
+    };
+    console.log("getState:",this.id,state);
+    return state;
+  }
+
+  setState(state) {
+    console.log("setState:",this.id,state);
+    this.maxValue = state.maxValue;
+    this.value = state.value;
+    this.slider.value = state.sliderValue;
+    this.textInput.value = state.textInputValue;
   }
 
   toFixedValue(value) {
