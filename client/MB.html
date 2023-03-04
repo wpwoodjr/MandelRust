@@ -1151,7 +1151,7 @@ function setMaxIterations(newMaxIters, oldMaxIters) {
 }
 
 function setFixedPaletteLength(newPaletteLength) {
-    console.log("setFixedPaletteLength:", newPaletteLength);
+    // console.log("setFixedPaletteLength:", newPaletteLength);
     fixedPaletteLength = newPaletteLength;
     stretchPalette = mainPaletteLengthSlider.atMax();
     createPaletteColors();
@@ -2352,7 +2352,7 @@ function currentExampletoXML() {
 }
 
 function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError) {
-    console.log("installExampleFromXML:", currentXML);
+    // console.log("installExampleFromXML:", currentXML);
     let oldXML = currentXML;
     let oldPaletteSelectSliderState = paletteSelectSlider.getPaletteSelectSliderState();
     stopJob();
@@ -2577,8 +2577,8 @@ function init() {
         stickyVals: [3,5,10,25,50,100,250,500,1000,2500,5000,10000,25000,50000,100000]
         });
     maxIterSlider.onInput = function (interimMaxIters, lastInterimMaxIters) {
+        // console.log("i:",this.id,interimMaxIters);
         // check for palette length tracking maxIters
-        console.log("i:",this.id,interimMaxIters);
         if (mainPaletteLengthSlider.atMax()) {
             setFixedPaletteLength(interimMaxIters);
         }
@@ -2608,7 +2608,7 @@ function init() {
         data: { lastPaletteLength: NaN }
         });
     mainPaletteLengthSlider.onInput = function (interimPaletteLength, lastInterimPaletteLength) {
-        console.log("i mPLS", interimPaletteLength, lastInterimPaletteLength, maxIterSlider.value);
+        // console.log("i mPLS", interimPaletteLength, lastInterimPaletteLength, maxIterSlider.value);
         if (isNaN(this.data.lastPaletteLength)) {
             this.data.lastPaletteLength = this.value;
         }
@@ -2619,7 +2619,7 @@ function init() {
         } 
     };
     mainPaletteLengthSlider.onChange = function (newPaletteLength, oldState) {
-        console.log("c mPLS", newPaletteLength, oldState.value, maxIterSlider.value);
+        // console.log("c mPLS", newPaletteLength, oldState.value, maxIterSlider.value);
         if (this.atMax()) {
             if (this.maxValue !== maxIterSlider.value) {
                 this.setMaxValue(maxIterSlider.value, true);
