@@ -1,3 +1,4 @@
+Arrows not working in XML import
 optimize redraw on undo
 set an undo for arrow keys?
 >look at code for restarting workers in stopJob
