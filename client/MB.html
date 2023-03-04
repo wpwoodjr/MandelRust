@@ -698,9 +698,7 @@ function setDefaults() {
     paletteSelectSlider.reset();
     palette = new Palette();
     createPaletteColors();
-    // document.getElementById("custompallen").style.display = "none";
     document.getElementById("customsize").style.display = "none";
-    // document.getElementById("paletteLengthSelect").value = "250";
     document.getElementById("imagesize").value = "800 600";
     if (canvas.width != 800 || canvas.height != 600) {
       canvas.width = 800;
@@ -727,9 +725,6 @@ function remapColors() {
 }
 
 function createPaletteColors(newPaletteOffset) {
-    // if (stretchPalette && maxIterSlider.value != fixedPaletteLength) console.log("assertion failed!", maxIterSlider.value, fixedPaletteLength);
-    // var length = stretchPalette ? maxIterSlider.value : fixedPaletteLength;
-    // paletteLength = length;
     paletteLength = fixedPaletteLength;
     let offset = arguments.length ? newPaletteOffset/100 : mainPaletteOffsetSlider.value/100;
     offset = Math.round(offset * paletteLength);
@@ -1115,7 +1110,7 @@ function checkRemoteCanComputeMB() {
         if (! result) {
             document.getElementById("remote").disabled = true;
             document.getElementById("localRemote").title = "Mandelbrot web server is not available, calculations will be done in the browser.";
-            // console.log("remote web server does not support Mandelbrot calculations");
+            console.warn("remote web server does not support Mandelbrot calculations");
             if (document.getElementById("remote").checked) {
                 document.getElementById("local").checked = true;
                 changeLocalOrRemote();
@@ -1155,34 +1150,6 @@ function setMaxIterations(newMaxIters, oldMaxIters) {
     startJob();
 }
 
-// function changePaletteLength(newPaletteLength, oldPaletteLength, stretch) {
-//     // if (newPaletteLength == "Custom") {
-//     //     var length = stretchPalette ? maxIterSlider.value : fixedPaletteLength;
-//     //     stretchPalette = false;
-//     //     fixedPaletteLength = length;
-//     //     document.getElementById("palleninput").value = "" + length;
-//     //     document.getElementById("custompallen").style.display = "inline";
-//     // }
-//     // else if (newPaletteLength == "Match") {
-//     if (stretch) {
-//         let oldval = [stretchPalette, oldPaletteLength];
-//         stretchPalette = true;
-//         // if (paletteLength != maxIterSlider.value) {
-//         //     stopJob();
-//         //     createPaletteColors();
-//         //     startJob();
-//         addUndoItem("Change PaletteLength", oldval, [stretchPalette, newPaletteLength]);
-//         // }
-//         document.getElementById("custompallen").style.display = "none";
-//     }
-//     else {
-//     //    if (newPaletteLength != paletteLength) {
-//         addUndoItem("Change PaletteLength", [stretchPalette, oldPaletteLength], [false, newPaletteLength]);
-//     //    }
-//     //    setFixedPaletteLength(newPaletteLength);
-//        document.getElementById("custompallen").style.display = "none";
-//     }
-// }
 function setFixedPaletteLength(newPaletteLength) {
     console.log("setFixedPaletteLength:", newPaletteLength);
     fixedPaletteLength = newPaletteLength;
@@ -1190,19 +1157,6 @@ function setFixedPaletteLength(newPaletteLength) {
     createPaletteColors();
     remapColors();
 }
-// function doCustomPaletteLength() {
-//     var val = Math.round(Number(document.getElementById("palleninput").value.trim()));
-//     if (val == fixedPaletteLength)
-//         return;
-//     if (isNaN(val) || val < 1) {
-//         document.getElementById("status").innerHTML = "Illegal value for number of colors.  Must be an integer greater than zero.";
-//         return;
-//     }
-//     var oldval = [false,fixedPaletteLength];
-//     var newval = [false,val];
-//     addUndoItem("Change PaletteLength", oldval, newval);
-//     setFixedPaletteLength(val);
-// }
 
 function doPaletteOffset(newPaletteOffset) {
     createPaletteColors(newPaletteOffset);
@@ -1269,7 +1223,6 @@ function doCustomSize() {
 }
 
 function doApplyStandardPalette(newPaletteNum, newPalette) {
-    // let oldPalette = palette;
     if (newPalette) {
         palette = newPalette;
     } else {
@@ -1278,7 +1231,6 @@ function doApplyStandardPalette(newPaletteNum, newPalette) {
     }
     createPaletteColors();
     remapColors();
-    // return oldPalette;
 }
 
 function changeSecondPass() {
@@ -1380,10 +1332,7 @@ function applyUndoItem(name, value) {
       case "Change PaletteLength":
         mainPaletteLengthSlider.setState(value);
         setFixedPaletteLength(mainPaletteLengthSlider.value);
-        //  setPaletteLength(value[0],value[1]);
-        //  createPaletteColors();
-        //  remapColors();
-         break;
+        break;
       case "Change MaxIterations":
          maxIterSlider.setValue(value[0]);
          setMaxIterations();
@@ -1402,33 +1351,9 @@ function applyUndoItem(name, value) {
         paletteSelectSlider.setPaletteSelectSliderState(value[4]);
         mainPaletteLengthSlider.setValue(value[2]);
         setFixedPaletteLength(mainPaletteLengthSlider.value);
-        // setPaletteLength(value[1],value[2]);
-        // createPaletteColors();
-        // remapColors();
         break;
     }
     applyUndoInProgress = false;
-    // function setPaletteLength(stretch,length) {
-    //     length = mainPaletteLengthSlider.setValue(length);
-    //     console.log("setPaletteLength-undo:",stretch,length);
-    //     if (stretch) {
-    //         stretchPalette = true;
-    //         document.getElementById("paletteLengthSelect").value = "Match";
-    //         document.getElementById("custompallen").style.display = "none";
-    //     } else  {
-    //         stretchPalette = false;
-    //         fixedPaletteLength = length;
-    //          if ([50,100,250,500,1000,2500,5000].indexOf(length) < 0) {
-    //             document.getElementById("custompallen").style.display = "inline";
-    //             document.getElementById("paletteLengthSelect").value = "Custom";
-    //             document.getElementById("palleninput").value = "" + length;
-    //          }
-    //          else {
-    //             document.getElementById("custompallen").style.display = "none";
-    //             document.getElementById("paletteLengthSelect").value = "" + length;
-    //          }
-    //     }
-    // }
 }
 
 //--------------------- Palette ------------------------------------------
@@ -2482,24 +2407,7 @@ function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError
       mainPaletteLengthSlider.setValue(length);
       fixedPaletteLength = length;
       stretchPalette = mainPaletteLengthSlider.atMax();
-    //   if (length == 0) {
-    //      stretchPalette = true;
-    //      document.getElementById("paletteLengthSelect").value = "Match MaxIter";
-    //      document.getElementById("custompallen").style.display = "none";
-    //   }
-    //   else  {
-    //       stretchPalette = false;
-    //       fixedPaletteLength = length;
-    //       if ([50,100,250,500,1000,2500,5000].indexOf(length) < 0) {
-    //          document.getElementById("custompallen").style.display = "inline";
-    //          document.getElementById("paletteLengthSelect").value = "Custom";
-    //          document.getElementById("palleninput").value = "" + length;
-    //       }
-    //       else {
-    //          document.getElementById("custompallen").style.display = "none";
-    //          document.getElementById("paletteLengthSelect").value = "" + length;
-    //       }
-    //   }
+
       let tmp = offset/length;
       tmp = tmp - Math.floor(tmp);
       tmp = Math.round(10000*tmp)/10000;
@@ -2645,10 +2553,6 @@ function init() {
     }
     document.getElementById("threadCountSelect").value = "" + workerCount;
     document.getElementById("threadCountSelect").onchange = changeWorkerCount;
-    // document.getElementById("paletteLengthSelect").onchange = changePaletteLength;
-    // document.getElementById("pallenapply").onclick = doCustomPaletteLength;
-    // document.getElementById("standardPaletteButton").onclick = doApplyStandardPalette;
-    // document.getElementById("standardPaletteSelect").value = "EarthAndSky";
     document.getElementById("showpaletteedit").onclick=showPaletteEditor;
     document.getElementById("secondpass").checked = true;
     document.getElementById("secondpass").onchange = changeSecondPass;
@@ -2698,7 +2602,7 @@ function init() {
         label: "Palette Length:",
         title: "Size of the color palette for pixels outside the Mandebrot set. Drag all the way to the right to pin it to max iterations.",
         logarithmic: true, initialValue: 250, minValue: 2, maxValue: 999999, textLength: 6,
-        stickyVals: [2,3,4,5,6,7,8,9,10,12,15,20,25,35,50,75,100,175,250,1000,1750,2500,3750,5000,7500,10000],
+        stickyVals: [2,3,4,5,6,7,8,9,10,12,15,20,25,35,50,75,100,175,250,375,500,750,1000,1750,2500,3750,5000,7500,10000],
         textFormat: function (value) { return this.atMax() ? "MaxIter" : value; },
         notifyOnlyOnDifference: false,///??? why did I do this
         data: { lastPaletteLength: NaN }
@@ -2853,6 +2757,9 @@ function setUpArrowKeys() {
     document.addEventListener("keydown", function (event) {
         // quit when in a text box
         if (event.target.nodeName === "INPUT" && (event.target.type === "text" || event.target.type === "range")) {
+            return;
+        }
+        if (event.target.nodeName === "TEXTAREA" && event.target.type === "textarea") {
             return;
         }
 
@@ -3022,11 +2929,11 @@ When the web server is hosted on Kubernetes, increasing the workers also brings 
    <div class="group" id="maxIterSlider">
    </div>
    <div class="group">
-      <p><button id="showpaletteedit" title="Show a popup dialog box that gives greater control over the palette.">Show Palette Editor</button>
-            &nbsp;(<a href="palette-editor-info.png" target="_blank" title="Opens a guide to the Palette Editor in a separate tab or window.">info</a>)</p>
       <p id="mainPaletteLengthSlider"></p>
       <p id="mainPaletteOffsetSlider"></p>
       <p id="paletteSelectSlider"></p>
+      <p><button id="showpaletteedit" title="Show a popup dialog box that gives greater control over the palette.">Show Palette Editor</button>
+            &nbsp;(<a href="palette-editor-info.png" target="_blank" title="Opens a guide to the Palette Editor in a separate tab or window.">info</a>)</p>
    </div>
    <div class="group">
       <p id="zoomInSlider"></p>

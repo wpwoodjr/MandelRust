@@ -1,21 +1,23 @@
-Arrows not working in XML import
+need stretchpalette? fixedPaletteLen?
+1000000 iters then back to 500 takes forever
 optimize redraw on undo
 set an undo for arrow keys?
->look at code for restarting workers in stopJob
->is non-arith server version faster 150 vs 130 on link? no
 Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore
 UCArray stuff
+Keep JS worker?
+
+>look at code for restarting workers in stopJob
+>is non-arith server version faster 150 vs 130 on link? no
+>Arrows not working in XML import
 >Rename repo
 >Fix favicon issue
-Stop doesn't go to idle state
-1000000 iters then back to 500 takes forever
+>Stop doesn't go to idle state
 >Arrow keys can't be used in slider
 >Fix setMaxIterations redundant stuff
 >Does setMaxIterations handle undo/redo correctly?
 >setPaletteOffset should only do undo on change, not input
 >setPaletteOffset use slider not custom globals
-
 >add build.sh for comput_mandelbrot.wasm
 >check for other uses of arrow keys
 >why goes to idle state when window is hidden
