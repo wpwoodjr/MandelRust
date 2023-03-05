@@ -3,7 +3,7 @@
 ![flaming](flaming.png)
 
 ## Overview
-This full-featured Mandelbrot web app is fast due to its use of Rust for doing the calculations. These can be done in your browser, or you can install the backend web server for more speed.  The web server can run on bare metal (your PC or a server), in Docker, or on Kubernetes, where it can scale to multiple pods.
+This full-featured Mandelbrot web app is fast due to its use of Rust for doing the calculations. These can be done in your browser (with Rust WASM), or you can install the backend web server for even more speed.  The web server can run on bare metal (your PC or a server), in Docker, or on Kubernetes, where it can scale to multiple pods.
 
 Try the browser-only version at https://wpwoodjr.github.io/MandelRust
 
