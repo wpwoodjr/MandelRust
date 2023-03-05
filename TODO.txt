@@ -1,4 +1,3 @@
->need stretchpalette? no; fixedPaletteLen keep
 1000000 iters then back to 500 takes forever
 optimize redraw on undo
 set an undo for arrow keys?
@@ -8,6 +7,7 @@ UCArray stuff
 Keep JS worker?
 ///stuff
 
+>need stretchpalette? no; fixedPaletteLen keep
 >look at code for restarting workers in stopJob
 >is non-arith server version faster 150 vs 130 on link? no
 >Arrows not working in XML import

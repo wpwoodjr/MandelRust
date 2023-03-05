@@ -3,15 +3,19 @@
     Web page written by David Eck, http://math.hws.edu/eck/index.html
     You can do anything you like with this web page and with the code, but
     if you use a substantial portion of it, you should include attribution.
+
     This is a fairly complete "Mandelbrot Set" viewer program, including
     the ability to do arbitrary precision computation (very slowly) when you
     zoom in too far to do the calculations with regular floating point numbers.
+
     It can save and load examples as XML in a clunky way, by copy-and-paste
     between files and a textarea that appears when "Show XML Input/Export"
     is clicked.  All of the ideas and some of the code were ported from
     an older program that was written in java.
-    This file depends on the scripts mandelbrot-worker-remote.js, mandelbrot-worker-local.js, and Daniel Trebbien's
-    BigDecimal-all-last.min.js.
+    
+    This file depends on the scripts mandelbrot-worker-remote.js, mandelbrot-worker-local.js, slider.js,
+    and Daniel Trebbien's BigDecimal-all-last.min.js.
+
     August, 2019. Added Palette Editor.
     January, 2020. Improved Palette Editor.
     April, 2020.  Cleaned up standard palettes, removed a few, added Dark Colors palette.
@@ -22,11 +26,12 @@
         done previously by successive subtraction, which introduced errors.  Thanks to
         Robert Munafo for finding and fixing the bug.
     August, 2022.  Use localStorage to save workerCount between sessions.
+
     Changes by Bill Wood:
     Jul/Aug 2019: Rewrote job processing to be client/server, also fixed y-value issue as above
                   Changed HP_CUTOFF from 16 to 15 to avoid artifacts at the limits of f64 precision
                   Added "High Precision" toggle and rows/second info
-    Jan/Feb 2023: Rewrote JavaScript server in Rust to get 10 times speedup in high precision computations
+    Jan-Mar 2023: Rewrote JavaScript server in Rust to get 10 times speedup in high precision computations
                   When zooming, the zoomed area is displayed using image interpolation while calculations are done
                   Left, right, up, and down arrow key bindings shift the image appropriately; page down and page up zoom in and out
                   Max image width/height is now 7680 (8K)
@@ -126,16 +131,6 @@
     }
   </style>
 </style>
-
-<!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-7MMVRWY57P"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-
-  gtag('config', 'G-7MMVRWY57P');
-</script>
 
 <script src="BigDecimal-all-last.min.js"></script>
 <script src="slider.js"></script>
@@ -394,12 +389,12 @@ function stopJob(dontUpdateStatusToIdle) {
 let maxRowsPerJob = 32;
 let maxRowsPerJobHP = 4;
 
-function startJob() {
+function startJob(dontClear) {
     // console.log("startJob",zoomTimeout != null,running, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     if (running) {
        stopJob();
     }
-    if (! zoomTimeout) {
+    if (! zoomTimeout && dontClear !== true) {
         graphics.fillStyle = "#BBBBBB";
         graphics.fillRect(0,0,canvas.width,canvas.height);
         OSG.fillStyle = "#BBBBBB";
@@ -724,7 +719,7 @@ function remapColors() {
 
 function createPaletteColors(newPaletteOffset) {
     paletteLength = fixedPaletteLength;
-    let offset = arguments.length ? newPaletteOffset/100 : mainPaletteOffsetSlider.value/100;
+    let offset = typeof newPaletteOffset === "number" ? newPaletteOffset/100 : mainPaletteOffsetSlider.value/100;
     offset = Math.round(offset * paletteLength);
     paletteColors = palette.makeRGBs(paletteLength,offset);
 }
@@ -1142,10 +1137,10 @@ function changeLocalOrRemote() {
     document.getElementById("threadCountSelect").value = "" + newWorkerCount;
 }
 
-function setMaxIterations(newMaxIters, oldMaxIters) {
+function setMaxIterations() {
     stopJob();
     createPaletteColors();
-    startJob();
+    startJob(true);
 }
 
 function setFixedPaletteLength(newPaletteLength) {
@@ -1304,8 +1299,8 @@ function applyUndoItem(name, value) {
           paletteSelectSlider.setPaletteSelectSliderState(value[1]);
           break;
       case "Change PaletteOffset":
-         createPaletteColors(mainPaletteOffsetSlider.setValue(value*100));
-         remapColors();
+         mainPaletteOffsetSlider.setValue(value*100);
+         doPaletteOffset();
          break;
       case "Change Limits":
          stopJob();
@@ -2571,7 +2566,15 @@ function init() {
     setUpDragging();
     setUpArrowKeys();
     changeWorkerCount(); // has to be done before setDefaults
+    createSliders();
+    setDefaults();
+    checkForExample();
+    undoList = [];
+    undoCount = 0;
+    checkRemoteCanComputeMB();
+}
 
+function createSliders() {
     maxIterSlider = new Slider(
         "maxIterSlider", {
         label: "Max Iterations:",
@@ -2587,7 +2590,7 @@ function init() {
         }
     };
     maxIterSlider.onChange = function (newMaxIters, oldState) {
-        setMaxIterations(newMaxIters, oldState.value);
+        setMaxIterations();
         let initialMPLSState = mainPaletteLengthSlider.getState();
         // if palette length is tracking maxIters, update palette max and set palette value to maxIters
         if (mainPaletteLengthSlider.atMax()) {
@@ -2635,6 +2638,9 @@ function init() {
         if (newPaletteLength != oldState.value || this.maxValue != oldState.maxValue) {
             addUndoItem("Change PaletteLength", oldState, this.getState());
         }
+        this.onBlur();
+    };
+    mainPaletteLengthSlider.onBlur = function() {
         this.data.lastPaletteLength = NaN;
     };
     mainPaletteLengthSlider.setDefaultsFromMaxIter = function () {
@@ -2741,17 +2747,11 @@ function init() {
         onClick: () => doZoomOut(zoomOutSlider.value),
         onChange: doZoomOut
         });
-
-    setDefaults();
-    checkForExample();
-    undoList = [];
-    undoCount = 0;
-    checkRemoteCanComputeMB();
 }
 
 let arrowTimeout;
 function setUpArrowKeys() {
-    document.addEventListener("keydown", function (event) {
+    document.addEventListener("keydown", function(event) {
         // quit when in a text box
         if (event.target.nodeName === "INPUT" && (event.target.type === "text" || event.target.type === "range")) {
             return;
