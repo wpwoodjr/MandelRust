@@ -182,7 +182,6 @@ var dragbox = null;
 let maxIterSlider, mainPaletteOffsetSlider, mainPaletteLengthSlider, paletteSelectSlider;
 let zoomInSlider, zoomOutSlider;
 var palette;
-var stretchPalette;
 var fixedPaletteLength;
 var paletteLength;
 var paletteColors;
@@ -693,7 +692,6 @@ function setDefaults() {
     maxIterSlider.setDefault();
     mainPaletteLengthSlider.setDefaultsFromMaxIter();
     fixedPaletteLength = mainPaletteLengthSlider.value;
-    stretchPalette = mainPaletteLengthSlider.atMax();
     mainPaletteOffsetSlider.setDefault();
     paletteSelectSlider.reset();
     palette = new Palette();
@@ -1153,7 +1151,6 @@ function setMaxIterations(newMaxIters, oldMaxIters) {
 function setFixedPaletteLength(newPaletteLength) {
     // console.log("setFixedPaletteLength:", newPaletteLength);
     fixedPaletteLength = newPaletteLength;
-    stretchPalette = mainPaletteLengthSlider.atMax();
     createPaletteColors();
     remapColors();
 }
@@ -1347,9 +1344,9 @@ function applyUndoItem(name, value) {
          break;
       case "Edit Palette":
         palette = value[0].copy();
-        mainPaletteOffsetSlider.setValue(value[3]*100);
-        paletteSelectSlider.setPaletteSelectSliderState(value[4]);
-        mainPaletteLengthSlider.setValue(value[2]);
+        mainPaletteOffsetSlider.setValue(value[2]*100);
+        paletteSelectSlider.setPaletteSelectSliderState(value[3]);
+        mainPaletteLengthSlider.setValue(value[1]);
         setFixedPaletteLength(mainPaletteLengthSlider.value);
         break;
     }
@@ -1624,10 +1621,10 @@ function showPaletteEditor() {
     function applyAndClose() {
         let oldPaletteSelectSliderState = paletteSelectSlider.getPaletteSelectSliderState();
         paletteSelectSlider.setCustomPalette(paletteInEditor);
-        var newval = [paletteInEditor, false, paletteLengthInEditor, paletteOffsetFractionInEditor,
+        var newval = [paletteInEditor, paletteLengthInEditor, paletteOffsetFractionInEditor,
             paletteSelectSlider.getPaletteSelectSliderState()];
         addUndoItem("Edit Palette", 
-                [copyOfCurrentPalette, stretchPalette, fixedPaletteLength, mainPaletteOffsetSlider.value/100,
+                [copyOfCurrentPalette, fixedPaletteLength, mainPaletteOffsetSlider.value/100,
                     oldPaletteSelectSliderState], 
                 newval);
         applyUndoItem("Edit Palette", newval);
@@ -2413,7 +2410,6 @@ function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError
       mainPaletteLengthSlider.setMaxValue(Math.max(2*length, 2*iterations), false);
       mainPaletteLengthSlider.setValue(length);
       fixedPaletteLength = length;
-      stretchPalette = mainPaletteLengthSlider.atMax();
 
       let tmp = offset/length;
       tmp = tmp - Math.floor(tmp);
@@ -3027,7 +3023,7 @@ allows you to save the example (or even edit it by hand).</p>
           title="Shows how colors from palette will actually be applied to each iteration count, based on palette length and palette offset."></canvas></p>
       <table border=0 cellpadding=0 style="margin:3px 0 0 0">
        <tr><td colspan=2><canvas id="lengthslider" width=420 height=40
-           title="Drag the slider to set the palette length.  Slider shows values between 1 and MaxIterations.  You can set an even larger value in the input box below."></canvas></td>
+           title="Drag the slider to set the palette length.  Slider shows values between 1 and MaxIterations."></canvas></td>
        </tr>
        <tr><td align=right colspan=2>
               <input type=text id="editorlengthinput" size=5 

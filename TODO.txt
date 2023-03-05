@@ -1,4 +1,4 @@
-need stretchpalette? fixedPaletteLen?
+>need stretchpalette? no; fixedPaletteLen keep
 1000000 iters then back to 500 takes forever
 optimize redraw on undo
 set an undo for arrow keys?
