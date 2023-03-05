@@ -2581,7 +2581,7 @@ function init() {
         label: "Max Iterations:",
         title: "How many steps in the Mandelbrot iteration before giving up and coloring the pixel black.",
         logarithmic: true, initialValue: 500, minValue: 1, maxValue:999999, textLength: 6,
-        stickyVals: [3,5,10,25,50,100,250,500,1000,2500,5000,10000,25000,50000,100000]
+        stickyVals: [3,5,10,25,50,75,100,250,500,750,1000,2500,5000,7500,10000,25000,50000,75000,100000]
         });
     maxIterSlider.onInput = function (interimMaxIters, lastInterimMaxIters) {
         // console.log("i:",this.id,interimMaxIters);
@@ -2853,10 +2853,10 @@ function setUpArrowKeys() {
 <p>
 Use page down and page up to zoom in and out, or the arrow keys to pan.  Double-clicking the image zooms 2X, or drag on it to draw a box.  For more info, instructions, and examples, <a href="MB-info.html">click here</a>.
 </p><p>
-Based on a browser-only Mandelbrot Set viewer by <a href=http://math.hws.edu/eck/index.html>David Eck</a>,
+Based on a browser-only Mandelbrot Set viewer by <a href=https://math.hws.edu/eck/index.html>David Eck</a>,
 this revised version can run calculations in the browser or on a backend web server.  By default it tries to use the web server;
 if the web server doesn't support calculations it runs in the browser.
-See the <a href="https://github.com/wpwoodjr/Mandelbrot-for-Docker-and-Kubernetes/tree/master/mb-kubernetes">GitHub repository</a> for more information.
+See the <a href="https://github.com/wpwoodjr/MandelRust">GitHub repository</a> for more information.
 </p><p>
 Calculating the Mandelbrot Set is very computationally intensive, however it is parallelizable.
 Increasing the number of "Workers" below brings in more CPU threads to calculate rows of the image. 
