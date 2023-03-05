@@ -449,7 +449,7 @@ function startJob() {
         var yVal_d = Number(yVal.toString());
         var dx_d = Number(dx.toString());
         var dy_d = Number(dy.toString());
-        //console.log(dx_d, dy_d, xmin_d, yVal_d);
+        // console.log(dx_d, dy_d, xmin_d, yVal_d);
 
         let rowsPerJob = Math.min(maxRowsPerJob, Math.floor(rows/workerCount));
         for (let row = 0; row < rows; row += rowsPerJob) {
@@ -1565,8 +1565,15 @@ Palette.createStandardPalette = function(name) {
            palette.divisionPoints[6] = 1;
            palette.divisionColors[6] = c;
            break;
-        default: // "Spectrum"
-           palette = new Palette();
+        case "Custom":
+            palette = paletteSelectSlider.data.customPalette;
+            break;
+        case "Spectrum":
+            palette = new Palette();
+            break;
+        default:
+            console.error("unknown palette:", name);
+            break;
     }
     return palette;
 };
@@ -2589,7 +2596,7 @@ function init() {
         // if palette length is tracking maxIters, update palette max and set palette value to maxIters
         if (mainPaletteLengthSlider.atMax()) {
             mainPaletteLengthSlider.setMaxValue(newMaxIters, true);
-        // else just update palette max if newMaxIters > current palette length///should be >=???
+        // else just update palette max if newMaxIters > current palette length
         } else if (2*newMaxIters > mainPaletteLengthSlider.value) {
             mainPaletteLengthSlider.setMaxValue(2*newMaxIters, false);
         }
@@ -2650,12 +2657,6 @@ function init() {
         onChange: finishDoPaletteOffset
         });
 
-///on another topic, what is best way to init sliders?
-///special init event? setdefault? maybe setdefault should not. or have a flag. or have a new callback. onInit, onSetDefault
-/// how does MB init stuff?
-/// should savelastchangestate include changes to max value? should I use it for paletteSelect?
-/// pass old/new slider state to onChange?
-
     paletteSelectSlider = new Slider(
         "paletteSelectSlider", {
         label: "Palette:",
@@ -2673,15 +2674,12 @@ function init() {
                "Pastel Colors","Dark Colors","HotAndCold","Blue/Gold","Grayscale","Random","Custom"]
         }});
     paletteSelectSlider.onInput = function(interimPaletteNum, lastInterimPaletteNum) {
-        console.log("i:",this.id,interimPaletteNum,lastInterimPaletteNum,this.data.oldPaletteNum);
+        // console.log("i:",this.id,interimPaletteNum,lastInterimPaletteNum,this.data.oldPaletteNum);
         if (isNaN(this.data.oldPaletteNum)) {
             this.data.oldPaletteNum = lastInterimPaletteNum;
             this.data.oldPalette = palette.copy();
         }
-        if (interimPaletteNum === this.data.paletteSelectList.length - 1) {
-            // custom palette from XML or Palette editor
-            doApplyStandardPalette(null, this.data.customPalette);
-        } else if (interimPaletteNum === this.data.oldPaletteNum) {
+        if (interimPaletteNum === this.data.oldPaletteNum) {
             // show original palette even if it was random
             doApplyStandardPalette(null, this.data.oldPalette);
         } else {
@@ -2689,9 +2687,12 @@ function init() {
         }
     };
     paletteSelectSlider.onChange = function(newPaletteNum, oldState) {
-        console.log("c:", this.id, newPaletteNum, oldState.value);
+        // console.log("c:", this.id, newPaletteNum, oldState.value);
         addUndoItem("Change Palette", [this.data.oldPalette, oldState.value],
             [palette.copy(), newPaletteNum]);
+        this.onBlur();
+        };
+    paletteSelectSlider.onBlur = function() {
         this.data.oldPalette = null;
         this.data.oldPaletteNum = NaN;
     };
@@ -2709,7 +2710,7 @@ function init() {
         this.data.customPalette = palette.copy();
     };
     paletteSelectSlider.getPaletteSelectSliderState = function() {
-        console.log("gPSSS:", this.data.customPalette);
+        // console.log("gPSSS:", this.data.customPalette);
         return [
             this.getState(),
             this.data.customPalette
@@ -2718,7 +2719,7 @@ function init() {
     paletteSelectSlider.setPaletteSelectSliderState = function(state) {
         this.setState(state[0]);
         this.data.customPalette = state[1];
-        console.log("sPSSS:", this.data.customPalette);
+        // console.log("sPSSS:", this.data.customPalette);
     }
 
     zoomInSlider = new Slider(
