@@ -42,7 +42,8 @@
                   Rewrote browser-side computations from JavaScript to Rust WASM
                   Added interactive sliders for control of max iterations, zoom level, palette offset, etc.
                   Added undo/redo with image interpolation for zoom.
-                  Added full window mode activated with "f" and deactivated with "f" or escape.
+                  Added full window mode, activated with "f" and deactivated with "f" or escape.
+                  Added full screen mode, activated with "F" and deactivated with "F", "f", or escape.
 -->
 <html>
 <head>
@@ -65,11 +66,11 @@
        background-color: #BBBBBB;
    }
    .FullWindowCanvas {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
    }
    #canvas-holder {
        display: inline-block;
@@ -138,6 +139,67 @@
     body {
         font-family: Arial, sans-serif;
     }
+    /* Style the tooltip container */
+    .tooltip {
+        position: relative;
+        display: inline-block;
+        font-weight: normal;
+    }
+
+    /* Style the tooltip text */
+    .tooltip .tooltiptext {
+        visibility: hidden;
+        width: 600px;
+        background-color: #fff;
+        color: #000;
+        text-align: left;
+        border-radius: 6px;
+        padding: 10px;
+        position: absolute;
+        z-index: 1;
+        margin-left: -60px;
+        font-size: 16px;
+        font-weight: normal;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+    /* Show the tooltip text when hovering over the container */
+    .tooltip:hover .tooltiptext {
+        visibility: visible;
+    }
+
+    /* Format the tooltip arrow */
+    .tooltip .tooltiptext::after {
+        content: "";
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        margin-left: -5px;
+        border-width: 5px;
+        border-style: solid;
+        border-color: #555 transparent transparent transparent;
+    }
+    h2 {
+        position: relative;
+        text-align: center;
+    }
+    .left-element {
+        position: absolute;
+        left: 0;
+    }
+    .centered-element {
+        display: inline-block;
+    }
+    .right-element {
+        position: absolute;
+        right: 10px;
+        font-size: 16px;
+        font-weight: normal;
+        bottom: 50%;
+    }
+
   </style>
 </style>
 
@@ -2802,6 +2864,7 @@ function createSliders() {
 }
 
 let fullWindowCanvas = false;
+let fullScreenCanvas = false;
 let oldCanvasWidth = NaN;
 let oldCanvasHeight = NaN;
 
@@ -2822,6 +2885,28 @@ function fromFullWindowCanvas() {
     canvas.classList.remove('FullWindowCanvas');
     setImageSize(oldCanvasWidth, oldCanvasHeight, false);
     fullWindowCanvas = false;
+}
+function toFullScreenCanvas() {
+    oldCanvasWidth = canvas.width;
+    oldCanvasHeight = canvas.height;
+    canvas.classList.add('FullWindowCanvas');
+    canvas.requestFullscreen();
+    document.addEventListener("fullscreenchange", () => {
+        if (! document.fullscreenElement) {
+            fromFullScreenCanvas();
+        }
+    });
+    setImageSize(screen.width, screen.height, false);
+    fullScreenCanvas = true;
+}
+function fromFullScreenCanvas() {
+    document.removeEventListener("fullscreenchange");
+    canvas.classList.remove('FullWindowCanvas');
+    if (document.fullscreenElement) {
+        document.exitFullscreen();
+    }
+    setImageSize(oldCanvasWidth, oldCanvasHeight, false);
+    fullScreenCanvas = false;
 }
 
 let arrowTimeout;
@@ -2846,6 +2931,7 @@ function setUpArrowKeys() {
                 doStartStop = true;
                 break;
             case "f":
+            case "F":
             case "Escape":
                 break;
             case "z":
@@ -2900,8 +2986,20 @@ function setUpArrowKeys() {
                 doZoomInOnRect(shiftLR, shiftUD, canvas.width - shiftLR*2, canvas.height - shiftUD*2, false);
                 break;
 
+            case "F":
+                if (fullScreenCanvas) {
+                    fromFullScreenCanvas();
+                } else if (fullWindowCanvas) {
+                    fromFullWindowCanvas();
+                } else {
+                    toFullScreenCanvas();
+                }
+                break;
+
             case "f":
-                if (fullWindowCanvas) {
+                if (fullScreenCanvas) {
+                    fromFullScreenCanvas();
+                } else if (fullWindowCanvas) {
                     fromFullWindowCanvas();
                 } else {
                     toFullWindowCanvas();
@@ -2938,22 +3036,31 @@ function setUpArrowKeys() {
 
 <noscript><b>Sorry, this page requires JavaScript.</b></noscript>
 
-<h2>Explore the <a href=MB.html>Mandelbrot Set</a></h2>
-<p>
-Use page down and page up to zoom in and out, or the arrow keys to pan.  Double-clicking the image zooms 2X, or drag on it to draw a box.  For more info, instructions, and examples, <a href="MB-info.html">click here</a>.
-</p><p>
-Based on a browser-only Mandelbrot Set viewer by <a href=https://math.hws.edu/eck/index.html>David Eck</a>,
-this revised version can run calculations in the browser or on a backend web server.  By default it tries to use the web server;
-if the web server doesn't support calculations it runs in the browser.
-See the <a href="https://github.com/wpwoodjr/MandelRust">GitHub repository</a> for more information.
-</p><p>
-Calculating the Mandelbrot Set is very computationally intensive, however it is parallelizable.
-Increasing the number of "Workers" below brings in more CPU threads to calculate rows of the image. 
-<br>
-To see, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>, 
-then vary the number of "Workers" to speed it up or slow it down.
-When the web server is hosted on Kubernetes, increasing the workers also brings in more pods to speed up the computation.
-</p>
+<h2>
+    <div class="left-element">
+      <span>Explore the <a href=MB.html>Mandelbrot Set</a></span>
+    </div>
+    <span class="centered-element">
+        <span class="tooltip">Help
+            <span class="tooltiptext">
+                <p>
+                    Double-click the image to zoom, or click and drag to zoom to a rectangle.
+                </p><p>
+                    Or, press the "page down" and "page up" keys to zoom in and out, or the arrow keys to scroll.
+                </p><p>
+                    Press "f" for full windowed mode, or shift-F ("F") for full screen mode, then "escape" when done.
+                </p><p>
+                    For more info, instructions, and examples, <a href='MB-info.html'>click here</a>.
+                </p><p>
+                    Increasing the number of "Workers" (in the left pane) brings in more CPU to speed up calculations. 
+                    To see, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>, 
+                    then vary the number of "Workers" to speed it up or slow it down.
+                </p>
+            </span>
+        </span>        
+    </span>
+    <span class="right-element"><a href="https://github.com/wpwoodjr/MandelRust">GitHub Repo</a></span>
+</h2>
 
 <p id="message"></p>
 
@@ -3043,7 +3150,18 @@ When the web server is hosted on Kubernetes, increasing the workers also brings 
 </td>
 </tr>
 </table>
-
+<p style="text-align: center;">
+    <span class="tooltip">More Info
+        <span class="tooltiptext">
+            Based on a browser-only Mandelbrot Set viewer by <a href=https://math.hws.edu/eck/index.html>David Eck</a>,
+            this revised version can run calculations in the browser or on a backend web server.  By default it tries to use the web server;
+            if the web server doesn't support calculations it runs in the browser.
+            When the web server is hosted on Kubernetes, increasing the number of workers brings in more pods to speed up the computation.
+            See the <a href="https://github.com/wpwoodjr/MandelRust">GitHub repository</a> for more information.
+        </span>
+    </span>        
+</p>
+    
 <div id="xmlimportbg">
 </div>
 <div id="xmlimport">
