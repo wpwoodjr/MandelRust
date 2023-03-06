@@ -2891,22 +2891,23 @@ function toFullScreenCanvas() {
     oldCanvasHeight = canvas.height;
     canvas.classList.add('FullWindowCanvas');
     canvas.requestFullscreen();
-    document.addEventListener("fullscreenchange", () => {
-        if (! document.fullscreenElement) {
-            fromFullScreenCanvas();
-        }
-    });
+    document.addEventListener("fullscreenchange", escapeFromFullScreenCanvas);
     setImageSize(screen.width, screen.height, false);
     fullScreenCanvas = true;
 }
 function fromFullScreenCanvas() {
-    document.removeEventListener("fullscreenchange");
+    document.removeEventListener("fullscreenchange", escapeFromFullScreenCanvas);
     canvas.classList.remove('FullWindowCanvas');
     if (document.fullscreenElement) {
         document.exitFullscreen();
     }
     setImageSize(oldCanvasWidth, oldCanvasHeight, false);
     fullScreenCanvas = false;
+}
+function escapeFromFullScreenCanvas() {
+    if (! document.fullscreenElement) {
+            fromFullScreenCanvas();
+    }
 }
 
 let arrowTimeout;
