@@ -1,12 +1,12 @@
 1000000 iters then back to 500 takes forever
-optimize redraw on undo
-set an undo for arrow keys?
 Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore
 UCArray stuff
 Keep JS worker?
 ///stuff
 
+>optimize redraw on undo
+>set an undo for arrow keys? no would be too many
 >need stretchpalette? no; fixedPaletteLen keep
 >look at code for restarting workers in stopJob
 >is non-arith server version faster 150 vs 130 on link? no

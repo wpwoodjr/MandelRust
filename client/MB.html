@@ -41,6 +41,7 @@
                   Fixed small bug where dx value was being used to increment yval instead of dy value in HP calculations
                   Rewrote browser-side computations from JavaScript to Rust WASM
                   Added interactive sliders for control of max iterations, zoom level, palette offset, etc.
+                  Added undo/redo with image interpolation for zoom
 -->
 <html>
 <head>
@@ -724,6 +725,10 @@ function createPaletteColors(newPaletteOffset) {
     paletteColors = palette.makeRGBs(paletteLength,offset);
 }
 
+const ZOOM = 1;
+const ZOOMINRECT = 2;
+const ZOOMOUTRECT = 3;
+
 function DragBox(x,y) {
     this.x = this.left = x;
     this.y = this.top = y;
@@ -771,7 +776,7 @@ DragBox.prototype.zoom = function(zoomin) {
        return;
     stopJob();
     if (zoomin == false) {
-        doZoomOutFromRect(this.left, this.top, this.width, this.height);
+        doZoomOutFromRect(this.left, this.top, this.width, this.height, true);
     }
     else {
         doZoomInOnRect(this.left, this.top, this.width, this.height, true);
@@ -850,11 +855,14 @@ function doZoomInOnRect(x,y,width,height,undo) {
     var newHeight = pixelHeight.multiply(rectH);
     newXmax = newXmin.add(newWidth);
     newYmin = newYmax.subtract(newHeight);
-    setLimits(newXmin, newXmax, newYmin, newYmax, undo);
+    setLimits(newXmin, newXmax, newYmin, newYmax, false);
+    if (undo) {
+        addUndoItem("Zoom In", [ZOOMOUTRECT, x, y, width, height], [ZOOMINRECT, x, y, width, height]);
+    }
     drawZoom(x, y, width, height);
 }
 
-function doZoomOutFromRect(x,y,width,height) {
+function doZoomOutFromRect(x,y,width,height, undo) {
     // console.log("doZoomOutFromRect", x, y, width, height);
     var rectX = new BigDecimal("" + Math.round(x));
     var rectY = new BigDecimal("" + Math.round(y));
@@ -871,13 +879,16 @@ function doZoomOutFromRect(x,y,width,height) {
     var newHeight = newPixelHeight.multiply(ImageHeight);
     newXmax = newXmin.add(newWidth);
     newYmin = newYmax.subtract(newHeight);
-    setLimits(newXmin, newXmax, newYmin, newYmax, true);
+    setLimits(newXmin, newXmax, newYmin, newYmax, false);
+    if (undo) {
+        addUndoItem("Zoom Out", [ZOOMINRECT, x, y, width, height], [ZOOMOUTRECT, x, y, width, height]);
+    }
 
     let zoomFactor = (canvas.width/width + canvas.height/height)/2;
     drawZoom(-zoomFactor*x, -zoomFactor*y, zoomFactor*canvas.width, zoomFactor*canvas.height);
 }
 
-function zoom(x, y, zoomFactor, recenter) {  // (x,y) is center of zoom, in pizels; recenter moves that point to center of image
+function zoom(x, y, zoomFactor, recenter, undo) {  // (x,y) is center of zoom, in pizels; recenter moves that point to center of image
     // console.log("zoom:", x, y, zoomFactor, recenter);
     stopJob();
     var zf = new BigDecimal("" + zoomFactor);
@@ -909,7 +920,19 @@ function zoom(x, y, zoomFactor, recenter) {  // (x,y) is center of zoom, in pize
     }
     newYmin = newYmax.subtract(newHeight);
     newXmax = newXmin.add(newWidth);
-    setLimits(newXmin, newXmax, newYmin, newYmax, true);
+    setLimits(newXmin, newXmax, newYmin, newYmax, false);
+
+    if (undo) {
+        let midX = canvas.width/2;
+        let midY = canvas.height/2;
+        let undoLabel = zoomFactor > 1 ? "Zoom Out" : "Zoom In";
+        let newZoom = [ZOOM, x, y, zoomFactor, recenter];
+        if (recenter) {
+            addUndoItem(undoLabel, [ZOOM, midX + (midX - x)/zoomFactor, midY + (midY - y)/zoomFactor, 1/zoomFactor, recenter], newZoom);
+        } else {
+            addUndoItem(undoLabel, [ZOOM, x, y, 1/zoomFactor, recenter], newZoom);
+        }
+    }
 
     let width = canvas.width*zoomFactor;
     let height = canvas.height*zoomFactor;
@@ -966,7 +989,7 @@ function setUpDragging() {  // for image canvas
         var x = evt.clientX - r.left;
         var y = evt.clientY - r.top;
         var zoomFactor = evt.shiftKey? 2 : 0.5;
-        zoom(x,y,zoomFactor,!evt.altKey && !evt.ctrlKey);
+        zoom(x,y,zoomFactor,!evt.altKey && !evt.ctrlKey, true);
     }
  }
 
@@ -1241,11 +1264,11 @@ function changeHighPrecision() {
 }
 
 function doZoomIn(z) {
-    zoom(canvas.width/2, canvas.height/2, 1/z, false);
+    zoom(canvas.width/2, canvas.height/2, 1/z, false, true);
 }
 
 function doZoomOut(z) {
-    zoom(canvas.width/2, canvas.height/2, z, false);
+    zoom(canvas.width/2, canvas.height/2, z, false, true);
 }
 
 //---------------------- Undo/Redo ---------------------------------------
@@ -1343,6 +1366,25 @@ function applyUndoItem(name, value) {
         paletteSelectSlider.setPaletteSelectSliderState(value[3]);
         mainPaletteLengthSlider.setValue(value[1]);
         setFixedPaletteLength(mainPaletteLengthSlider.value);
+        break;
+      case "Zoom Out":
+      case "Zoom In":
+        // console.log(value);
+        switch (value[0]) {
+            case ZOOM:
+                zoom(value[1], value[2], value[3], value[4], false);
+                break;
+            case ZOOMINRECT:
+                stopJob();
+                doZoomInOnRect(value[1], value[2], value[3], value[4], false);
+                startJob();
+                break;
+            case ZOOMOUTRECT:
+                stopJob();
+                doZoomOutFromRect(value[1], value[2], value[3], value[4], false);
+                startJob();
+                break;
+        }
         break;
     }
     applyUndoInProgress = false;
@@ -2729,7 +2771,7 @@ function createSliders() {
         label :"Zoom in by",
         title: "Sets the zoom in amount and then zooms.",
         logarithmic: true, initialValue: 10, minValue: 2, maxValue: 100000, textLength: 8,
-        stickyVals: [2,5,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000,100000],
+        stickyVals: [2,4,8,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000,100000],
         textFormat: (value) => value + " X",
         button: true,
         onClick: () => doZoomIn(zoomInSlider.value),
@@ -2741,7 +2783,7 @@ function createSliders() {
         label :"Zoom out by",
         title: "Sets the zoom out amount and then zooms.",
         logarithmic: true, initialValue: 10, minValue: 2, maxValue: 100000, textLength: 8,
-        stickyVals: [2,5,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000,100000],
+        stickyVals: [2,4,8,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000,100000],
         textFormat: (value) => value + " X",
         button: true,
         onClick: () => doZoomOut(zoomOutSlider.value),
