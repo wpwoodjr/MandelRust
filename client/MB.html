@@ -41,7 +41,8 @@
                   Fixed small bug where dx value was being used to increment yval instead of dy value in HP calculations
                   Rewrote browser-side computations from JavaScript to Rust WASM
                   Added interactive sliders for control of max iterations, zoom level, palette offset, etc.
-                  Added undo/redo with image interpolation for zoom
+                  Added undo/redo with image interpolation for zoom.
+                  Added full window mode activated with "f" and deactivated with "f" or escape.
 -->
 <html>
 <head>
@@ -62,6 +63,13 @@
    canvas {
        display: block;
        background-color: #BBBBBB;
+   }
+   .FullWindowCanvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
    }
    #canvas-holder {
        display: inline-block;
@@ -1209,7 +1217,7 @@ function changeImageSize() {
         setImageSize(width,height,true);
     }
 }
-function setImageSize(w,h) {
+function setImageSize(w,h,undo) {
     if (w == canvas.width && h == canvas.height) {
         return;
     }
@@ -1221,7 +1229,9 @@ function setImageSize(w,h) {
     OSC.height = h;
     checkAspect();
     startJob();
-    addUndoItem("Change Image Size", oldval, [canvas.width,canvas.height]);
+    if (undo) {
+        addUndoItem("Change Image Size", oldval, [canvas.width,canvas.height]);
+    }
 }
 function doCustomSize() {
     var width = Math.round(Number(document.getElementById("customwidth").value.trim()));
@@ -1331,7 +1341,7 @@ function applyUndoItem(name, value) {
          startJob();
          break;
       case "Change Image Size":
-         setImageSize(value[0],value[1]);
+         setImageSize(value[0],value[1],false);
          var val = value[0] + " " + value[1];
          if (["640 480", "800 600", "1024 768", "1600 1200", "1920 1080", "1920 1200", "2560 1440", "2880 1800", "3840 1080", "3840 2160", "5120 1440", "7680 4320"].indexOf(val) < 0) {
              document.getElementById("imagesize").value = "Custom";
@@ -2454,7 +2464,7 @@ function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError
       mainPaletteOffsetSlider.setValue(tmp*100);
       createPaletteColors();
       if (respectSize) {
-         setImageSize(width,height);
+         setImageSize(width,height,false);
          var val = width + " " + height;
          if (["640 480", "800 600", "1024 768", "1600 1200", "1920 1080", "1920 1200", "2560 1440", "2880 1800", "3840 1080", "3840 2160", "5120 1440", "7680 4320"].indexOf(val) < 0) {
              document.getElementById("imagesize").value = "Custom";
@@ -2791,6 +2801,29 @@ function createSliders() {
         });
 }
 
+let fullWindowCanvas = false;
+let oldCanvasWidth = NaN;
+let oldCanvasHeight = NaN;
+
+function resizeFullWindowCanvas() {
+    // console.log("resizeFullWindowCanvas:", window.innerWidth, window.innerHeight);
+    setImageSize(window.innerWidth, window.innerHeight, false);
+}
+function toFullWindowCanvas() {
+    window.addEventListener('resize', resizeFullWindowCanvas);
+    oldCanvasWidth = canvas.width;
+    oldCanvasHeight = canvas.height;
+    canvas.classList.add('FullWindowCanvas');
+    setImageSize(window.innerWidth, window.innerHeight, false);
+    fullWindowCanvas = true;
+}
+function fromFullWindowCanvas() {
+    window.removeEventListener('resize', resizeFullWindowCanvas);
+    canvas.classList.remove('FullWindowCanvas');
+    setImageSize(oldCanvasWidth, oldCanvasHeight, false);
+    fullWindowCanvas = false;
+}
+
 let arrowTimeout;
 function setUpArrowKeys() {
     document.addEventListener("keydown", function(event) {
@@ -2812,12 +2845,16 @@ function setUpArrowKeys() {
             case "PageUp":
                 doStartStop = true;
                 break;
+            case "f":
+            case "Escape":
+                break;
             case "z":
             case "Z":
             case "y":
                 if (event.ctrlKey) {
                     break;
                 }
+                return;
             default:
                 // quit when this doesn't handle the key event
                 return;
@@ -2861,6 +2898,20 @@ function setUpArrowKeys() {
 
             case "PageDown":
                 doZoomInOnRect(shiftLR, shiftUD, canvas.width - shiftLR*2, canvas.height - shiftUD*2, false);
+                break;
+
+            case "f":
+                if (fullWindowCanvas) {
+                    fromFullWindowCanvas();
+                } else {
+                    toFullWindowCanvas();
+                }
+                break;
+
+            case "Escape":
+                if (fullWindowCanvas) {
+                    fromFullWindowCanvas();
+                }
                 break;
 
             case "z":
