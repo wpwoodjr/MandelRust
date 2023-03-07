@@ -121,8 +121,8 @@
    }
    #xmlimport, #paletteEditor {
        position: absolute;
-       left: 50px;
-       top: 50px;
+       left: 70px;
+       top: 100px;
        z-index:20;
        padding: 10px;
        background-color: #D8D8FF;
@@ -149,7 +149,7 @@
     /* Style the tooltip text */
     .tooltip .tooltiptext {
         visibility: hidden;
-        width: 600px;
+        width: 800px;
         background-color: #fff;
         color: #000;
         text-align: left;
@@ -157,12 +157,11 @@
         padding: 10px;
         position: absolute;
         z-index: 1;
-        margin-left: -60px;
         font-size: 16px;
         font-weight: normal;
         top: 100%;
-        left: 50%;
-        transform: translateX(-50%);
+        left: 100%;
+        transform: translateX(-48%);
     }
 
     /* Show the tooltip text when hovering over the container */
@@ -176,7 +175,6 @@
         position: absolute;
         bottom: 100%;
         left: 50%;
-        margin-left: -5px;
         border-width: 5px;
         border-style: solid;
         border-color: #555 transparent transparent transparent;
@@ -191,13 +189,6 @@
     }
     .centered-element {
         display: inline-block;
-    }
-    .right-element {
-        position: absolute;
-        right: 10px;
-        font-size: 16px;
-        font-weight: normal;
-        bottom: 50%;
     }
 
   </style>
@@ -3044,25 +3035,43 @@ function setUpArrowKeys() {
     <span class="centered-element">
         <span class="tooltip">Help
             <span class="tooltiptext">
-                <p>
-                    Double-click the image to zoom, or click and drag to zoom to a rectangle.
-                </p><p>
-                    Or, press the "page down" and "page up" keys to zoom in and out, or the arrow keys to scroll.
-                </p><p>
-                    Press "f" for full windowed mode, or shift-F ("F") for full screen mode, then "escape" when done.
-                </p><p>
-                    For more info, instructions, and examples, <a href='MB-info.html'>click here</a>.
-                </p><p>
+                <h3>Basic Help</h3>
+                    Double-click the image to zoom in, or click and drag on it to zoom in to a rectangle.
+                    On the left is a selection of settings for the color palette, image size, etc.  Hover over a
+                    setting to see what it does.
+                <h3>Special keys</h3>
+                    <table>
+                        <tr><td>Left Arrow:</td><td>Scroll left</td></tr>
+                        <tr><td>Right Arrow:</td><td>Scroll right</td></tr>
+                        <tr><td>Up Arrow:</td><td>Scroll up</td></tr>
+                        <tr><td>Down Arrow:</td><td>Scroll down</td></tr>
+                        <tr><td>Page Up:</td><td>Zoom out on image</td></tr>
+                        <tr><td>Page Down:</td><td>Zoom in on image</td></tr>
+                        <tr><td>f:</td><td>Fill window with image</td></tr>
+                        <tr><td>F (shift-f):</td><td>Fill screen with image</td></tr>
+                        <tr><td>Esc</td><td>Exit fill window or fill screen mode</td></tr>
+                        <tr><td>Ctrl-z</td><td>Undo last action</td></tr>
+                        <tr><td>Ctrl-y</td><td>Redo last undone action</td></tr>
+                    </table>
+                    <br>
+                    For a detailed description, instructions, and examples, <a href='MB-info.html'>click here</a>.
+                <h3>More Info</h3>
                     Increasing the number of "Workers" (in the left pane) brings in more CPU to speed up calculations. 
                     To see, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>, 
-                    then vary the number of "Workers" to speed it up or slow it down.
+                    then vary the number of workers to speed it up or slow it down.
+                </p><p>
+                    Based on a browser-only Mandelbrot Set viewer by <a href=https://math.hws.edu/eck/index.html target="_blank">David Eck</a>,
+                    this revised version can run calculations in the browser or on a backend web server.  By default it tries to use the web server;
+                    if the web server doesn't support calculations it runs them in the browser.
+                    When the web server is hosted on Kubernetes, increasing the number of workers brings in more pods to speed up the computation.
+                    Calculations are done in Rust for increased speed over the original JavaScript version.
+                </p><p>
+                    See the <a href="https://github.com/wpwoodjr/MandelRust" target="_blank">GitHub repository</a> for more information.
                 </p>
             </span>
         </span>        
     </span>
-    <span class="right-element"><a href="https://github.com/wpwoodjr/MandelRust">GitHub Repo</a></span>
 </h2>
-
 <p id="message"></p>
 
 <table border=0 cellpadding=0 cellspacing=0>
@@ -3151,18 +3160,7 @@ function setUpArrowKeys() {
 </td>
 </tr>
 </table>
-<p style="text-align: center;">
-    <span class="tooltip">More Info
-        <span class="tooltiptext">
-            Based on a browser-only Mandelbrot Set viewer by <a href=https://math.hws.edu/eck/index.html>David Eck</a>,
-            this revised version can run calculations in the browser or on a backend web server.  By default it tries to use the web server;
-            if the web server doesn't support calculations it runs in the browser.
-            When the web server is hosted on Kubernetes, increasing the number of workers brings in more pods to speed up the computation.
-            See the <a href="https://github.com/wpwoodjr/MandelRust">GitHub repository</a> for more information.
-        </span>
-    </span>        
-</p>
-    
+
 <div id="xmlimportbg">
 </div>
 <div id="xmlimport">
