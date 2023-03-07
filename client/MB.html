@@ -149,7 +149,7 @@
         font-weight: normal;
     }
     /* Style the tooltip text */
-    .tooltip .tooltiptext {
+    .tooltip .helptext {
         visibility: hidden;
         width: 800px;
         background-color: #fff;
@@ -163,19 +163,51 @@
         font-weight: normal;
         top: 100%;
         left: 100%;
-        transform: translateX(-48%);
+        transform: translateX(-40%);
         border: 1px solid black;
     }
     /* Show the tooltip text when hovering over the container */
-    .tooltip:hover .tooltiptext {
+    .tooltip:hover .helptext {
         visibility: visible;
     }
     /* Format the tooltip arrow */
-    .tooltip .tooltiptext::after {
+    .tooltip .helptext::after {
         content: "";
         position: absolute;
         bottom: 100%;
-        left: 50%;
+        left: 41%;
+        border-width: 5px;
+        border-style: solid;
+        border-color: #555 transparent transparent transparent;
+    }
+    /* Style the tooltip text */
+    .tooltip .exampletext {
+        visibility: hidden;
+        width: 800px;
+        background-color: #fff;
+        color: #000;
+        text-align: left;
+        border-radius: 8px;
+        padding: 10px;
+        position: absolute;
+        z-index: 1;
+        font-size: 16px;
+        font-weight: normal;
+        top: 100%;
+        left: 100%;
+        transform: translateX(-65%);
+        border: 1px solid black;
+    }
+    /* Show the tooltip text when hovering over the container */
+    .tooltip:hover .exampletext {
+        visibility: visible;
+    }
+    /* Format the tooltip arrow */
+    .tooltip .exampletext::after {
+        content: "";
+        position: absolute;
+        bottom: 100%;
+        left: 66%;
         border-width: 5px;
         border-style: solid;
         border-color: #555 transparent transparent transparent;
@@ -210,8 +242,11 @@
     }
     #examples td {
         border: 2px solid darkgray;
+        max-width: 33.33%;
     }
     #examples img, #examples a {
+        max-width: 100%;
+        height: auto;
         display: block;
     }
 
@@ -262,6 +297,8 @@ var dragbox = null;
 
 let maxIterSlider, mainPaletteOffsetSlider, mainPaletteLengthSlider, paletteSelectSlider;
 let zoomInSlider, zoomOutSlider;
+let fitWindow;
+
 var palette;
 var fixedPaletteLength;
 var paletteLength;
@@ -778,14 +815,8 @@ function setDefaults() {
     palette = new Palette();
     createPaletteColors();
     document.getElementById("customsize").style.display = "none";
-    document.getElementById("imagesize").value = "800 600";
-    if (canvas.width != 800 || canvas.height != 600) {
-      canvas.width = 800;
-      canvas.height = 600;
-      OSC.width = 800;
-      OSC.height = 600;
-      checkAspect();
-    }
+    document.getElementById("imagesize").value = "0 0";
+    setCanvasToWindow();
     startJob();
     if (undoList) {
         addUndoItem("Restore Defaults", [oldXML, oldPaletteSelectSliderState],
@@ -1281,24 +1312,27 @@ function changeInterlaced() {
 
 function changeImageSize() {
     var val = document.getElementById("imagesize").value;
-    if (val == "Custom") {
+    if (val === "Custom") {
         document.getElementById("customwidth").value = "" + canvas.width;
         document.getElementById("customheight").value = "" + canvas.height;
         document.getElementById("customsize").style.display = "inline";
-    }
-    else {
+    } else if (val === "0 0") {
+        document.getElementById("customsize").style.display = "none";
+        setImageSizeToWindow(true);
+    } else {
         document.getElementById("customsize").style.display = "none";
         var sizes = val.split(" ");
         var width = Number(sizes[0]);
         var height = Number(sizes[1]);
-        setImageSize(width,height,true);
+        setImageSizeToFixed(width,height,true);
     }
 }
-function setImageSize(w,h,undo) {
+function setImageSizeToFixed(w,h,undo) {
     if (w == canvas.width && h == canvas.height) {
         return;
     }
-    var oldval = [canvas.width,canvas.height];
+    let oldval = fitWindow ? [0, 0] : [canvas.width, canvas.height];
+    fitWindow = false;
     stopJob();
     canvas.width = w;
     canvas.height = h;
@@ -1321,7 +1355,62 @@ function doCustomSize() {
         document.getElementById("status").innerHTML = "Illegal value for image height.  Must be an integer in the range 64 to 7680.";
         return;
     }
-    setImageSize(width,height,true);
+    setImageSizeToFixed(width,height,true);
+}
+function setCanvasToWindow() {
+    let w = Math.max(64, window.innerWidth - 275);
+    let h = Math.max(64, window.innerHeight - 100);
+    if (canvas.width != w || canvas.height != h) {
+      canvas.width = w;
+      canvas.height = h;
+      OSC.width = w;
+      OSC.height = h;
+      checkAspect();
+    }
+    fitWindow = true;
+}
+function setImageSizeToWindow(undo) {
+    let w = window.innerwidth - 200;
+    let h = window.innerHeight - 100;
+    if (w == canvas.width && h == canvas.height) {
+        return;
+    }
+    let oldval = fitWindow ? [0, 0] : [canvas.width, canvas.height];
+    stopJob();
+    setCanvasToWindow();
+    startJob();
+    if (undo) {
+        addUndoItem("Change Image Size", oldval, [0, 0]);
+    }
+}
+function resizeFitWindow() {
+    if (! fullScreenCanvas && ! fullWindowCanvas) {
+        // console.log("resizeFitWindow");
+        if (fitWindow) {
+            setImageSizeToWindow(false);
+        }
+        setTooltipSize();
+    }
+}
+function setImageSize(w, h, undo) {
+    if (fitWindow) {
+        setImageSizeToWindow(undo);
+    } else {
+        setImageSizeToFixed(w, h, undo);
+    }
+}
+function setTooltipSize() {
+    const w = window.innerWidth;
+    // console.log(w);
+    let tooltip = document.querySelector('.tooltip .helptext');
+    tooltip.style.width = Math.min(800, w*0.8) + "px";
+
+    tooltip = document.querySelector('.tooltip .exampletext');
+    if (w < 475) {
+        tooltip.style.width = Math.min(800, w*0.65) + "px";
+    } else {
+        tooltip.style.width = Math.min(800, w*0.75) + "px";
+    }
 }
 
 function doApplyStandardPalette(newPaletteNum, newPalette) {
@@ -1418,16 +1507,20 @@ function applyUndoItem(name, value) {
          startJob();
          break;
       case "Change Image Size":
-         setImageSize(value[0],value[1],false);
-         var val = value[0] + " " + value[1];
-         if (["640 480", "800 600", "1024 768", "1600 1200", "1920 1080", "1920 1200", "2560 1440", "2880 1800", "3840 1080", "3840 2160", "5120 1440", "7680 4320"].indexOf(val) < 0) {
+        var val = value[0] + " " + value[1];
+        if (val === "0 0") {
+            setImageSizeToWindow(false);
+        } else {
+            setImageSizeToFixed(value[0],value[1],false);
+        }
+         if (! fitWindow && ["640 480", "800 600", "1024 768", "1600 1200", "1920 1080", "1920 1200", "2560 1440", "2880 1800", "3840 1080", "3840 2160", "5120 1440", "7680 4320"].indexOf(val) < 0) {
              document.getElementById("imagesize").value = "Custom";
              document.getElementById("customsize").style.display = "inline";
              document.getElementById("customwidth").value = "" + value[0];
              document.getElementById("customheight").value = "" + value[1];
          }
          else {
-             document.getElementById("imagesize").value = val;
+             document.getElementById("imagesize").value = fitWindow ? "0 0" : val;
              document.getElementById("customsize").style.display = "none";
          }
          break;
@@ -2468,7 +2561,7 @@ SliderAndInput.prototype.draw = function() {
 function currentExampletoXML() {
     var offset = Math.round(mainPaletteOffsetSlider.value/100 * paletteLength);
     return "<?xml version='1.0'?>\n<mandelbrot_settings_2>\n" +
-            "<image_size width='" + canvas.width + "' height='" + canvas.height + "'/>\n" +
+            "<image_size width='" + (fitWindow ? 0 : canvas.width) + "' height='" + (fitWindow ? 0 : canvas.height) + "'/>\n" +
             "<limits>\n   <xmin>" + xmin_requested.toString() + "</xmin>\n" +
             "   <xmax>" + xmax_requested.toString() + "</xmax>\n" +
             "   <ymin>" + ymin_requested.toString() + "</ymin>\n" +
@@ -2480,7 +2573,7 @@ function currentExampletoXML() {
 }
 
 function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError) {
-    // console.log("installExampleFromXML:", currentXML);
+    // console.log("installExampleFromXML:", currentXML, xmlString);
     let oldXML = currentXML;
     let oldPaletteSelectSliderState = paletteSelectSlider.getPaletteSelectSliderState();
     stopJob();
@@ -2496,8 +2589,12 @@ function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError
           else {
               width = Number(size[0].getAttribute("width"));
               height = Number(size[0].getAttribute("height"));
-              if (isNaN(width) || width > 7680 || width < 64 || isNaN(height) || height > 7680 || height < 64) {
-                   respectSize = false;
+              if (width === 0 && height === 0) {
+                    fitWindow = true;
+              } else if (isNaN(width) || width > 7680 || width < 64 || isNaN(height) || height > 7680 || height < 64) {
+                    respectSize = false;
+              } else {
+                    fitWindow = false;
               }
           }
       }
@@ -2541,16 +2638,16 @@ function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError
       mainPaletteOffsetSlider.setValue(tmp*100);
       createPaletteColors();
       if (respectSize) {
-         setImageSize(width,height,false);
+        setImageSize(width, height, false);
          var val = width + " " + height;
-         if (["640 480", "800 600", "1024 768", "1600 1200", "1920 1080", "1920 1200", "2560 1440", "2880 1800", "3840 1080", "3840 2160", "5120 1440", "7680 4320"].indexOf(val) < 0) {
+         if (! fitWindow && ["640 480", "800 600", "1024 768", "1600 1200", "1920 1080", "1920 1200", "2560 1440", "2880 1800", "3840 1080", "3840 2160", "5120 1440", "7680 4320"].indexOf(val) < 0) {
              document.getElementById("imagesize").value = "Custom";
              document.getElementById("customsize").style.display = "inline";
              document.getElementById("customwidth").value = "" + width;
              document.getElementById("customheight").value = "" + height;
          }
          else {
-             document.getElementById("imagesize").value = val;
+             document.getElementById("imagesize").value = fitWindow ? "0 0" : val;
              document.getElementById("customsize").style.display = "none";
          }
       }
@@ -2670,11 +2767,11 @@ function init() {
     // must run before worker count init
     initLocalOrRemote();
     try {
-      var ct = Number(localStorage.getItem("mandelbrotWorkerCount" + (document.getElementById("local").checked ? "local" : "remote")));
-    //   console.log("workers get (init) " + (document.getElementById("local").checked ? "local" : "remote") + " " + ct);
-      if (!isNaN(ct) && ct > 0) {
-          workerCount = ct;
-      }
+        var ct = Number(localStorage.getItem("mandelbrotWorkerCount" + (document.getElementById("local").checked ? "local" : "remote")));
+        // console.log("workers get (init) " + (document.getElementById("local").checked ? "local" : "remote") + " " + ct);
+        if (!isNaN(ct) && ct > 0) {
+            workerCount = ct;
+        }
     }
     catch(e) {
     }
@@ -2701,6 +2798,8 @@ function init() {
     undoList = [];
     undoCount = 0;
     checkRemoteCanComputeMB();
+    setTooltipSize();
+    window.addEventListener('resize', resizeFitWindow);
 }
 
 function createSliders() {
@@ -2708,7 +2807,7 @@ function createSliders() {
         "maxIterSlider", {
         label: "Max Iterations:",
         title: "How many steps in the Mandelbrot iteration before giving up and coloring the pixel black.",
-        logarithmic: true, initialValue: 500, minValue: 1, maxValue:999999, textLength: 6,
+        logarithmic: true, initialValue: 1000, minValue: 1, maxValue:999999, textLength: 6,
         stickyVals: [3,5,10,25,50,75,100,250,500,750,1000,2500,5000,7500,10000,25000,50000,75000,100000]
         });
     maxIterSlider.onInput = function (interimMaxIters, lastInterimMaxIters) {
@@ -2885,14 +2984,14 @@ let oldCanvasHeight = NaN;
 
 function resizeFullWindowCanvas() {
     // console.log("resizeFullWindowCanvas:", window.innerWidth, window.innerHeight);
-    setImageSize(window.innerWidth, window.innerHeight, false);
+    setImageSizeToFixed(window.innerWidth, window.innerHeight, false);
 }
 function toFullWindowCanvas() {
     window.addEventListener('resize', resizeFullWindowCanvas);
     oldCanvasWidth = canvas.width;
     oldCanvasHeight = canvas.height;
     canvas.classList.add('FullWindowCanvas');
-    setImageSize(window.innerWidth, window.innerHeight, false);
+    setImageSizeToFixed(window.innerWidth, window.innerHeight, false);
     fullWindowCanvas = true;
 }
 function fromFullWindowCanvas() {
@@ -2907,7 +3006,7 @@ function toFullScreenCanvas() {
     canvas.classList.add('FullWindowCanvas');
     canvas.requestFullscreen();
     document.addEventListener("fullscreenchange", escapeFromFullScreenCanvas);
-    setImageSize(screen.width, screen.height, false);
+    setImageSizeToFixed(screen.width, screen.height, false);
     fullScreenCanvas = true;
 }
 function fromFullScreenCanvas() {
@@ -2949,6 +3048,9 @@ function setUpArrowKeys() {
             case "f":
             case "F":
             case "Escape":
+                if (event.ctrlKey) {
+                    return;
+                }
                 break;
             case "z":
             case "Z":
@@ -3056,7 +3158,7 @@ function setUpArrowKeys() {
 <tr><td>Explore the <a href=MB.html>Mandelbrot Set</a></span></td>
 <td>
     <span class="tooltip">Help
-        <span class="tooltiptext">
+        <span class="helptext">
             <h3>Basic Help</h3>
                 Double-click the image to zoom in, or click and drag on it to zoom in to a rectangle.
                 On the left is a selection of settings for the color palette, image size, etc.  Hover over a
@@ -3076,7 +3178,7 @@ function setUpArrowKeys() {
                     <tr><td>Ctrl-y</td><td>Redo last undone action</td></tr>
                 </table>
                 <br>
-                For a detailed description, instructions, and examples, <a href='MB-info.html'>click here</a>.
+                For a detailed description, instructions, and examples, see <a href='MB-info.html'><b>more help</b></a>.
             <h3>More Info</h3>
                 Increasing the number of "Workers" (in the left pane) brings in more CPU to speed up calculations. 
                 To see, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>, 
@@ -3095,7 +3197,7 @@ function setUpArrowKeys() {
 </td>
 <td>
     <span class="tooltip">Examples
-        <span class="tooltiptext">
+        <span class="exampletext">
             <h3 id="gallery">Some Loadable Examples</h3>
 
             <p>Here are 15 images from the program.  Click on one of the images to open
@@ -3185,8 +3287,9 @@ function setUpArrowKeys() {
    </div>
    <div class="group">
       <p><label title="Width and height of the Mandelbrot picture, in pixels.">Image Size: <select id="imagesize">
-          <option value="640 480">640x480</option>
-          <option value="800 600">800x600</option>
+        <option value="0 0">Fit Window</option>
+        <option value="640 480">640x480</option>
+        <option value="800 600">800x600</option>
           <option value="1024 768">1024x768</option>
           <option value="1600 1200">1600x1200</option>
           <option value="1920 1080">1920x1080</option>
@@ -3219,7 +3322,7 @@ function setUpArrowKeys() {
 </div>
 <td>
   <div id="imagediv">
-  <p id="status">Image size 800x600.  Idle.</p>
+  <p id="status">Idle</p>
   <p><div id="canvas-holder">
      <canvas id="canvas" width="800" height="600"></canvas>
   </div></p>

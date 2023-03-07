@@ -36,7 +36,7 @@ function doIterationCounts(coords, url, retryCount, thisJobNum) {
                 retryCount*1000);
             return;
         } else {
-            console.log("XMLHttpRequest failure, retry limit exceeded!\n" + error);
+            console.error("XMLHttpRequest failure, retry limit exceeded!\n" + error);
             iterationCounts = [];
             for (let i = 0; i < coords.rows; i++) {
                 iterationCounts[i] = array_fill(new Array(coords.columns), -1);

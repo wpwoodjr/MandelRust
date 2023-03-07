@@ -27,7 +27,7 @@ class WasmMemory {
     }
     newArrayU32(length,log) {
         let ptr = malloc(length*Uint32Array.BYTES_PER_ELEMENT);
-        if (log) console.log(ptr, length, this.memory.buffer.byteLength);
+        // if (log) console.log(ptr, length, this.memory.buffer.byteLength);
         let array = new Uint32Array(this.memory.buffer, ptr, length);
         return array;
     }
