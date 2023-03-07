@@ -59,7 +59,7 @@
 <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
 <style type="text/css">
    body {
-       background-color: #D8D8D8;
+       background-color: #e8ecf3;
    }
    canvas {
        display: block;
@@ -81,11 +81,10 @@
    #controls {
        display: inline-block;
        background-color:white;
-       border-left: 2px solid black;
-       border-right: 2px solid black;
-       border-top: 2px solid black;
+       border: 2px solid black;
        padding: 0;
        margin-right:10px;
+       border-radius: 8px;
    }
    #controls p {
        margin: 12px 0;
@@ -93,7 +92,10 @@
    }
    div.group {
        padding: 0 8px;
-       border-bottom: 2px solid black;
+       border-bottom: 1px solid black;
+   }
+   div.grouplast {
+       padding: 0 8px;
    }
    #imagediv p {
        margin: 4px 0;
@@ -139,13 +141,13 @@
     body {
         font-family: Arial, sans-serif;
     }
+
     /* Style the tooltip container */
     .tooltip {
         position: relative;
         display: inline-block;
         font-weight: normal;
     }
-
     /* Style the tooltip text */
     .tooltip .tooltiptext {
         visibility: hidden;
@@ -153,7 +155,7 @@
         background-color: #fff;
         color: #000;
         text-align: left;
-        border-radius: 6px;
+        border-radius: 8px;
         padding: 10px;
         position: absolute;
         z-index: 1;
@@ -162,13 +164,12 @@
         top: 100%;
         left: 100%;
         transform: translateX(-48%);
+        border: 1px solid black;
     }
-
     /* Show the tooltip text when hovering over the container */
     .tooltip:hover .tooltiptext {
         visibility: visible;
     }
-
     /* Format the tooltip arrow */
     .tooltip .tooltiptext::after {
         content: "";
@@ -179,16 +180,39 @@
         border-style: solid;
         border-color: #555 transparent transparent transparent;
     }
-    h2 {
-        position: relative;
+
+    #header-table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 22px;
+        table-layout: fixed;
+    }
+    #header-table > tbody > tr > td {
+        text-align: Left;
+    }
+    #header-table > tbody > tr > td:first-child {
+        width: 30%;
+    }
+    #header-table > tbody > tr > td:nth-child(2) {
+        width: 20%;
         text-align: center;
     }
-    .left-element {
-        position: absolute;
-        left: 0;
+
+    #examples td, #examples tr {
+        margin: 0;
+        padding: 0;
     }
-    .centered-element {
-        display: inline-block;
+    #examples {
+        padding: 0;
+        margin: 7px auto;
+        border: 2px solid darkgray;
+        border-spacing: 0;
+    }
+    #examples td {
+        border: 2px solid darkgray;
+    }
+    #examples img, #examples a {
+        display: block;
     }
 
   </style>
@@ -3028,50 +3052,93 @@ function setUpArrowKeys() {
 
 <noscript><b>Sorry, this page requires JavaScript.</b></noscript>
 
-<h2>
-    <div class="left-element">
-      <span>Explore the <a href=MB.html>Mandelbrot Set</a></span>
-    </div>
-    <span class="centered-element">
-        <span class="tooltip">Help
-            <span class="tooltiptext">
-                <h3>Basic Help</h3>
-                    Double-click the image to zoom in, or click and drag on it to zoom in to a rectangle.
-                    On the left is a selection of settings for the color palette, image size, etc.  Hover over a
-                    setting to see what it does.
-                <h3>Special keys</h3>
-                    <table>
-                        <tr><td>Left Arrow:</td><td>Scroll left</td></tr>
-                        <tr><td>Right Arrow:</td><td>Scroll right</td></tr>
-                        <tr><td>Up Arrow:</td><td>Scroll up</td></tr>
-                        <tr><td>Down Arrow:</td><td>Scroll down</td></tr>
-                        <tr><td>Page Up:</td><td>Zoom out on image</td></tr>
-                        <tr><td>Page Down:</td><td>Zoom in on image</td></tr>
-                        <tr><td>f:</td><td>Fill window with image</td></tr>
-                        <tr><td>F (shift-f):</td><td>Fill screen with image</td></tr>
-                        <tr><td>Esc</td><td>Exit fill window or fill screen mode</td></tr>
-                        <tr><td>Ctrl-z</td><td>Undo last action</td></tr>
-                        <tr><td>Ctrl-y</td><td>Redo last undone action</td></tr>
-                    </table>
-                    <br>
-                    For a detailed description, instructions, and examples, <a href='MB-info.html'>click here</a>.
-                <h3>More Info</h3>
-                    Increasing the number of "Workers" (in the left pane) brings in more CPU to speed up calculations. 
-                    To see, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>, 
-                    then vary the number of workers to speed it up or slow it down.
-                </p><p>
-                    Based on a browser-only Mandelbrot Set viewer by <a href=https://math.hws.edu/eck/index.html target="_blank">David Eck</a>,
-                    this revised version can run calculations in the browser or on a backend web server.  By default it tries to use the web server;
-                    if the web server doesn't support calculations it runs them in the browser.
-                    When the web server is hosted on Kubernetes, increasing the number of workers brings in more pods to speed up the computation.
-                    Calculations are done in Rust for increased speed over the original JavaScript version.
-                </p><p>
-                    See the <a href="https://github.com/wpwoodjr/MandelRust" target="_blank">GitHub repository</a> for more information.
-                </p>
-            </span>
-        </span>        
+<table id="header-table">
+<tr><td>Explore the <a href=MB.html>Mandelbrot Set</a></span></td>
+<td>
+    <span class="tooltip">Help
+        <span class="tooltiptext">
+            <h3>Basic Help</h3>
+                Double-click the image to zoom in, or click and drag on it to zoom in to a rectangle.
+                On the left is a selection of settings for the color palette, image size, etc.  Hover over a
+                setting to see what it does.
+            <h3>Special keys</h3>
+                <table>
+                    <tr><td>Left Arrow:</td><td>Scroll left</td></tr>
+                    <tr><td>Right Arrow:</td><td>Scroll right</td></tr>
+                    <tr><td>Up Arrow:</td><td>Scroll up</td></tr>
+                    <tr><td>Down Arrow:</td><td>Scroll down</td></tr>
+                    <tr><td>Page Up:</td><td>Zoom out on image</td></tr>
+                    <tr><td>Page Down:</td><td>Zoom in on image</td></tr>
+                    <tr><td>f:</td><td>Fill window with image</td></tr>
+                    <tr><td>F (shift-f):</td><td>Fill screen with image</td></tr>
+                    <tr><td>Esc</td><td>Exit fill window or fill screen mode</td></tr>
+                    <tr><td>Ctrl-z</td><td>Undo last action</td></tr>
+                    <tr><td>Ctrl-y</td><td>Redo last undone action</td></tr>
+                </table>
+                <br>
+                For a detailed description, instructions, and examples, <a href='MB-info.html'>click here</a>.
+            <h3>More Info</h3>
+                Increasing the number of "Workers" (in the left pane) brings in more CPU to speed up calculations. 
+                To see, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>, 
+                then vary the number of workers to speed it up or slow it down.
+            </p><p>
+                Based on a browser-only Mandelbrot Set viewer by <a href=https://math.hws.edu/eck/index.html target="_blank">David Eck</a>,
+                this revised version can run calculations in the browser or on a backend web server.  By default it tries to use the web server;
+                if the web server doesn't support calculations it runs them in the browser.
+                When the web server is hosted on Kubernetes, increasing the number of workers brings in more pods to speed up the computation.
+                Calculations are done in Rust for increased speed over the original JavaScript version.
+            </p><p>
+                See the <a href="https://github.com/wpwoodjr/MandelRust" target="_blank">GitHub repository</a> for more information.
+            </p>
+        </span>
     </span>
-</h2>
+</td>
+<td>
+    <span class="tooltip">Examples
+        <span class="tooltiptext">
+            <h3 id="gallery">Some Loadable Examples</h3>
+
+            <p>Here are 15 images from the program.  Click on one of the images to open
+            the program's web page and load that example.  The program will render a larger-size
+            version of the image.  You can then use the program to do some further exploration.
+            For example, click the "Zoom Out" button several times to see the neighborhood of
+            the example in the full Mandelbrot set.  You will usually see several striking images
+            along the way!  (There is also a large, unorganized
+            <a href="java/MandelbrotSettings/index.html">collection&nbsp;of&nbsp;examples</a> that
+            you can load into the program.)</p>
+                
+            <table id="examples">
+            <tr>
+               <td><a href="MB.html?ex=examples%2forangesky.xml"><img src="examples/orangesky.png" width="200" height="150"></a></td>
+               <td><a href="MB.html?ex=examples%2fgalaxies.xml"><img src="examples/galaxies.png" width="200" height="150"></a></td>
+               <td><a href="MB.html?ex=examples%2fspikey.xml"><img src="examples/spikey.png" width="200" height="150"></a></td>
+            </tr>
+            <tr>
+               <td><a href="MB.html?ex=examples%2fvine.xml"><img src="examples/vine.png" width="200" height="150"></a></td>
+               <td><a href="MB.html?ex=examples%2ffire.xml"><img src="examples/fire.png" width="200" height="150"></a></td>
+               <td><a href="MB.html?ex=examples%2fcrazy.xml"><img src="examples/crazy.png" width="200" height="150"></a></td>
+            </tr>
+            <tr>
+               <td><a href="MB.html?ex=examples%2fdragon.xml"><img src="examples/dragon.png" width="200" height="150"></a></td>
+               <td><a href="MB.html?ex=examples%2fflower.xml"><img src="examples/flower.png" width="200" height="150"></a></td>
+               <td><a href="MB.html?ex=examples%2fstar.xml"><img src="examples/star.png" width="200" height="150"></a></td>
+            </tr>
+            <tr>
+               <td><a href="MB.html?ex=examples%2fpinwheel.xml"><img src="examples/pinwheel.png" width="200" height="150"></a></td>
+               <td><a href="MB.html?ex=examples%2frainbow.xml"><img src="examples/rainbow.png" width="200" height="150"></a></td>
+               <td><a href="MB.html?ex=examples%2fisland.xml"><img src="examples/island.png" width="200" height="150"></a></td>
+            </tr>
+            <tr>
+               <td><a href="MB.html?ex=examples%2ffiddleheads.xml"><img src="examples/fiddleheads.png" width="200" height="150"></a></td>
+               <td><a href="MB.html?ex=examples%2fstatic.xml"><img src="examples/static.png" width="200" height="150"></a></td>
+               <td><a href="MB.html?ex=examples%2fmitosis.xml"><img src="examples/mitosis.png" width="200" height="150"></a></td>
+            </tr>
+            </table>
+        </span>
+    </span>
+</td>
+</tr>
+</table>
 <p id="message"></p>
 
 <table border=0 cellpadding=0 cellspacing=0>
@@ -3146,7 +3213,7 @@ function setUpArrowKeys() {
       <p id="zoomInSlider"></p>
       <p id="zoomOutSlider"></p>
    </div>
-   <div class="group">
+   <div class="grouplast">
       <p><button id="importXML" title="Put up an input box into which you can copy-and-paste the XML code for an example, or get the XML for the current example.">Show XML Import/Export</button></p>
    </div>
 </div>
