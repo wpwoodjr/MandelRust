@@ -259,6 +259,23 @@
 
 "use strict";
 
+const loadGoogleTagOnlyIfWPWoodJrDomain = function() {
+    // load Google analytics only if web server is my domain
+    if (window.location.hostname === "wpwoodjr.github.io") {
+        console.log("loading Google tag for domain", window.location.hostname);
+        // <!-- Google tag (gtag.js) -->
+        let script = document.createElement("script");
+        script.src = "https://www.googletagmanager.com/gtag/js?id=G-7MMVRWY57P";
+        script.async = true;
+        document.head.appendChild(script);
+
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-7MMVRWY57P');
+    }
+}();
+
 var HP_CUTOFF_EXP = 15;
 var HP_CUTOFF = new BigDecimal("1e-15");
 var TEN = new BigDecimal("10");
@@ -3005,8 +3022,6 @@ function createSliders() {
             setLocalStorageItem(this.id, zoomValue);
         }});
 }
-
-console.log(window.location.hostname, window.location.pathname);
 
 let fullWindowCanvas = false;
 let fullScreenCanvas = false;
