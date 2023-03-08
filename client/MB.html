@@ -2802,6 +2802,29 @@ function init() {
     checkRemoteCanComputeMB();
 }
 
+function getLocalStorageItem(item, defaultVal) {
+    try {
+        let value = localStorage.getItem(item);
+        // console.log(item, value);
+        if (value == null) {
+            return defaultVal;
+        } else {
+            return value;
+        }
+    }
+    catch(e) {
+        return defaultVal;
+    }
+}
+function setLocalStorageItem(item, value) {
+    try {
+        // console.log(item, value);
+        localStorage.setItem(item, value);
+    }
+    catch(e) {
+    }
+}
+
 function createSliders() {
     maxIterSlider = new Slider(
         "maxIterSlider", {
@@ -2952,29 +2975,35 @@ function createSliders() {
         // console.log("sPSSS:", this.data.customPalette);
     }
 
+    let initialValue = parseInt(getLocalStorageItem("zoomInSlider", 10));
     zoomInSlider = new Slider(
         "zoomInSlider", {
         label :"Zoom in by",
         title: "Sets the zoom in amount and then zooms.",
-        logarithmic: true, initialValue: 10, minValue: 2, maxValue: 100000, textLength: 8,
+        logarithmic: true, initialValue: initialValue, minValue: 2, maxValue: 100000, textLength: 8,
         stickyVals: [2,4,8,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000,100000],
         textFormat: (value) => value + " X",
         button: true,
         onClick: () => doZoomIn(zoomInSlider.value),
-        onChange: doZoomIn
-        });
+        onChange: function (zoomValue) {
+            doZoomIn(zoomValue);
+            setLocalStorageItem(this.id, zoomValue);
+        }});
 
+    initialValue = parseInt(getLocalStorageItem("zoomOutSlider", 10));
     zoomOutSlider = new Slider(
         "zoomOutSlider", {
         label :"Zoom out by",
         title: "Sets the zoom out amount and then zooms.",
-        logarithmic: true, initialValue: 10, minValue: 2, maxValue: 100000, textLength: 8,
+        logarithmic: true, initialValue: initialValue, minValue: 2, maxValue: 100000, textLength: 8,
         stickyVals: [2,4,8,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000,100000],
         textFormat: (value) => value + " X",
         button: true,
         onClick: () => doZoomOut(zoomOutSlider.value),
-        onChange: doZoomOut
-        });
+        onChange: function (zoomValue) {
+            doZoomOut(zoomValue);
+            setLocalStorageItem(this.id, zoomValue);
+        }});
 }
 
 let fullWindowCanvas = false;
