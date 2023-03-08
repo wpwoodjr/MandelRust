@@ -259,8 +259,8 @@
 
 "use strict";
 
-const loadGoogleTagOnlyIfWPWoodJrDomain = function() {
-    // load Google analytics only if web server is my domain
+(function() {
+    // load Google analytics, but only if web host is my domain; don't do analytics for other hosts
     if (window.location.hostname === "wpwoodjr.github.io") {
         // console.log("loading Google tag for domain", window.location.hostname);
         // <!-- Google tag (gtag.js) -->
@@ -274,7 +274,7 @@ const loadGoogleTagOnlyIfWPWoodJrDomain = function() {
         gtag('js', new Date());
         gtag('config', 'G-7MMVRWY57P');
     }
-}();
+})();
 
 var HP_CUTOFF_EXP = 15;
 var HP_CUTOFF = new BigDecimal("1e-15");
