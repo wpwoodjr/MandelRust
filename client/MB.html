@@ -2793,13 +2793,13 @@ function init() {
     setUpArrowKeys();
     changeWorkerCount(); // has to be done before setDefaults
     createSliders();
+    setTooltipSize();
+    window.addEventListener('resize', resizeFitWindow);
     setDefaults();
     checkForExample();
     undoList = [];
     undoCount = 0;
     checkRemoteCanComputeMB();
-    setTooltipSize();
-    window.addEventListener('resize', resizeFitWindow);
 }
 
 function createSliders() {
@@ -3324,7 +3324,7 @@ function setUpArrowKeys() {
   <div id="imagediv">
   <p id="status">Idle</p>
   <p><div id="canvas-holder">
-     <canvas id="canvas" width="800" height="600"></canvas>
+     <canvas id="canvas" width="64" height="64"></canvas>
   </div></p>
   </div>
 </td>
