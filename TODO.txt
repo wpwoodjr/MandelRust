@@ -1,10 +1,10 @@
-1000000 iters then back to 500 takes forever
 Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore
 UCArray stuff
 Keep JS worker?
 ///stuff
 
+>1000000 iters then back to 500 takes forever
 >optimize redraw on undo
 >set an undo for arrow keys? no would be too many
 >need stretchpalette? no; fixedPaletteLen keep

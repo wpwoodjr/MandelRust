@@ -290,7 +290,7 @@ var graphics;  // Graphics context for on-screen canvas.
 var ArrayType = window.Uint32Array || Array;
 
 var workers;
-let jobNum = 0, highestJobNumFinished = 0;
+let jobNum = 0;
 
 var running = false;
 var repaintTimeout;
@@ -304,7 +304,7 @@ var /* Uint32Array */ xminArray, yValArray, dxArray;
 var jobs;
 var workerCount = 4;
 let jobStartTime;
-let rowsCompleted, rowsPerSecond;
+let rowsCompleted, rowsPerSecond, jobsCompleted, jobsPerSecond;
 var highPrecision;
 
 var COMPUTING_FIRST_PASS = 1, DONE_FIRST_PASS = 2, COMPUTING_SECOND_PASS = 3, IDLE = 4;
@@ -507,8 +507,9 @@ function newWorkers(count) {
     }
 }
 
+const MAX_SECONDS_PER_JOB = 4;
 function stopJob(dontUpdateStatusToIdle) {
-    // console.log("stopJob", running, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
+    // console.log("stopJob", running, jobsPerSecond, workerCount/MAX_SECONDS_PER_JOB, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     if (running) {
         jobNum++;
         running = false;
@@ -518,9 +519,8 @@ function stopJob(dontUpdateStatusToIdle) {
             repaintTimeout = null;
         }
         repaint(dontUpdateStatusToIdle);
-        if (highestJobNumFinished < jobNum - 1) {///??? not sufficient, long waits
-            // let timeSinceStart = Date.now() - jobStartTime;
-            // console.log("Making new workers - highestJobNumFinished =", highestJobNumFinished, "jobNum =", jobNum, "after", timeSinceStart, "ms");
+        if (jobsPerSecond < workerCount/MAX_SECONDS_PER_JOB) {
+            // console.log("Making new workers:", jobsPerSecond, workerCount/MAX_SECONDS_PER_JOB);
             newWorkers(workerCount);
         }
     }
@@ -530,7 +530,7 @@ let maxRowsPerJob = 32;
 let maxRowsPerJobHP = 4;
 
 function startJob(dontClear) {
-    // console.log("startJob",zoomTimeout != null,running, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
+    // console.log("startJob", running, zoomTimeout != null, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     if (running) {
        stopJob();
     }
@@ -627,6 +627,8 @@ function startJob(dontClear) {
 
     rowsCompleted = 0;
     rowsPerSecond = 0;
+    jobsCompleted = 0;
+    jobsPerSecond = 0;
     running = true;
     document.getElementById("stop").disabled = false;
     var prec = highPrecision ? "high precision, " + digits + " digits" : "normal precision";
@@ -640,7 +642,6 @@ function startJob(dontClear) {
 
 function jobFinished(msg) {
     var job = msg.data;
-    highestJobNumFinished = Math.max(highestJobNumFinished, job[0]);
     if (job[0] != jobNum)
        return;
     if (jobs.length > 0) {
@@ -667,8 +668,11 @@ function jobFinished(msg) {
             //}
         }
     }
+    const elapsedSecs = (Date.now() - jobStartTime)/1000.0;
     rowsCompleted += nRows;
-    rowsPerSecond = rowsCompleted/((Date.now() - jobStartTime)/1000.0);
+    rowsPerSecond = rowsCompleted/elapsedSecs;
+    jobsCompleted += 1;
+    jobsPerSecond = jobsCompleted/elapsedSecs;
     if (state == COMPUTING_FIRST_PASS) {
         if (rowsCompleted == canvas.height) {
             state = DONE_FIRST_PASS;
@@ -2590,7 +2594,7 @@ function currentExampletoXML() {
 }
 
 function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError) {
-    // console.log("installExampleFromXML:", currentXML, xmlString);
+    // console.log("installExampleFromXML:", "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);//, currentXML, xmlString);
     let oldXML = currentXML;
     let oldPaletteSelectSliderState = paletteSelectSlider.getPaletteSelectSliderState();
     stopJob();
@@ -2654,6 +2658,7 @@ function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError
       tmp = Math.round(10000*tmp)/10000;
       mainPaletteOffsetSlider.setValue(tmp*100);
       createPaletteColors();
+      setLimits(xmin,xmax,ymin,ymax,false);
       if (respectSize) {
         setImageSize(width, height, false);
          var val = width + " " + height;
@@ -2667,9 +2672,9 @@ function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError
              document.getElementById("imagesize").value = fitWindow ? "0 0" : val;
              document.getElementById("customsize").style.display = "none";
          }
+      } else {
+        startJob();
       }
-      setLimits(xmin,xmax,ymin,ymax,false);
-      startJob();
       if (recordUndo && undoList) {
           addUndoItem("Import Example", [oldXML, oldPaletteSelectSliderState],
             [currentXML, paletteSelectSlider.getPaletteSelectSliderState()]);
