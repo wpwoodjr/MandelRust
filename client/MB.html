@@ -2942,7 +2942,6 @@ function createSliders() {
         textFormat: function (value) { return this.data.paletteNamesList[value]; },
         textEdit: false,
         data: {
-            oldPaletteNum: NaN,
             oldPalette: null,
             customPalette: null,
             paletteSelectList: ["Spectrum","EarthAndSky","Cyclic Fire","Seashore","TreeColors",
@@ -2951,12 +2950,11 @@ function createSliders() {
                "Pastel Colors","Dark Colors","HotAndCold","Blue/Gold","Grayscale","Random","Custom"]
         }});
     paletteSelectSlider.onInput = function(interimPaletteNum, lastInterimPaletteNum) {
-        // console.log("i:",this.id,interimPaletteNum,lastInterimPaletteNum,this.data.oldPaletteNum);
-        if (isNaN(this.data.oldPaletteNum)) {
-            this.data.oldPaletteNum = lastInterimPaletteNum;
+        // console.log("i:",this.id,interimPaletteNum,lastInterimPaletteNum,this.value);
+        if (! this.data.oldPalette) {
             this.data.oldPalette = palette.copy();
         }
-        if (interimPaletteNum === this.data.oldPaletteNum) {
+        if (interimPaletteNum === this.value) {
             // show original palette even if it was random
             doApplyStandardPalette(null, this.data.oldPalette);
         } else {
@@ -2971,7 +2969,6 @@ function createSliders() {
         };
     paletteSelectSlider.onBlur = function() {
         this.data.oldPalette = null;
-        this.data.oldPaletteNum = NaN;
     };
     paletteSelectSlider.reset = function() {
         let max = this.data.paletteSelectList.length - 1;
