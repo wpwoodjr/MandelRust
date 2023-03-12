@@ -16,13 +16,18 @@ class Touch {
         this.onDragCancel = options.onDragCancel || null;
         this.onSingleTap = options.onSingleTap || null;
         this.onDoubleTap = options.onDoubleTap || null;
+        this.onPinchStart = options.onPinchStart || null;
+        this.onPinchMove = options.onPinchMove || null;
+        this.onPinchEnd = options.onPinchEnd || null;
+        this.onPinchCancel = options.onPinchCancel || null;
         this.data = options.data || {};
 
         // Variables to store touch positions and state
-        this.startTouches = null;
+        this.startTouches = [];
         this.lastTapTime = 0;
         this.pinchTouches = [];
         this.isDragging = false;
+        this.isPinching = false;
         this.init = false;
         this.tapTimeout = null;
         this.parentElement.addEventListener("touchstart", (event) => this.handleTouchStart(event));
@@ -41,8 +46,8 @@ class Touch {
         }
 
         // Store the initial touch position
-        this.startTouches = event.targetTouches;
-      
+        this.startTouches = this.copyTouches(event.targetTouches);
+
         // Reset pinchTouches array
         this.pinchTouches = [];
 
@@ -54,36 +59,15 @@ class Touch {
     // Handle touch move event
     handleTouchMove(event) {
         // console.log("move");
+
         // Prevent scrolling on the page
         event.preventDefault();
+
         // Check if there are two touches for pinch gesture
-        if (event.targetTouches.length === 2) {
+        if (event.targetTouches.length === 2 || this.isPinching) {
             // Store the pinch touch positions
-            this.pinchTouches = event.touches;
-        } else if (event.targetTouches.length === 1 || this.isDragging) {
-            if (! this.isDragging && this.onDragStart) {
-                this.onDragStart(this.startTouches[0].clientX, this.startTouches[0].clientY);
-                this.isDragging = true;
-            }
-            if (this.onDragMove) {
-                this.onDragMove(event.targetTouches[0].clientX, event.targetTouches[0].clientY);
-            }
-        }
-    }
+            this.pinchTouches = event.targetTouches;
 
-    // Handle touch end event
-    handleTouchEnd(event) {
-        // console.log("touch end");
-        // Check for pinch gesture
-        if (this.isDragging) {
-            this.isDragging = false;
-            if (this.onDragEnd) {
-                this.onDragEnd();
-            }
-            return;
-        }
-
-        if (event.touches.length === 0 && this.pinchTouches.length === 2) {
             // Calculate the distance between pinch touches
             const pinchStartX1 = this.pinchTouches[0].clientX;
             const pinchStartY1 = this.pinchTouches[0].clientY;
@@ -105,10 +89,37 @@ class Touch {
             else if (pinchEndDistance < pinchStartDistance) {
             console.log("Pinch in gesture detected");
             }
+
+        // check for one touch drag
+        } else if (event.targetTouches.length === 1 || this.isDragging) {
+            if (! this.isDragging && this.onDragStart) {
+                this.onDragStart(this.startTouches[0].clientX, this.startTouches[0].clientY);
+                this.isDragging = true;
+            }
+            if (this.onDragMove) {
+                this.onDragMove(event.targetTouches[0].clientX, event.targetTouches[0].clientY);
+            }
         }
+    }
+
+    // Handle touch end event
+    handleTouchEnd(event) {
+        // console.log("touch end");
+
+        if (this.isDragging) {
+            this.isDragging = false;
+            if (this.onDragEnd) {
+                this.onDragEnd();
+            }
+
+        } else if (this.isPinching) {
+            this.isPinching = false;
+            if (this.onPinchEnd) {
+                this.onPinchEnd();
+            }
 
         // Check for tap gesture
-        if (event.targetTouches.length === 0) {
+        } else if (event.targetTouches.length === 0) {
             // Calculate the distance between start and end touches
             const startX = this.startTouches[0].clientX;
             const startY = this.startTouches[0].clientY;
@@ -121,28 +132,24 @@ class Touch {
             const timeSinceLastTap = currentTime - this.lastTapTime;
 
             // If the distance is less than a threshold value and the time since the last tap is less than a threshold value, it's a double tap gesture
-            if (distance < 10 && timeSinceLastTap < 400) {
+            if (distance < 10 && timeSinceLastTap < 350) {
                 if (this.tapTimeout) {
                     clearTimeout(this.tapTimeout);
                 }
                 if (this.onDoubleTap) {
+                    // prevent emulated mouse dblclick
+                    event.preventDefault();
                     this.onDoubleTap(startX, startY);
                 }
             }
-            // Otherwise, it's a single tap gesture
-            else {
-                if (this.onSingleTap) {
-                    this.tapTimeout = setTimeout(() => this.onSingleTap(startX, startY), 400);
-                }
+
+            // Otherwise, set timeout to see if it's a single tap gesture
+            else if (this.onSingleTap) {
+                this.tapTimeout = setTimeout(() => this.onSingleTap(startX, startY), 350);
             }
 
             // Store the current tap time
             this.lastTapTime = currentTime;
-        }
-
-        // Check for drag gesture
-        if (event.targetTouches.length === 1 && this.pinchTouches.length === 0) {
-            console.log("Drag gesture detected");
         }
     }
  
@@ -151,6 +158,20 @@ class Touch {
         console.log("touch canceled");
         if (this.isDragging && this.onDragCancel) {
             this.onDragCancel();
+        } else if (this.isPinching && this.onPinchCancel) {
+            this.onPinchCancel();
         }
+    }
+
+    // Firefox requires that we copy what we need
+    copyTouches(touches) {
+        let r = [];
+        for (let i = 0; i < touches.length; i++) {
+            r[i] = {
+                clientX: touches[i].clientX,
+                clientY: touches[i].clientY
+            };
+        }
+        return r;
     }
 }

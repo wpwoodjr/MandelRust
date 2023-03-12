@@ -1144,18 +1144,17 @@ function setUpDragging() {  // for image canvas
             dragbox = null;
         }
     }
- }
-
- function doMouseDoubleClick(evt) { 
-    if (dragbox || evt.button != 0) {
-        return;
+    function doMouseDoubleClick(evt) { 
+        if (dragbox || evt.button != 0) {
+            return;
+        }
+        var r = canvas.getBoundingClientRect();
+        var x = evt.clientX - r.left;
+        var y = evt.clientY - r.top;
+        var zoomFactor = evt.shiftKey? 2 : 0.5;
+        zoom(x,y,zoomFactor,!evt.altKey && !evt.ctrlKey, true);
     }
-    var r = canvas.getBoundingClientRect();
-    var x = evt.clientX - r.left;
-    var y = evt.clientY - r.top;
-    var zoomFactor = evt.shiftKey? 2 : 0.5;
-    zoom(x,y,zoomFactor,!evt.altKey && !evt.ctrlKey, true);
-}
+ }
 
 function Mouser(canvas, startDrag, continueDrag, endDrag, mouseMoveOnCanvasOnly) {
       // functions startDrag, continueDrag take canvas coords (x,y); for a mouse event event object is also passed.
@@ -3248,19 +3247,11 @@ function initTouch() {
                 this.data.canvas = document.createElement("canvas");
                 this.data.ctx = this.data.canvas.getContext("2d");
             },
-            // onTouchStart: function(x, y) {
-            //     // temporarily remove the dblclick event so as not to interfere with touch
-            //     canvas.removeEventListener("dblclick",doMouseDoubleClick,false);
-            //     setTimeout(function () {
-            //         canvas.addEventListener("dblclick",doMouseDoubleClick,false);
-            //     }, 500);
-            // },
             // onDoubleTap: function(x, y) {
             //     let r = canvas.getBoundingClientRect();
             //     zoom(x - r.left, y - r.top, 0.5, true, true);
             // },
             onSingleTap: function(x, y) {
-                console.log(0);
                 if (fullScreenCanvas) {
                     fromFullScreenCanvas();
                 } else if (fullWindowCanvas) {
@@ -3300,12 +3291,14 @@ function initTouch() {
             onDragEnd: function() {
                 const shiftX = this.data.startX - this.data.lastX;
                 const shiftY = this.data.startY - this.data.lastY;
-                stopJob();
                 doTranslate(shiftX, shiftY, true);
                 startJob(true);
             },
             onDragCancel: function() {
                 onDragEnd();
+            },
+            onPinchStart: function() {
+
             }
         });
     }
