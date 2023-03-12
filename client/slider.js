@@ -261,11 +261,17 @@ class Slider {
       } else {
         textInput.blur();
       }
+      if (this.onFocus) {
+        this.onFocus();
+      }
     });
 
     textInput.addEventListener('blur', () => {
       // console.log("blur:", textInput.id, textInput.value, this.value, this.maxValue);
       textInput.value = this.textFormat(this.value);
+      if (this.onBlur) {
+        this.onBlur();
+      }
     });
 
     textInput.addEventListener('keydown', (event) => {
