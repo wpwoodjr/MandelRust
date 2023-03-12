@@ -14,6 +14,7 @@ class Touch {
         this.onDragMove = options.onDragMove || null;
         this.onDragEnd = options.onDragEnd || null;
         this.onDragCancel = options.onDragCancel || null;
+        this.onSingleTap = options.onSingleTap || null;
         this.onDoubleTap = options.onDoubleTap || null;
         this.data = options.data || {};
 
@@ -120,7 +121,7 @@ class Touch {
             const timeSinceLastTap = currentTime - this.lastTapTime;
 
             // If the distance is less than a threshold value and the time since the last tap is less than a threshold value, it's a double tap gesture
-            if (distance < 10 && timeSinceLastTap < 300) {
+            if (distance < 10 && timeSinceLastTap < 400) {
                 if (this.tapTimeout) {
                     clearTimeout(this.tapTimeout);
                 }
@@ -130,9 +131,9 @@ class Touch {
             }
             // Otherwise, it's a single tap gesture
             else {
-                this.tapTimeout = setTimeout(function() {
-                    console.log("Tap gesture detected");
-                }, 300);
+                if (this.onSingleTap) {
+                    this.tapTimeout = setTimeout(() => this.onSingleTap(startX, startY), 400);
+                }
             }
 
             // Store the current tap time

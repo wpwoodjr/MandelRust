@@ -3248,16 +3248,26 @@ function initTouch() {
                 this.data.canvas = document.createElement("canvas");
                 this.data.ctx = this.data.canvas.getContext("2d");
             },
-            onTouchStart: function(x, y) {
-                // temporarily remove the dblclick event so as not to interfere with touch
-                canvas.removeEventListener("dblclick",doMouseDoubleClick,false);
-                setTimeout(function () {
-                    canvas.addEventListener("dblclick",doMouseDoubleClick,false);
-                }, 500);
-            },
-            onDoubleTap: function(x, y) {
-                let r = canvas.getBoundingClientRect();
-                zoom(x - r.left, y - r.top, 0.5, true, true);
+            // onTouchStart: function(x, y) {
+            //     // temporarily remove the dblclick event so as not to interfere with touch
+            //     canvas.removeEventListener("dblclick",doMouseDoubleClick,false);
+            //     setTimeout(function () {
+            //         canvas.addEventListener("dblclick",doMouseDoubleClick,false);
+            //     }, 500);
+            // },
+            // onDoubleTap: function(x, y) {
+            //     let r = canvas.getBoundingClientRect();
+            //     zoom(x - r.left, y - r.top, 0.5, true, true);
+            // },
+            onSingleTap: function(x, y) {
+                console.log(0);
+                if (fullScreenCanvas) {
+                    fromFullScreenCanvas();
+                } else if (fullWindowCanvas) {
+                    fromFullWindowCanvas();
+                } else {
+                    toFullScreenCanvas();
+                }
             },
             onDragStart: function(x, y) {
                 this.data.startX = x;
