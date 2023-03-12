@@ -3068,8 +3068,8 @@ function resizeFullWindowCanvas() {
 }
 function toFullWindowCanvas() {
     window.addEventListener('resize', resizeFullWindowCanvas);
-    oldCanvasWidth = canvas.width;
-    oldCanvasHeight = canvas.height;
+    oldCanvasWidth = fitWindow ? 0 : canvas.width;
+    oldCanvasHeight = fitWindow ? 0 : canvas.height;
     canvas.classList.add('FullWindowCanvas');
     setImageSizeToFixed(window.innerWidth, window.innerHeight, false);
     fullWindowCanvas = true;
@@ -3077,12 +3077,16 @@ function toFullWindowCanvas() {
 function fromFullWindowCanvas() {
     window.removeEventListener('resize', resizeFullWindowCanvas);
     canvas.classList.remove('FullWindowCanvas');
-    setImageSize(oldCanvasWidth, oldCanvasHeight, false);
+    if (oldCanvasWidth === 0 && oldCanvasHeight === 0) {
+        setImageSizeToWindow(false);
+    } else {
+        setImageSize(oldCanvasWidth, oldCanvasHeight, false);
+    }
     fullWindowCanvas = false;
 }
 function toFullScreenCanvas() {
-    oldCanvasWidth = canvas.width;
-    oldCanvasHeight = canvas.height;
+    oldCanvasWidth = fitWindow ? 0 : canvas.width;
+    oldCanvasHeight = fitWindow ? 0 : canvas.height;
     canvas.classList.add('FullWindowCanvas');
     canvas.requestFullscreen();
     document.addEventListener("fullscreenchange", escapeFromFullScreenCanvas);
@@ -3095,7 +3099,11 @@ function fromFullScreenCanvas() {
     if (document.fullscreenElement) {
         document.exitFullscreen();
     }
-    setImageSize(oldCanvasWidth, oldCanvasHeight, false);
+    if (oldCanvasWidth === 0 && oldCanvasHeight === 0) {
+        setImageSizeToWindow(false);
+    } else {
+        setImageSize(oldCanvasWidth, oldCanvasHeight, false);
+    }
     fullScreenCanvas = false;
 }
 function escapeFromFullScreenCanvas() {
