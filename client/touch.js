@@ -25,9 +25,10 @@ class Touch {
         // Variables to store touch positions and state
         this.startTouches = [];
         this.lastTapTime = 0;
-        this.pinchTouches = [];
         this.isDragging = false;
+        this.dragId = NaN;
         this.isPinching = false;
+        this.pinchTouches = [];
         this.init = false;
         this.tapTimeout = null;
         this.parentElement.addEventListener("touchstart", (event) => this.handleTouchStart(event));
@@ -43,6 +44,8 @@ class Touch {
             if (this.onInit) {
                 this.onInit();
             }
+        } else if (this.isDragging || this.isPinching) {
+            return;
         }
 
         // Store the initial touch position
@@ -60,11 +63,29 @@ class Touch {
     handleTouchMove(event) {
         // console.log("move");
 
-        // Prevent scrolling on the page
-        event.preventDefault();
+        // check for continue drag
+        if (this.isDragging) {
+            if (this.onDragMove) {
+                for (const e of event.changedTouches) {
+                    if (e.identifier === this.dragId) {
+                        this.onDragMove(e.clientX, e.clientY);
+                    }
+                }
+            }
+
+        // check for start of one touch drag
+        } else if (event.targetTouches.length === 1 && this.startTouches.length === 1) {
+            this.isDragging = true;
+            this.dragId = this.startTouches[0].identifier;
+            if (this.onDragStart) {
+                this.onDragStart(this.startTouches[0].clientX, this.startTouches[0].clientY);
+            };
+            if (this.onDragMove) {
+                this.onDragMove(event.targetTouches[0].clientX, event.targetTouches[0].clientY);
+            }
 
         // Check if there are two touches for pinch gesture
-        if (event.targetTouches.length === 2 || this.isPinching) {
+        } else if (event.targetTouches.length === 2 && this.startTouches.length === 2) {
             // Store the pinch touch positions
             this.pinchTouches = event.targetTouches;
 
@@ -83,43 +104,37 @@ class Touch {
 
             // If the distance between pinch touches has increased, it's a pinch out gesture
             if (pinchEndDistance > pinchStartDistance) {
-            console.log("Pinch out gesture detected");
+                console.log("Pinch out gesture detected");
             }
             // If the distance between pinch touches has decreased, it's a pinch in gesture
             else if (pinchEndDistance < pinchStartDistance) {
-            console.log("Pinch in gesture detected");
+                console.log("Pinch in gesture detected");
             }
+        }
 
-        // check for one touch drag
-        } else if (event.targetTouches.length === 1 || this.isDragging) {
-            if (! this.isDragging && this.onDragStart) {
-                this.onDragStart(this.startTouches[0].clientX, this.startTouches[0].clientY);
-                this.isDragging = true;
-            }
-            if (this.onDragMove) {
-                this.onDragMove(event.targetTouches[0].clientX, event.targetTouches[0].clientY);
-            }
+        if (this.isDragging || this.isPinching) {
+            // Prevent scrolling on the page
+            event.preventDefault();
         }
     }
 
     // Handle touch end event
     handleTouchEnd(event) {
-        // console.log("touch end");
+        // console.log("touch end", event);
 
         if (this.isDragging) {
-            this.isDragging = false;
-            if (this.onDragEnd) {
-                this.onDragEnd();
-            }
+            this.dragEnd(event, false);
 
         } else if (this.isPinching) {
-            this.isPinching = false;
-            if (this.onPinchEnd) {
-                this.onPinchEnd();
+            if (event.touches.length === 0) {
+                this.isPinching = false;
+                if (this.onPinchEnd) {
+                    this.onPinchEnd();
+                }
             }
 
         // Check for tap gesture
-        } else if (event.targetTouches.length === 0) {
+        } else if (event.targetTouches.length === 0 && this.startTouches.length === 1) {
             // Calculate the distance between start and end touches
             const startX = this.startTouches[0].clientX;
             const startY = this.startTouches[0].clientY;
@@ -155,11 +170,28 @@ class Touch {
  
     // Handle touch cancel event
     handleTouchCancel(event) {
-        console.log("touch canceled");
-        if (this.isDragging && this.onDragCancel) {
-            this.onDragCancel();
+        // console.log("touch canceled");
+        if (this.isDragging) {
+            this.dragEnd(event, true);
         } else if (this.isPinching && this.onPinchCancel) {
             this.onPinchCancel();
+        }
+    }
+
+    dragEnd(event, onCancel) {
+        for (const e of event.changedTouches) {
+            if (e.identifier === this.dragId) {
+                this.isDragging = false;
+                this.dragId = NaN;
+                this.startTouches = [];
+                if (onCancel && this.onDragCancel) {
+                    this.onDragCancel();
+                // call onDragEnd if no onDragCancel
+                } else if (this.onDragEnd) {
+                    this.onDragEnd();
+                }
+                return;
+            }
         }
     }
 
@@ -168,6 +200,7 @@ class Touch {
         let r = [];
         for (let i = 0; i < touches.length; i++) {
             r[i] = {
+                identifier: touches[i].identifier,
                 clientX: touches[i].clientX,
                 clientY: touches[i].clientY
             };
