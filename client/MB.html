@@ -1431,13 +1431,11 @@ function setImageSizeToWindow(undo) {
     }
 }
 function resizeFitWindow() {
-    if (! fullScreenCanvas && ! fullWindowCanvas) {
-        // console.log("resizeFitWindow");
-        if (fitWindow) {
-            setImageSizeToWindow(false);
-        }
-        setTooltipSize();
+    // console.log("resizeFitWindow");
+    if (fitWindow) {
+        setImageSizeToWindow(false);
     }
+    setTooltipSize();
 }
 function setImageSize(w, h, undo) {
     if (fitWindow) {
