@@ -9,37 +9,50 @@ class Touch {
         this.parentElement = document.getElementById(id);
         options = options || {};
         this.onInit = options.onInit || null;
+        this.onTouchStart = options.onTouchStart || null;
         this.onDragStart = options.onDragStart || null;
         this.onDragMove = options.onDragMove || null;
         this.onDragEnd = options.onDragEnd || null;
+        this.onDragCancel = options.onDragCancel || null;
         this.onDoubleTap = options.onDoubleTap || null;
         this.data = options.data || {};
 
         // Variables to store touch positions and state
         this.startTouches = null;
         this.lastTapTime = 0;
-        this.pinchTouches = null;
+        this.pinchTouches = [];
         this.isDragging = false;
-
+        this.init = false;
+        this.tapTimeout = null;
         this.parentElement.addEventListener("touchstart", (event) => this.handleTouchStart(event));
-        this.parentElement.addEventListener("touchmove", (event) => this.handleTouchMove(event));
-        this.parentElement.addEventListener("touchend", (event) => this.handleTouchEnd(event));
-
-        if (this.onInit) {
-            this.onInit();
-        }
     }
 
     handleTouchStart(event) {
+        // console.log("touch start");
+        if (! this.init) {
+            this.init = true;
+            this.parentElement.addEventListener("touchmove", (event) => this.handleTouchMove(event));
+            this.parentElement.addEventListener("touchend", (event) => this.handleTouchEnd(event));
+            this.parentElement.addEventListener("touchcancel", (event) => this.handleTouchCancel(event));
+            if (this.onInit) {
+                this.onInit();
+            }
+        }
+
         // Store the initial touch position
         this.startTouches = event.targetTouches;
       
         // Reset pinchTouches array
-        this.pinchTouches = null;
+        this.pinchTouches = [];
+
+        if (this.onTouchStart) {
+            this.onTouchStart(event);
+        }
       }
       
     // Handle touch move event
     handleTouchMove(event) {
+        // console.log("move");
         // Prevent scrolling on the page
         event.preventDefault();
         // Check if there are two touches for pinch gesture
@@ -59,6 +72,7 @@ class Touch {
 
     // Handle touch end event
     handleTouchEnd(event) {
+        // console.log("touch end");
         // Check for pinch gesture
         if (this.isDragging) {
             this.isDragging = false;
@@ -67,6 +81,7 @@ class Touch {
             }
             return;
         }
+
         if (event.touches.length === 0 && this.pinchTouches.length === 2) {
             // Calculate the distance between pinch touches
             const pinchStartX1 = this.pinchTouches[0].clientX;
@@ -92,7 +107,7 @@ class Touch {
         }
 
         // Check for tap gesture
-        if (event.touches.length === 0) {
+        if (event.targetTouches.length === 0) {
             // Calculate the distance between start and end touches
             const startX = this.startTouches[0].clientX;
             const startY = this.startTouches[0].clientY;
@@ -101,16 +116,23 @@ class Touch {
             const distance = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
 
             // Calculate the time since the last tap
-            const currentTime = new Date().getTime();
+            const currentTime = Date.now();
             const timeSinceLastTap = currentTime - this.lastTapTime;
 
             // If the distance is less than a threshold value and the time since the last tap is less than a threshold value, it's a double tap gesture
             if (distance < 10 && timeSinceLastTap < 300) {
-            console.log("Double tap gesture detected");
+                if (this.tapTimeout) {
+                    clearTimeout(this.tapTimeout);
+                }
+                if (this.onDoubleTap) {
+                    this.onDoubleTap(startX, startY);
+                }
             }
             // Otherwise, it's a single tap gesture
             else {
-            console.log("Tap gesture detected");
+                this.tapTimeout = setTimeout(function() {
+                    console.log("Tap gesture detected");
+                }, 300);
             }
 
             // Store the current tap time
@@ -118,8 +140,16 @@ class Touch {
         }
 
         // Check for drag gesture
-        if (event.touches.length === 1 && this.pinchTouches.length === 0) {
+        if (event.targetTouches.length === 1 && this.pinchTouches.length === 0) {
             console.log("Drag gesture detected");
+        }
+    }
+ 
+    // Handle touch cancel event
+    handleTouchCancel(event) {
+        console.log("touch canceled");
+        if (this.isDragging && this.onDragCancel) {
+            this.onDragCancel();
         }
     }
 }

@@ -1144,17 +1144,18 @@ function setUpDragging() {  // for image canvas
             dragbox = null;
         }
     }
-    function doMouseDoubleClick(evt) { 
-        if (dragbox || evt.button != 0) {
-            return;
-        }
-        var r = canvas.getBoundingClientRect();
-        var x = evt.clientX - r.left;
-        var y = evt.clientY - r.top;
-        var zoomFactor = evt.shiftKey? 2 : 0.5;
-        zoom(x,y,zoomFactor,!evt.altKey && !evt.ctrlKey, true);
-    }
  }
+
+ function doMouseDoubleClick(evt) { 
+    if (dragbox || evt.button != 0) {
+        return;
+    }
+    var r = canvas.getBoundingClientRect();
+    var x = evt.clientX - r.left;
+    var y = evt.clientY - r.top;
+    var zoomFactor = evt.shiftKey? 2 : 0.5;
+    zoom(x,y,zoomFactor,!evt.altKey && !evt.ctrlKey, true);
+}
 
 function Mouser(canvas, startDrag, continueDrag, endDrag, mouseMoveOnCanvasOnly) {
       // functions startDrag, continueDrag take canvas coords (x,y); for a mouse event event object is also passed.
@@ -3230,56 +3231,74 @@ function setUpArrowKeys() {
 }
 
 function initTouch() {
-    touch = new Touch("canvas", {
-        data: {
-            startX: NaN,
-            startY: NaN,
-            lastX: NaN,
-            lastY: NaN,
-            startTime: NaN,
-            canvas: null,
-            ctx: null
-        },
-        onInit: function() {
-            this.data.canvas = document.createElement("canvas");
-            this.data.ctx = this.data.canvas.getContext("2d");
-        },
-        onDragStart: function(x, y) {
-            this.data.startX = x;
-            this.data.startY = y;
-            this.startTime = Date.now();
-            this.data.canvas.width = canvas.width;
-            this.data.canvas.height = canvas.height;
-            // get latest OSC
-            stopJob();
-            this.data.ctx.drawImage(OSC, 0, 0);
-        },
-        onDragMove: function(x, y) {
-            this.data.lastX = x;
-            this.data.lastY = y;
-            let now = Date.now();
-            let elapsed = now - this.startTime;
-            // console.log(this.startTime);
-            if (elapsed > 1000/FPS) {
-                this.startTime = now;
-                const shiftX = this.data.lastX - this.data.startX;
-                const shiftY = this.data.lastY - this.data.startY;
+    // Check if the device supports touch events
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints;
+    if (isTouchDevice) {
+        touch = new Touch("canvas", {
+            data: {
+                startX: NaN,
+                startY: NaN,
+                lastX: NaN,
+                lastY: NaN,
+                startTime: NaN,
+                canvas: null,
+                ctx: null
+            },
+            onInit: function() {
+                this.data.canvas = document.createElement("canvas");
+                this.data.ctx = this.data.canvas.getContext("2d");
+            },
+            onTouchStart: function(x, y) {
+                // temporarily remove the dblclick event so as not to interfere with touch
+                canvas.removeEventListener("dblclick",doMouseDoubleClick,false);
+                setTimeout(function () {
+                    canvas.addEventListener("dblclick",doMouseDoubleClick,false);
+                }, 500);
+            },
+            onDoubleTap: function(x, y) {
+                let r = canvas.getBoundingClientRect();
+                zoom(x - r.left, y - r.top, 0.5, true, true);
+            },
+            onDragStart: function(x, y) {
+                this.data.startX = x;
+                this.data.startY = y;
+                this.startTime = Date.now();
+                this.data.canvas.width = canvas.width;
+                this.data.canvas.height = canvas.height;
+                // get latest OSC
+                stopJob();
+                this.data.ctx.drawImage(OSC, 0, 0);
+            },
+            onDragMove: function(x, y) {
+                this.data.lastX = x;
+                this.data.lastY = y;
+                let now = Date.now();
+                let elapsed = now - this.startTime;
+                // console.log(this.startTime);
+                if (elapsed > 1000/FPS) {
+                    this.startTime = now;
+                    const shiftX = this.data.lastX - this.data.startX;
+                    const shiftY = this.data.lastY - this.data.startY;
 
-                // translate image into OSG with gray surround
-                OSG.fillStyle = "#BBBBBB";
-                OSG.fillRect(0, 0, canvas.width, canvas.height);
-                OSG.drawImage(this.data.canvas, shiftX, shiftY);
-                graphics.drawImage(OSC, 0, 0);
+                    // translate image into OSG with gray surround
+                    OSG.fillStyle = "#BBBBBB";
+                    OSG.fillRect(0, 0, canvas.width, canvas.height);
+                    OSG.drawImage(this.data.canvas, shiftX, shiftY);
+                    graphics.drawImage(OSC, 0, 0);
+                }
+            },
+            onDragEnd: function() {
+                const shiftX = this.data.startX - this.data.lastX;
+                const shiftY = this.data.startY - this.data.lastY;
+                stopJob();
+                doTranslate(shiftX, shiftY, true);
+                startJob(true);
+            },
+            onDragCancel: function() {
+                onDragEnd();
             }
-        },
-        onDragEnd: function() {
-            const shiftX = this.data.startX - this.data.lastX;
-            const shiftY = this.data.startY - this.data.lastY;
-            stopJob();
-            doTranslate(shiftX, shiftY, true);
-            startJob(true);
-        },
-    });
+        });
+    }
 }
 
 </script>
