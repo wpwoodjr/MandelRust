@@ -13,7 +13,7 @@
     is clicked.  All of the ideas and some of the code were ported from
     an older program that was written in java.
     
-    This file depends on the scripts mandelbrot-worker-remote.js, mandelbrot-worker-local.js, slider.js,
+    This file depends on the scripts mandelbrot-worker-remote.js, mandelbrot-worker-local.js, slider.js, touch.js,
     and Daniel Trebbien's BigDecimal-all-last.min.js.
 
     August, 2019. Added Palette Editor.
@@ -257,6 +257,7 @@
 
 <script src="BigDecimal-all-last.min.js"></script>
 <script src="slider.js"></script>
+<script src="touch.js"></script>
 <script>
 
 "use strict";
@@ -317,6 +318,7 @@ var dragbox = null;
 let maxIterSlider, mainPaletteOffsetSlider, mainPaletteLengthSlider, paletteSelectSlider;
 let zoomInSlider, zoomOutSlider;
 let fitWindow;
+let touch;
 
 var palette;
 var fixedPaletteLength;
@@ -923,9 +925,9 @@ DragBox.prototype.zoom = function(zoomin) {
     startJob();
 }
 
-var zoomTimeout;
-var OSZC;  // Zoom canvas.
-var OSZG;  // Graphics context for zoom canvas.
+let zoomTimeout;
+let OSZC;  // Zoom canvas.
+let OSZG;  // Graphics context for zoom canvas.
 const FPS = 60;
 const ZOOMTIME = 250;   // zoom time in ms
 const NFRAMES = Math.floor(ZOOMTIME/1000*FPS);
@@ -1087,6 +1089,28 @@ function zoom(x, y, zoomFactor, recenter, undo) {  // (x,y) is center of zoom, i
     startJob();
 }
 
+function doTranslate(x, y, undo) {
+    // console.log("doTranslate", x, y);
+    var rectX = new BigDecimal("" + Math.round(x));  // (Firefox can have fractional parts)
+    var rectY = new BigDecimal("" + Math.round(y));
+    var rectW = new BigDecimal("" + Math.round(canvas.width));
+    var rectH = new BigDecimal("" + Math.round(canvas.height));
+    var ImageWidth = new BigDecimal("" + canvas.width);
+    var ImageHeight = new BigDecimal("" + canvas.height);
+    var pixelWidth = xmax.subtract(xmin).divide(ImageWidth,BigDecimal.ROUND_HALF_EVEN);
+    var pixelHeight = ymax.subtract(ymin).divide(ImageHeight,BigDecimal.ROUND_HALF_EVEN);
+    var newXmin,newXmax,newYmin,newYmax;
+    newXmin = xmin.add(pixelWidth.multiply(rectX));
+    newYmax = ymax.subtract(pixelHeight.multiply(rectY));
+    var newWidth = pixelWidth.multiply(rectW);
+    var newHeight = pixelHeight.multiply(rectH);
+    newXmax = newXmin.add(newWidth);
+    newYmin = newYmax.subtract(newHeight);
+    setLimits(newXmin, newXmax, newYmin, newYmax, false);
+    if (undo) {
+        addUndoItem("Move", [-x, -y], [x, y]);
+    }
+}
 
 function setUpDragging() {  // for image canvas
     var zoomin;
@@ -1138,7 +1162,7 @@ function Mouser(canvas, startDrag, continueDrag, endDrag, mouseMoveOnCanvasOnly)
       // function startDrag returns a boolean, true if the down action should start a drag.
     var dragging = false;
     canvas.addEventListener("mousedown",doMouseDown,false);
-    canvas.addEventListener("touchstart",doTouchStart,false);
+    // canvas.addEventListener("touchstart",doTouchStart,false);
     function doMouseDown(evt) { 
         if (dragging) {
             return;
@@ -1588,6 +1612,11 @@ function applyUndoItem(name, value) {
                 startJob();
                 break;
         }
+        break;
+    case "Move":
+        stopJob();
+        doTranslate(value[0], value[1]);
+        startJob();
         break;
     }
     applyUndoInProgress = false;
@@ -2817,6 +2846,7 @@ function init() {
     setUpArrowKeys();
     changeWorkerCount(); // has to be done before setDefaults
     createSliders();
+    initTouch();
     setTooltipSize();
     window.addEventListener('resize', resizeFitWindow);
     setDefaults();
@@ -3199,6 +3229,59 @@ function setUpArrowKeys() {
                 startJob();
             }
         }, 0);
+    });
+}
+
+function initTouch() {
+    touch = new Touch("canvas", {
+        data: {
+            startX: NaN,
+            startY: NaN,
+            lastX: NaN,
+            lastY: NaN,
+            startTime: NaN,
+            canvas: null,
+            ctx: null
+        },
+        onInit: function() {
+            this.data.canvas = document.createElement("canvas");
+            this.data.ctx = this.data.canvas.getContext("2d");
+        },
+        onDragStart: function(x, y) {
+            this.data.startX = x;
+            this.data.startY = y;
+            this.startTime = Date.now();
+            this.data.canvas.width = canvas.width;
+            this.data.canvas.height = canvas.height;
+            // get latest OSC
+            stopJob();
+            this.data.ctx.drawImage(OSC, 0, 0);
+        },
+        onDragMove: function(x, y) {
+            this.data.lastX = x;
+            this.data.lastY = y;
+            let now = Date.now();
+            let elapsed = now - this.startTime;
+            // console.log(this.startTime);
+            if (elapsed > 1000/FPS) {
+                this.startTime = now;
+                const shiftX = this.data.lastX - this.data.startX;
+                const shiftY = this.data.lastY - this.data.startY;
+
+                // translate image into OSG with gray surround
+                OSG.fillStyle = "#BBBBBB";
+                OSG.fillRect(0, 0, canvas.width, canvas.height);
+                OSG.drawImage(this.data.canvas, shiftX, shiftY);
+                graphics.drawImage(OSC, 0, 0);
+            }
+        },
+        onDragEnd: function() {
+            const shiftX = this.data.startX - this.data.lastX;
+            const shiftY = this.data.startY - this.data.lastY;
+            stopJob();
+            doTranslate(shiftX, shiftY, true);
+            startJob(true);
+        },
     });
 }
 

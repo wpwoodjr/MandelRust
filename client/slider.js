@@ -23,6 +23,7 @@ class Slider {
     this.textFormat = options.textFormat || ((value) => value);
     this.textEdit = options.textEdit !== false;
     this.button = options.button || false;
+    this.onInit = options.onInit || null;
     this.onClick = options.onClick || null;
     this.onChange = options.onChange || null;
     this.onInput = options.onInput || null;
@@ -44,6 +45,9 @@ class Slider {
     this.lastInputValue = NaN;
     this.saveState = {};
     this.setDefault();
+    if (this.onInit) {
+      this.onInit();
+    }
     // console.log("init:",this.id,this.saveState);
   }
 
