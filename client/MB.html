@@ -1385,9 +1385,11 @@ function doCustomSize() {
 const MAXVERTICALRATIO = 16/9;
 function setCanvasToWindow() {
     // clientWidth is more reliable than innerWidth here
-    let w = document.body.clientWidth
+    let w = window.innerWidth;
+    // let w = document.body.clientWidth
     let h = window.innerHeight;
-    w = Math.max(64, w - 250);
+    // let h = document.body.clientHeight;
+    w = Math.max(64, w - 265);
     h = Math.max(64, h - 100);
     h = Math.min(h, Math.round(w*MAXVERTICALRATIO));
     if (canvas.width != w || canvas.height != h) {
@@ -1401,9 +1403,11 @@ function setCanvasToWindow() {
 }
 function setImageSizeToWindow(undo) {
     // clientWidth is more reliable than innerWidth here
-    let w = document.body.clientWidth
+    let w = window.innerWidth;
+    // let w = document.body.clientWidth
     let h = window.innerHeight;
-    w = Math.max(64, w - 250);
+    // let h = document.body.clientHeight;
+    w = Math.max(64, w - 265);
     h = Math.max(64, h - 100);
     h = Math.min(h, Math.round(w*MAXVERTICALRATIO));
     // console.log("sistw", w, h, window.innerWidth, window.innerHeight, document.body.clientWidth, document.body.clientHeight, screen.width, screen.height, screen, window);
@@ -1418,11 +1422,17 @@ function setImageSizeToWindow(undo) {
         addUndoItem("Change Image Size", oldval, [0, 0]);
     }
 }
+let resizeFitWindowTimer = null;
 function resizeFitWindow() {
     // console.log("resizeFitWindow");
+    if (resizeFitWindowTimer) {
+        clearTimeout(resizeFitWindowTimer);
+    }
     setTooltipSize();
     if (fitWindow) {
-        setImageSizeToWindow(false);
+        resizeFitWindowTimer = setTimeout(() => {
+            setImageSizeToWindow(false);
+        }, 500);
     }
 }
 function setImageSize(w, h, undo) {
