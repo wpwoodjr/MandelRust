@@ -305,7 +305,7 @@ var /* BigDecimal */ dx, dy;
 var /* Uint32Array */ xminArray, yValArray, dxArray;
 
 var jobs;
-var workerCount = 4;
+var workerCount = window.navigator && window.navigator.hardwareConcurrency ? window.navigator.hardwareConcurrency : 4;
 let jobStartTime;
 let rowsCompleted, rowsPerSecond, jobsCompleted, jobsPerSecond;
 var highPrecision;
@@ -472,7 +472,7 @@ function doDraw() {
 function repaint(dontUpdateStatusToIdle) {
     // console.log("repaint from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], dontUpdateStatusToIdle);
     doDraw();
-    let rpsText = rowsPerSecond.toPrecision(3) + " rows per second";
+    let rpsText = rowsPerSecond.toPrecision(3) + " rows/second";
     if (running) {
         repaintTimeout = setTimeout(repaint, repaintTimer);
         let rc = rowsCompleted;
@@ -1252,12 +1252,7 @@ function changeWorkerCount() {
     if (restart) {
         startJob();
     }
-    try {
-        localStorage.setItem("mandelbrotWorkerCount" + (document.getElementById("local").checked ? "local" : "remote"), "" + ct);
-        // console.log("workers set " + (document.getElementById("local").checked ? "local" : "remote") + " " + ct);
-    }
-    catch(e) {
-    }
+    setLocalStorageItem("mandelbrotWorkerCount-" + (document.getElementById("local").checked ? "local" : "remote"), ct);
 }
 
 async function pageExists(url) {
@@ -1271,17 +1266,8 @@ async function pageExists(url) {
 }
 
 function initLocalOrRemote() {
-    try {
-        let item = localStorage.getItem("mandelbrotLocalOrRemote");
-        if (item == "local") {
-            document.getElementById("local").checked = true;
-        } else {
-            document.getElementById("remote").checked = true;
-        }
-    }
-    catch(e) {
-        document.getElementById("remote").checked = true;
-    }
+    let item = getLocalStorageItem("mandelbrotLocalOrRemote", "remote");
+    document.getElementById(item).checked = true;
 }
 
 function checkRemoteCanComputeMB() {
@@ -1299,18 +1285,9 @@ function checkRemoteCanComputeMB() {
 }
 
 function changeLocalOrRemote() {
-    let newWorkerCount = workerCount;
     let localOrRemote = document.getElementById("local").checked ? "local" : "remote";
-    try {
-        localStorage.setItem("mandelbrotLocalOrRemote", localOrRemote);
-        let ct = Number(localStorage.getItem("mandelbrotWorkerCount" + localOrRemote));
-        // console.log("workers get " + (document.getElementById("local").checked ? "local" : "remote") + " " + ct);
-        if (! isNaN(ct) && ct > 0) {
-            newWorkerCount = ct;
-        }
-    }
-    catch(e) {
-    }
+    setLocalStorageItem("mandelbrotLocalOrRemote", localOrRemote);
+    let newWorkerCount = getLocalStorageItem("mandelbrotWorkerCount-" + localOrRemote, workerCount);
     if (running) {
         stopJob();
         workerCount = newWorkerCount;
@@ -1404,11 +1381,15 @@ function doCustomSize() {
     }
     setImageSizeToFixed(width,height,true);
 }
+// work around issues on some browsers with odd reported widths and heights
+const MAXVERTICALRATIO = 16/9;
 function setCanvasToWindow() {
-    let w = document.body.clientWidth;
-    let h = document.body.clientHeight;
+    // clientWidth is more reliable than innerWidth here
+    let w = document.body.clientWidth
+    let h = window.innerHeight;
     w = Math.max(64, w - 250);
     h = Math.max(64, h - 100);
+    h = Math.min(h, Math.round(w*MAXVERTICALRATIO));
     if (canvas.width != w || canvas.height != h) {
       canvas.width = w;
       canvas.height = h;
@@ -1419,8 +1400,13 @@ function setCanvasToWindow() {
     fitWindow = true;
 }
 function setImageSizeToWindow(undo) {
-    let w = window.innerwidth - 200;
-    let h = window.innerHeight - 100;
+    // clientWidth is more reliable than innerWidth here
+    let w = document.body.clientWidth
+    let h = window.innerHeight;
+    w = Math.max(64, w - 250);
+    h = Math.max(64, h - 100);
+    h = Math.min(h, Math.round(w*MAXVERTICALRATIO));
+    // console.log("sistw", w, h, window.innerWidth, window.innerHeight, document.body.clientWidth, document.body.clientHeight, screen.width, screen.height, screen, window);
     if (w == canvas.width && h == canvas.height) {
         return;
     }
@@ -1434,10 +1420,10 @@ function setImageSizeToWindow(undo) {
 }
 function resizeFitWindow() {
     // console.log("resizeFitWindow");
+    setTooltipSize();
     if (fitWindow) {
         setImageSizeToWindow(false);
     }
-    setTooltipSize();
 }
 function setImageSize(w, h, undo) {
     if (fitWindow) {
@@ -2817,19 +2803,17 @@ function init() {
     document.getElementById("interlaced").checked = interlaced;
     document.getElementById("imagesize").onchange = changeImageSize;
     document.getElementById("applysize").onclick = doCustomSize;
+
     // must run before worker count init
     initLocalOrRemote();
-    try {
-        var ct = Number(localStorage.getItem("mandelbrotWorkerCount" + (document.getElementById("local").checked ? "local" : "remote")));
-        // console.log("workers get (init) " + (document.getElementById("local").checked ? "local" : "remote") + " " + ct);
-        if (!isNaN(ct) && ct > 0) {
-            workerCount = ct;
-        }
-    }
-    catch(e) {
-    }
+    let wcl = getLocalStorageItem("mandelbrotWorkerCount-local", workerCount);
+    setLocalStorageItem("mandelbrotWorkerCount-local", wcl);
+    let wcr = getLocalStorageItem("mandelbrotWorkerCount-remote", workerCount);
+    setLocalStorageItem("mandelbrotWorkerCount-remote", wcr);
+    workerCount = document.getElementById("local").checked ? wcl : wcr;
     document.getElementById("threadCountSelect").value = "" + workerCount;
     document.getElementById("threadCountSelect").onchange = changeWorkerCount;
+
     document.getElementById("showpaletteedit").onclick=showPaletteEditor;
     document.getElementById("secondpass").checked = true;
     document.getElementById("secondpass").onchange = changeSecondPass;
@@ -2859,9 +2843,16 @@ function init() {
 function getLocalStorageItem(item, defaultVal) {
     try {
         let value = localStorage.getItem(item);
-        // console.log(item, value);
+        // console.log(item, value, defaultVal, typeof defaultVal);
         if (value == null) {
             return defaultVal;
+        } else if (typeof defaultVal === "number" ) {
+            value = parseFloat(value);
+            if (isFinite(value)) {
+                return value;
+            } else {
+                return defaultVal;
+            }
         } else {
             return value;
         }
@@ -3437,7 +3428,7 @@ function initTouch() {
         <label for="remote">Server</label></label>
       </p>
       <p>
-        <label title="If checked, high precision arithmetic will be used even when its not needed (slower).">
+        <label title="If checked, high precision arithmetic will be used even when its not needed (slower)." style="display:none">
         <input type="checkbox" id="highPrecision">High Precision</label>
       </p>
    </div>
