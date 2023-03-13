@@ -1405,8 +1405,10 @@ function doCustomSize() {
     setImageSizeToFixed(width,height,true);
 }
 function setCanvasToWindow() {
-    let w = Math.max(64, window.innerWidth - 275);
-    let h = Math.max(64, window.innerHeight - 100);
+    let w = document.body.clientWidth;
+    let h = document.body.clientHeight;
+    w = Math.max(64, w - 250);
+    h = Math.max(64, h - 100);
     if (canvas.width != w || canvas.height != h) {
       canvas.width = w;
       canvas.height = h;
