@@ -1384,12 +1384,11 @@ function doCustomSize() {
 // work around issues on some browsers with odd reported widths and heights
 const MAXVERTICALRATIO = 16/9;
 function setCanvasToWindow() {
-    // clientWidth is more reliable than innerWidth here
-    let w = window.innerWidth;
-    // let w = document.body.clientWidth
+    // clientWidth is more reliable than innerWidth, at least on tablets and phones with Chrome
+    // let w = window.innerWidth;
+    let w = document.body.clientWidth
     let h = window.innerHeight;
-    // let h = document.body.clientHeight;
-    w = Math.max(64, w - 265);
+    w = Math.max(64, w - 250);
     h = Math.max(64, h - 100);
     h = Math.min(h, Math.round(w*MAXVERTICALRATIO));
     if (canvas.width != w || canvas.height != h) {
@@ -1402,12 +1401,11 @@ function setCanvasToWindow() {
     fitWindow = true;
 }
 function setImageSizeToWindow(undo) {
-    // clientWidth is more reliable than innerWidth here
-    let w = window.innerWidth;
-    // let w = document.body.clientWidth
+    // clientWidth is more reliable than innerWidth, at least on tablets and phones with Chrome
+    // let w = window.innerWidth;
+    let w = document.body.clientWidth
     let h = window.innerHeight;
-    // let h = document.body.clientHeight;
-    w = Math.max(64, w - 265);
+    w = Math.max(64, w - 250);
     h = Math.max(64, h - 100);
     h = Math.min(h, Math.round(w*MAXVERTICALRATIO));
     // console.log("sistw", w, h, window.innerWidth, window.innerHeight, document.body.clientWidth, document.body.clientHeight, screen.width, screen.height, screen, window);
