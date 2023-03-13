@@ -108,7 +108,7 @@
        padding: 0;
    }
    #status {
-       white-space: normal;
+       white-space: nowrap;
        font-weight: normal;
        color: #AA0000;
    }
@@ -476,17 +476,17 @@ function repaint(dontUpdateStatusToIdle) {
     if (running) {
         repaintTimeout = setTimeout(repaint, repaintTimer);
         let rc = rowsCompleted;
-        let pass = "";
+        let pass = "First pass, ";
         let ch = canvas.height;
         if (state == COMPUTING_SECOND_PASS) {
             rc -= ch;
             ch += 1;
-            pass = " second pass";
+            pass = "Second pass, ";
         }
         let prec = highPrecision ? "high precision, " + digits + " digits" : "normal precision";
         document.getElementById("status").innerHTML =
-                    "Computing" + pass + ", " + prec +
-                    "...  Completed " + rc + " of " + ch + " rows at " + rpsText;
+                    pass + prec +
+                    "... completed " + rc + " of " + ch + " rows at " + rpsText;
     }
     else if (dontUpdateStatusToIdle !== true) {
         document.getElementById("status").innerHTML = "Idle (" + rpsText + ")";
@@ -636,7 +636,7 @@ function startJob(dontClear) {
     running = true;
     document.getElementById("stop").disabled = false;
     var prec = highPrecision ? "high precision, " + digits + " digits" : "normal precision";
-    document.getElementById("status").innerHTML = "Computing, " + prec + "...";
+    document.getElementById("status").innerHTML = "First pass, " + prec + "...";
     if (! zoomTimeout) {
         repaintTimeout = setTimeout(repaint, repaintInitialTimer);
     }
@@ -2719,7 +2719,7 @@ function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError
 }
 
 function installExampleWithAjax(url) {
-    document.getElementById("status").innerHTML = "Trying to Fetch example from " + url;
+    document.getElementById("status").innerHTML = "Fetching " + url;
     var ajaxTimeout;
     var ajax = new XMLHttpRequest();
     ajax.open("GET",url);
