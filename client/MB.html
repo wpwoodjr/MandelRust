@@ -317,9 +317,9 @@ var dragbox = null;
 
 let maxIterSlider, mainPaletteOffsetSlider, mainPaletteLengthSlider, paletteSelectSlider;
 let zoomInSlider, zoomOutSlider;
-let fitWindow;
 let touch;
 
+let currentImageSize;
 var palette;
 var fixedPaletteLength;
 var paletteLength;
@@ -841,6 +841,7 @@ function setDefaults() {
     createPaletteColors();
     document.getElementById("customsize").style.display = "none";
     document.getElementById("imagesize").value = "0 0";
+    currentImageSize = [0, 0];
     setCanvasToWindow();
     startJob();
     if (undoList) {
@@ -1335,37 +1336,20 @@ function changeInterlaced() {
 }
 
 function changeImageSize() {
-    var val = document.getElementById("imagesize").value;
+    let e = document.getElementById("imagesize");
+    let val = e.value;
+    // so that "f" and "F" are not captured here
+    e.blur();
     if (val === "Custom") {
         document.getElementById("customwidth").value = "" + canvas.width;
         document.getElementById("customheight").value = "" + canvas.height;
         document.getElementById("customsize").style.display = "inline";
-    } else if (val === "0 0") {
-        document.getElementById("customsize").style.display = "none";
-        setImageSizeToWindow(true);
     } else {
         document.getElementById("customsize").style.display = "none";
         var sizes = val.split(" ");
         var width = Number(sizes[0]);
         var height = Number(sizes[1]);
-        setImageSizeToFixed(width,height,true);
-    }
-}
-function setImageSizeToFixed(w,h,undo) {
-    if (w == canvas.width && h == canvas.height) {
-        return;
-    }
-    let oldval = fitWindow ? [0, 0] : [canvas.width, canvas.height];
-    fitWindow = false;
-    stopJob();
-    canvas.width = w;
-    canvas.height = h;
-    OSC.width = w;
-    OSC.height = h;
-    checkAspect();
-    startJob();
-    if (undo) {
-        addUndoItem("Change Image Size", oldval, [canvas.width,canvas.height]);
+        setImageSize(width,height,true);
     }
 }
 function doCustomSize() {
@@ -1385,10 +1369,10 @@ function doCustomSize() {
 const MAXVERTICALRATIO = 16/9;
 function setCanvasToWindow() {
     // clientWidth is more reliable than innerWidth, at least on tablets and phones with Chrome
-    // let w = window.innerWidth;
-    let w = document.body.clientWidth
+    let w = window.innerWidth;
+    // let w = document.body.clientWidth
     let h = window.innerHeight;
-    w = Math.max(64, w - 250);
+    w = Math.max(64, w - 265);
     h = Math.max(64, h - 100);
     h = Math.min(h, Math.round(w*MAXVERTICALRATIO));
     if (canvas.width != w || canvas.height != h) {
@@ -1398,46 +1382,78 @@ function setCanvasToWindow() {
       OSC.height = h;
       checkAspect();
     }
-    fitWindow = true;
 }
+let setImageSizeToWindowTimer = null;
 function setImageSizeToWindow(undo) {
+    // console.log("setImageSizeToWindow", undo);
     // clientWidth is more reliable than innerWidth, at least on tablets and phones with Chrome
-    // let w = window.innerWidth;
-    let w = document.body.clientWidth
+    let w = window.innerWidth;
+    // let w = document.body.clientWidth
     let h = window.innerHeight;
-    w = Math.max(64, w - 250);
+    w = Math.max(64, w - 265);
     h = Math.max(64, h - 100);
     h = Math.min(h, Math.round(w*MAXVERTICALRATIO));
     // console.log("sistw", w, h, window.innerWidth, window.innerHeight, document.body.clientWidth, document.body.clientHeight, screen.width, screen.height, screen, window);
-    if (w == canvas.width && h == canvas.height) {
+    if (w === canvas.width && h === canvas.height) {
+        // console.log("returning", w, h);
         return;
     }
-    let oldval = fitWindow ? [0, 0] : [canvas.width, canvas.height];
-    stopJob();
-    setCanvasToWindow();
-    startJob();
-    if (undo) {
-        addUndoItem("Change Image Size", oldval, [0, 0]);
+    // console.log("setting", w, h);
+    if (setImageSizeToWindowTimer) {
+        clearTimeout(setImageSizeToWindowTimer);
+        setImageSizeToWindowTimer = null;
     }
+    // console.log("setting resize timer", Date.now());
+    setImageSizeToWindowTimer = setTimeout(() => {
+        stopJob();
+        setCanvasToWindow();
+        setTooltipSize();
+        if (undo) {
+            addUndoItem("Change Image Size", currentImageSize, [0, 0]);
+            currentImageSize = [0, 0];
+        }
+        startJob();
+    }, 500);
 }
-let resizeFitWindowTimer = null;
-function resizeFitWindow() {
-    // console.log("resizeFitWindow");
-    if (resizeFitWindowTimer) {
-        clearTimeout(resizeFitWindowTimer);
+function setImageSizeToFixed(w, h, undo) {
+    // console.log("setImageSizeToFixed", w, h, undo);
+    if (setImageSizeToWindowTimer) {
+        clearTimeout(setImageSizeToWindowTimer);
+        setImageSizeToWindowTimer = null;
     }
-    setTooltipSize();
-    if (fitWindow) {
-        resizeFitWindowTimer = setTimeout(() => {
-            setImageSizeToWindow(false);
-        }, 500);
+    if (w === canvas.width && h === canvas.height) {
+        // console.log("returning", w, h);
+        return;
     }
+    // console.log("setting", w, h);
+    stopJob();
+    canvas.width = w;
+    canvas.height = h;
+    OSC.width = w;
+    OSC.height = h;
+    checkAspect();
+    if (undo) {
+        let newval = [canvas.width, canvas.height];
+        addUndoItem("Change Image Size", currentImageSize, newval);
+        currentImageSize = newval;
+    }
+    startJob();
 }
 function setImageSize(w, h, undo) {
-    if (fitWindow) {
+    if (w === 0 && h === 0) {
         setImageSizeToWindow(undo);
     } else {
         setImageSizeToFixed(w, h, undo);
+    }
+}
+function resizeFitWindow() {
+    // console.log("resizeFitWindow");
+    if (fullWindowCanvas) {
+        setImageSizeToFixed(window.innerWidth, window.innerHeight, false);
+    } else if (fullScreenCanvas) {
+        setImageSizeToFixed(screen.width, screen.height, false)
+    } else if (currentImageSize[0] === 0 && currentImageSize[1] === 0) {
+        setImageSizeToWindow(false);
     }
 }
 function setTooltipSize() {
@@ -1548,23 +1564,19 @@ function applyUndoItem(name, value) {
          startJob();
          break;
       case "Change Image Size":
-        var val = value[0] + " " + value[1];
-        if (val === "0 0") {
-            setImageSizeToWindow(false);
-        } else {
-            setImageSizeToFixed(value[0],value[1],false);
+        setImageSize(value[0],value[1],false);
+        let val = value[0] + " " + value[1];
+        if (["0 0", "640 480", "800 600", "1024 768", "1600 1200", "1920 1080", "1920 1200", "2560 1440", "2880 1800", "3840 1080", "3840 2160", "5120 1440", "7680 4320"].indexOf(val) < 0) {
+            document.getElementById("imagesize").value = "Custom";
+            document.getElementById("customsize").style.display = "inline";
+            document.getElementById("customwidth").value = "" + value[0];
+            document.getElementById("customheight").value = "" + value[1];
         }
-         if (! fitWindow && ["640 480", "800 600", "1024 768", "1600 1200", "1920 1080", "1920 1200", "2560 1440", "2880 1800", "3840 1080", "3840 2160", "5120 1440", "7680 4320"].indexOf(val) < 0) {
-             document.getElementById("imagesize").value = "Custom";
-             document.getElementById("customsize").style.display = "inline";
-             document.getElementById("customwidth").value = "" + value[0];
-             document.getElementById("customheight").value = "" + value[1];
-         }
-         else {
-             document.getElementById("imagesize").value = fitWindow ? "0 0" : val;
-             document.getElementById("customsize").style.display = "none";
-         }
-         break;
+        else {
+            document.getElementById("imagesize").value = val;
+            document.getElementById("customsize").style.display = "none";
+        }
+        break;
       case "Change PaletteLength":
         mainPaletteLengthSlider.setState(value);
         setFixedPaletteLength(mainPaletteLengthSlider.value);
@@ -1590,6 +1602,7 @@ function applyUndoItem(name, value) {
         break;
       case "Zoom Out":
       case "Zoom In":
+      case "Pan":
         // console.log(value);
         switch (value[0]) {
             case ZOOM:
@@ -1841,6 +1854,7 @@ Palette.createStandardPalette = function(name) {
 //----- Palette Editor ---------------------------------------------------------------
 
 function showPaletteEditor() {
+    document.removeEventListener("keydown", handleCanvasKeys);
     if (!colorEditCanvas) {  // showing for the first time, do initialization
         document.getElementById("applyPaletteEdit").onclick = applyAndClose;
         document.getElementById("revertPaletteEdit").onclick = revert;
@@ -1897,6 +1911,7 @@ function showPaletteEditor() {
         document.getElementById("xmlimportbg").style.display = "none";
         document.getElementById("paletteEditor").style.display = "none";
         document.removeEventListener("keydown", doKey, false);
+        document.addEventListener("keydown", handleCanvasKeys);
         paletteEditInProgress = false;
         histogram = null;
         palettePreview = null;
@@ -2607,7 +2622,7 @@ SliderAndInput.prototype.draw = function() {
 function currentExampletoXML() {
     var offset = Math.round(mainPaletteOffsetSlider.value/100 * paletteLength);
     return "<?xml version='1.0'?>\n<mandelbrot_settings_2>\n" +
-            "<image_size width='" + (fitWindow ? 0 : canvas.width) + "' height='" + (fitWindow ? 0 : canvas.height) + "'/>\n" +
+            "<image_size width='" + currentImageSize[0] + "' height='" + currentImageSize[1] + "'/>\n" +
             "<limits>\n   <xmin>" + xmin_requested.toString() + "</xmin>\n" +
             "   <xmax>" + xmax_requested.toString() + "</xmax>\n" +
             "   <ymin>" + ymin_requested.toString() + "</ymin>\n" +
@@ -2619,7 +2634,7 @@ function currentExampletoXML() {
 }
 
 function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError) {
-    // console.log("installExampleFromXML:", "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);//, currentXML, xmlString);
+    // console.log("installExampleFromXML:", "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], currentXML, xmlString);
     let oldXML = currentXML;
     let oldPaletteSelectSliderState = paletteSelectSlider.getPaletteSelectSliderState();
     stopJob();
@@ -2635,13 +2650,8 @@ function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError
           else {
               width = Number(size[0].getAttribute("width"));
               height = Number(size[0].getAttribute("height"));
-              if (width === 0 && height === 0) {
-                    fitWindow = true;
-              } else if (isNaN(width) || width > 7680 || width < 64 || isNaN(height) || height > 7680 || height < 64) {
-                    respectSize = false;
-              } else {
-                    fitWindow = false;
-              }
+              respectSize = (width === 0 && height === 0)
+                || ! (isNaN(width) || width > 7680 || width < 64 || isNaN(height) || height > 7680 || height < 64);
           }
       }
       xmin = doc.getElementsByTagName("xmin").item(0).textContent;
@@ -2686,22 +2696,22 @@ function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError
       setLimits(xmin,xmax,ymin,ymax,false);
       if (respectSize) {
         setImageSize(width, height, false);
-         var val = width + " " + height;
-         if (! fitWindow && ["640 480", "800 600", "1024 768", "1600 1200", "1920 1080", "1920 1200", "2560 1440", "2880 1800", "3840 1080", "3840 2160", "5120 1440", "7680 4320"].indexOf(val) < 0) {
-             document.getElementById("imagesize").value = "Custom";
-             document.getElementById("customsize").style.display = "inline";
-             document.getElementById("customwidth").value = "" + width;
-             document.getElementById("customheight").value = "" + height;
-         }
-         else {
-             document.getElementById("imagesize").value = fitWindow ? "0 0" : val;
-             document.getElementById("customsize").style.display = "none";
-         }
+        let val = width + " " + height;
+        if (["0 0", "640 480", "800 600", "1024 768", "1600 1200", "1920 1080", "1920 1200", "2560 1440", "2880 1800", "3840 1080", "3840 2160", "5120 1440", "7680 4320"].indexOf(val) < 0) {
+            document.getElementById("imagesize").value = "Custom";
+            document.getElementById("customsize").style.display = "inline";
+            document.getElementById("customwidth").value = "" + width;
+            document.getElementById("customheight").value = "" + height;
+        }
+        else {
+            document.getElementById("imagesize").value = val;
+            document.getElementById("customsize").style.display = "none";
+        }
       } else {
         startJob();
       }
       if (recordUndo && undoList) {
-          addUndoItem("Import Example", [oldXML, oldPaletteSelectSliderState],
+        addUndoItem("Import Example", [oldXML, oldPaletteSelectSliderState],
             [currentXML, paletteSelectSlider.getPaletteSelectSliderState()]);
       }
       return null;
@@ -2835,7 +2845,7 @@ function init() {
     document.getElementById("redo").onclick = doRedo;
     document.getElementById("redo").disabled = true;
     setUpDragging();
-    setUpArrowKeys();
+    document.addEventListener("keydown", handleCanvasKeys);
     changeWorkerCount(); // has to be done before setDefaults
     createSliders();
     initTouch();
@@ -3058,38 +3068,28 @@ function createSliders() {
 
 let fullWindowCanvas = false;
 let fullScreenCanvas = false;
-let oldCanvasWidth = NaN;
-let oldCanvasHeight = NaN;
 
 function resizeFullWindowCanvas() {
     // console.log("resizeFullWindowCanvas:", window.innerWidth, window.innerHeight);
     setImageSizeToFixed(window.innerWidth, window.innerHeight, false);
 }
 function toFullWindowCanvas() {
-    window.addEventListener('resize', resizeFullWindowCanvas);
-    oldCanvasWidth = fitWindow ? 0 : canvas.width;
-    oldCanvasHeight = fitWindow ? 0 : canvas.height;
+    // window.addEventListener('resize', resizeFullWindowCanvas);
     canvas.classList.add('FullWindowCanvas');
     setImageSizeToFixed(window.innerWidth, window.innerHeight, false);
     fullWindowCanvas = true;
 }
 function fromFullWindowCanvas() {
-    window.removeEventListener('resize', resizeFullWindowCanvas);
+    // window.removeEventListener('resize', resizeFullWindowCanvas);
     canvas.classList.remove('FullWindowCanvas');
-    if (oldCanvasWidth === 0 && oldCanvasHeight === 0) {
-        setImageSizeToWindow(false);
-    } else {
-        setImageSize(oldCanvasWidth, oldCanvasHeight, false);
-    }
+    setImageSize(currentImageSize[0], currentImageSize[1], false);
     fullWindowCanvas = false;
 }
 function toFullScreenCanvas() {
-    oldCanvasWidth = fitWindow ? 0 : canvas.width;
-    oldCanvasHeight = fitWindow ? 0 : canvas.height;
     canvas.classList.add('FullWindowCanvas');
     canvas.requestFullscreen();
     document.addEventListener("fullscreenchange", escapeFromFullScreenCanvas);
-    setImageSizeToFixed(screen.width, screen.height, false);
+    // setImageSizeToFixed(screen.width, screen.height, false);
     fullScreenCanvas = true;
 }
 function fromFullScreenCanvas() {
@@ -3098,142 +3098,160 @@ function fromFullScreenCanvas() {
     if (document.fullscreenElement) {
         document.exitFullscreen();
     }
-    if (oldCanvasWidth === 0 && oldCanvasHeight === 0) {
-        setImageSizeToWindow(false);
-    } else {
-        setImageSize(oldCanvasWidth, oldCanvasHeight, false);
-    }
+    // setImageSize(currentImageSize[0], currentImageSize[1], false);
     fullScreenCanvas = false;
 }
 function escapeFromFullScreenCanvas() {
     if (! document.fullscreenElement) {
-            fromFullScreenCanvas();
+        fromFullScreenCanvas();
     }
 }
 
-let arrowTimeout;
-function setUpArrowKeys() {
-    document.addEventListener("keydown", function(event) {
-        // quit when in a text box
-        if (event.target.nodeName === "INPUT" && (event.target.type === "text" || event.target.type === "range")) {
-            return;
-        }
-        if (event.target.nodeName === "TEXTAREA" && event.target.type === "textarea") {
-            return;
-        }
+let panZoomKeyTimeout = null, panKeyOldValue, panZoomKeyCurrentAction;
+function doPanZoomKey(name, x, y, w, h) {
+    if (panZoomKeyTimeout) {
+        clearTimeout(panZoomKeyTimeout);
+        panZoomKeyTimeout = null;
+    } else {
+        panZoomKeyCurrentAction = name;
+        panKeyOldValue = [0, 0];
+    }
+    if (name === "Pan" && panZoomKeyCurrentAction === name) {
+        panKeyOldValue[0] += x;
+        panKeyOldValue[1] += y;
+        panZoomKeyTimeout = setTimeout(() => {
+            addUndoItem(name,
+                [ZOOMOUTRECT, panKeyOldValue[0], panKeyOldValue[1], w, h],
+                [ZOOMINRECT, panKeyOldValue[0], panKeyOldValue[1], w, h]);
+            panZoomKeyTimeout = null;
+        }, 500);
+    // } else {
+    //     addUndoItem("Pan",
+    //         [ZOOMOUTRECT, panKeyOldValue[0], panKeyOldValue[1], w, h],
+    //         [ZOOMINRECT, panKeyOldValue[0], panKeyOldValue[1], w, h]);
+    }
 
-        let doStartStop = false;
-        switch (event.key) {
-            case "ArrowLeft":
-            case "ArrowRight":
-            case "ArrowUp":
-            case "ArrowDown":
-            case "PageDown":
-            case "PageUp":
-                doStartStop = true;
-                break;
-            case "f":
-            case "F":
-            case "Escape":
-                if (event.ctrlKey) {
-                    return;
-                }
-                break;
-            case "z":
-            case "Z":
-            case "y":
-                if (event.ctrlKey) {
-                    break;
-                }
+    doZoomInOnRect(x, y, w, h, false);
+}
+let canvasKeyTimeout;
+function handleCanvasKeys(event) {
+    // quit when in a text box
+    const node = event.target.nodeName;
+    if (node === "INPUT" || node === "SELECT" || node === "TEXTAREA") {
+        return;
+    }
+
+    let doStartStop = false;
+    switch (event.key) {
+        case "ArrowLeft":
+        case "ArrowRight":
+        case "ArrowUp":
+        case "ArrowDown":
+        case "PageDown":
+        case "PageUp":
+            doStartStop = true;
+            break;
+        case "f":
+        case "F":
+        case "Escape":
+            if (event.ctrlKey) {
                 return;
-            default:
-                // quit when this doesn't handle the key event
-                return;
-        }
-
-        // Cancel the default action to avoid it being handled twice
-        event.preventDefault();
-
-        // prevent too many of these slowing down response
-        if (arrowTimeout) {
-            return;
-        }
-
-        if (doStartStop) {
-            stopJob();
-        }
-
-        let doStart = true;
-        const shiftLR = Math.max(1, Math.round(canvas.width/32));
-        const shiftUD = Math.max(1, Math.round(canvas.height/32));
-        switch (event.key) {
-            case "ArrowLeft":
-                doZoomInOnRect(-shiftLR, 0, canvas.width, canvas.height, false);
-                break;
-
-            case "ArrowRight":
-                doZoomInOnRect(shiftLR, 0, canvas.width, canvas.height, false);
-                break;
-
-            case "ArrowUp":
-                doZoomInOnRect(0, -shiftUD, canvas.width, canvas.height, false);
-                break;
-
-            case "ArrowDown":
-                doZoomInOnRect(0, shiftUD, canvas.width, canvas.height, false);
-                break;
-
-            case "PageUp":
-                doZoomInOnRect(-shiftLR, -shiftUD, canvas.width + shiftLR*2, canvas.height + shiftUD*2, false);
-                break;
-
-            case "PageDown":
-                doZoomInOnRect(shiftLR, shiftUD, canvas.width - shiftLR*2, canvas.height - shiftUD*2, false);
-                break;
-
-            case "F":
-                if (fullScreenCanvas) {
-                    fromFullScreenCanvas();
-                } else if (fullWindowCanvas) {
-                    fromFullWindowCanvas();
-                } else {
-                    toFullScreenCanvas();
-                }
-                break;
-
-            case "f":
-                if (fullScreenCanvas) {
-                    fromFullScreenCanvas();
-                } else if (fullWindowCanvas) {
-                    fromFullWindowCanvas();
-                } else {
-                    toFullWindowCanvas();
-                }
-                break;
-
-            case "Escape":
-                if (fullWindowCanvas) {
-                    fromFullWindowCanvas();
-                }
-                break;
-
-            case "z":
-                doUndo();
-                break;
-
-            case "y":
-            case "Z":
-                doRedo();
-                break;
-        }
-
-        arrowTimeout = setTimeout(function () {
-            arrowTimeout = null;
-            if (doStartStop) {
-                startJob();
             }
-        }, 0);
-    });
+            break;
+        case "z":
+        case "Z":
+        case "y":
+            if (event.ctrlKey) {
+                break;
+            }
+            return;
+        default:
+            // quit when this doesn't handle the key event
+            return;
+    }
+
+    // Cancel the default action to avoid it being handled twice
+    event.preventDefault();
+
+    // prevent too many of these slowing down response
+    if (canvasKeyTimeout) {
+        return;
+    }
+
+    if (doStartStop) {
+        stopJob();
+    }
+
+    let doStart = true;
+    const shiftLR = Math.max(1, Math.round(canvas.width/32));
+    const shiftUD = Math.max(1, Math.round(canvas.height/32));
+    switch (event.key) {
+        case "ArrowLeft":
+            doPanZoomKey("Pan", -shiftLR, 0, canvas.width, canvas.height, false);
+            break;
+
+        case "ArrowRight":
+            doPanZoomKey("Pan", shiftLR, 0, canvas.width, canvas.height, false);
+            break;
+
+        case "ArrowUp":
+            doPanZoomKey("Pan", 0, -shiftUD, canvas.width, canvas.height, false);
+            break;
+
+        case "ArrowDown":
+            doPanZoomKey("Pan", 0, shiftUD, canvas.width, canvas.height, false);
+            break;
+
+        case "PageUp":
+            doPanZoomKey("Zoom Out", -shiftLR, -shiftUD, canvas.width + shiftLR*2, canvas.height + shiftUD*2, false);
+            break;
+
+        case "PageDown":
+            doPanZoomKey("Zoom In",shiftLR, shiftUD, canvas.width - shiftLR*2, canvas.height - shiftUD*2, false);
+            break;
+
+        case "F":
+            if (fullScreenCanvas) {
+                fromFullScreenCanvas();
+            } else if (fullWindowCanvas) {
+                fromFullWindowCanvas();
+            } else {
+                toFullScreenCanvas();
+            }
+            break;
+
+        case "f":
+            if (fullScreenCanvas) {
+                fromFullScreenCanvas();
+            } else if (fullWindowCanvas) {
+                fromFullWindowCanvas();
+            } else {
+                toFullWindowCanvas();
+            }
+            break;
+
+        case "Escape":
+            if (fullWindowCanvas) {
+                fromFullWindowCanvas();
+            }
+            break;
+
+        case "z":
+            doUndo();
+            break;
+
+        case "y":
+        case "Z":
+            doRedo();
+            break;
+    }
+
+    canvasKeyTimeout = setTimeout(function () {
+        canvasKeyTimeout = null;
+        if (doStartStop) {
+            startJob();
+        }
+    }, 0);
 }
 
 function initTouch() {

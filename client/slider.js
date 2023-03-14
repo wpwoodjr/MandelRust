@@ -226,6 +226,9 @@ class Slider {
     textInput.title = this.title;
     textInput.maxLength = this.textLength;
     textInput.style.width = `${this.textLength}ch`;
+    if (! this.textEdit) {
+      textInput.tabIndex = -1;
+    }
 
     textInput.addEventListener('input', () => {
       // console.log("input:", textInput.id, textInput.value);
