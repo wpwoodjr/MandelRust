@@ -1369,10 +1369,10 @@ function doCustomSize() {
 const MAXVERTICALRATIO = 16/9;
 function setCanvasToWindow() {
     // clientWidth is more reliable than innerWidth, at least on tablets and phones with Chrome
-    let w = window.innerWidth;
-    // let w = document.body.clientWidth
+    // let w = window.innerWidth;
+    let w = document.body.clientWidth
     let h = window.innerHeight;
-    w = Math.max(64, w - 265);
+    w = Math.max(64, w - 250);
     h = Math.max(64, h - 100);
     h = Math.min(h, Math.round(w*MAXVERTICALRATIO));
     if (canvas.width != w || canvas.height != h) {
@@ -1387,10 +1387,10 @@ let setImageSizeToWindowTimer = null;
 function setImageSizeToWindow(undo) {
     // console.log("setImageSizeToWindow", undo);
     // clientWidth is more reliable than innerWidth, at least on tablets and phones with Chrome
-    let w = window.innerWidth;
-    // let w = document.body.clientWidth
+    // let w = window.innerWidth;
+    let w = document.body.clientWidth
     let h = window.innerHeight;
-    w = Math.max(64, w - 265);
+    w = Math.max(64, w - 250);
     h = Math.max(64, h - 100);
     h = Math.min(h, Math.round(w*MAXVERTICALRATIO));
     // console.log("sistw", w, h, window.innerWidth, window.innerHeight, document.body.clientWidth, document.body.clientHeight, screen.width, screen.height, screen, window);
@@ -1413,7 +1413,7 @@ function setImageSizeToWindow(undo) {
             currentImageSize = [0, 0];
         }
         startJob();
-    }, 1500);
+    }, 500);
 }
 function setImageSizeToFixed(w, h, undo) {
     // console.log("setImageSizeToFixed", w, h, undo);
