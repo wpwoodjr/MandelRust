@@ -1387,6 +1387,7 @@ function setCanvasToWindow() {
     let h = window.innerHeight;
     // console.log(w,h);
     // console.log(screenWidth, screenHeight);
+    document.getElementById("message").innerHTML = screenWidth + " " + screenHeight;
     if (w >= h) {
         if (screenWidth >= screenHeight) {
             w = Math.min(w, screenWidth);
