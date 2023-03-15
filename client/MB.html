@@ -1387,7 +1387,7 @@ function setCanvasToWindow() {
     let h = window.innerHeight;
     // console.log(w,h);
     // console.log(screenWidth, screenHeight);
-    document.getElementById("message").innerHTML = screenWidth + " " + screenHeight;
+    document.getElementById("message").innerHTML = screen.width + " " + screen.height + " / " + window.innerWidth + " " + window.innerHeight;
     if (w >= h) {
         if (screenWidth >= screenHeight) {
             w = Math.min(w, screenWidth);
@@ -3089,6 +3089,9 @@ let fullWindowCanvas = false;
 let fullScreenCanvas = false;
 function toFullWindowCanvas() {
     canvas.classList.add('FullWindowCanvas');
+    screenWidth = window.innerWidth;
+    screenHeight = window.innerHeight;
+    document.getElementById("message").innerHTML = screen.width + " " + screen.height + " / " + screenWidth + " " + screenHeight;
     setImageSizeToFixed(window.innerWidth, window.innerHeight);
     fullWindowCanvas = true;
 }
