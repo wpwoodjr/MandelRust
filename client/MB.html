@@ -1367,8 +1367,8 @@ function doCustomSize() {
 }
 // work around issues on some browsers with odd reported widths and heights
 const MAXVERTICALRATIO = 16/9;
-let screenWidth = screen.width;
-let screenHeight = screen.height;
+let screenWidth;
+let screenHeight;
 // let orientation = screen.orientation.type;
 // console.log(screenWidth, screenHeight);
 // console.log(screen.availWidth, screen.availHeight);
@@ -1387,23 +1387,15 @@ function setCanvasToWindow() {
     let h = window.innerHeight;
     // console.log(w,h);
     // console.log(screenWidth, screenHeight);
-    document.getElementById("message").innerHTML = screen.width + " " + screen.height + " / " + window.innerWidth + " " + window.innerHeight;
-    if (w >= h) {
-        if (screenWidth >= screenHeight) {
-            w = Math.min(w, screenWidth);
-            h = Math.min(h, screenHeight);
-        } else {
-            w = Math.min(w, screenHeight);
-            h = Math.min(h, screenWidth);
-        }
+    screenWidth = Math.max(screen.width, w);
+    screenHeight = Math.max(screen.height, h);
+    // document.getElementById("message").innerHTML = "screen " + screen.width + " " + screen.height + " / window " + window.innerWidth + " " + window.innerHeight;
+    if (w >= h === screenWidth >= screenHeight) {
+        w = Math.min(w, screenWidth);
+        h = Math.min(h, screenHeight);
     } else {
-        if (screenWidth >= screenHeight) {
-            w = Math.min(w, screenHeight);
-            h = Math.min(h, screenWidth);
-        } else {
-            w = Math.min(w, screenWidth);
-            h = Math.min(h, screenHeight);
-        }
+        w = Math.min(w, screenHeight);
+        h = Math.min(h, screenWidth);
     }
     w = Math.max(64, w - 260);
     h = Math.max(64, h - 100);
@@ -3091,7 +3083,7 @@ function toFullWindowCanvas() {
     canvas.classList.add('FullWindowCanvas');
     screenWidth = window.innerWidth;
     screenHeight = window.innerHeight;
-    document.getElementById("message").innerHTML = screen.width + " " + screen.height + " / " + screenWidth + " " + screenHeight;
+    // document.getElementById("message").innerHTML = "screen " + screen.width + " " + screen.height + " / window " + window.innerWidth + " " + window.innerHeight;
     setImageSizeToFixed(window.innerWidth, window.innerHeight);
     fullWindowCanvas = true;
 }
