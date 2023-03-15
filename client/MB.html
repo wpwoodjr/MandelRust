@@ -1367,10 +1367,20 @@ function doCustomSize() {
 }
 // work around issues on some browsers with odd reported widths and heights
 const MAXVERTICALRATIO = 16/9;
+let screenWidth = screen.width;
+let screenHeight = screen.height;
 function setCanvasToWindow() {
-    let w = Math.max(64, window.innerWidth - 260);
-    let h = Math.max(64, window.innerHeight - 100);
-    h = Math.min(h, Math.round(w*MAXVERTICALRATIO));
+    let w = window.innerWidth;
+    let h = window.innerHeight;
+    if (w > h) {
+        w = Math.min(w, screenWidth);
+        h = Math.min(h, screenHeight);
+    } else {
+        w = Math.min(w, screenHeight);
+        h = Math.min(h, screenWidth);
+    }
+    w = Math.max(64, w - 260);
+    h = Math.max(64, h - 100);
     if (canvas.width != w || canvas.height != h) {
       canvas.width = w;
       canvas.height = h;
@@ -1399,9 +1409,18 @@ function setImageSizeToFixed(w, h, undoNewValue) {
 function setImageSize(w, h, undo) {
     // console.log("setImageSize from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], w, h);
     if (w === 0 && h === 0) {
-        w = Math.max(64, window.innerWidth - 260);
-        h = Math.max(64, window.innerHeight - 100);
-        h = Math.min(h, Math.round(w*MAXVERTICALRATIO));
+        w = window.innerWidth;
+        h = window.innerHeight;
+        if (w > h) {
+            w = Math.min(w, screenWidth);
+            h = Math.min(h, screenHeight);
+        } else {
+            w = Math.min(w, screenHeight);
+            h = Math.min(h, screenWidth);
+        }
+        w = Math.max(64, w - 260);
+        h = Math.max(64, h - 100);
+        // h = Math.min(h, Math.round(w*MAXVERTICALRATIO));
         // console.log("setImageSize [0,0]:", w, h);
         setImageSizeToFixed(w, h, undo ? [0, 0] : false);
     } else {
