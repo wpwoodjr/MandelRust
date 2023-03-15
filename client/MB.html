@@ -1369,15 +1369,40 @@ function doCustomSize() {
 const MAXVERTICALRATIO = 16/9;
 let screenWidth = screen.width;
 let screenHeight = screen.height;
+// let orientation = screen.orientation.type;
+// console.log(screenWidth, screenHeight);
+// console.log(screen.availWidth, screen.availHeight);
+// console.log(window.innerWidth, window.innerHeight);
+// console.log(document.documentElement.clientWidth, document.documentElement.clientHeight);
+// console.log(
+//     window.innerWidth && document.documentElement.clientWidth ? 
+// Math.min(window.innerWidth, document.documentElement.clientWidth) : 
+// window.innerWidth || 
+// document.documentElement.clientWidth || 
+// document.getElementsByTagName('body')[0].clientWidth
+// );
+// console.log(screen.orientation.type);
 function setCanvasToWindow() {
     let w = window.innerWidth;
     let h = window.innerHeight;
-    if (w > h) {
-        w = Math.min(w, screenWidth);
-        h = Math.min(h, screenHeight);
+    // console.log(w,h);
+    // console.log(screenWidth, screenHeight);
+    if (w >= h) {
+        if (screenWidth >= screenHeight) {
+            w = Math.min(w, screenWidth);
+            h = Math.min(h, screenHeight);
+        } else {
+            w = Math.min(w, screenHeight);
+            h = Math.min(h, screenWidth);
+        }
     } else {
-        w = Math.min(w, screenHeight);
-        h = Math.min(h, screenWidth);
+        if (screenWidth >= screenHeight) {
+            w = Math.min(w, screenHeight);
+            h = Math.min(h, screenWidth);
+        } else {
+            w = Math.min(w, screenWidth);
+            h = Math.min(h, screenHeight);
+        }
     }
     w = Math.max(64, w - 260);
     h = Math.max(64, h - 100);
@@ -1411,12 +1436,24 @@ function setImageSize(w, h, undo) {
     if (w === 0 && h === 0) {
         w = window.innerWidth;
         h = window.innerHeight;
-        if (w > h) {
-            w = Math.min(w, screenWidth);
-            h = Math.min(h, screenHeight);
+        // console.log(w,h);
+        // console.log(screenWidth, screenHeight);
+        if (w >= h) {
+            if (screenWidth >= screenHeight) {
+                w = Math.min(w, screenWidth);
+                h = Math.min(h, screenHeight);
+            } else {
+                w = Math.min(w, screenHeight);
+                h = Math.min(h, screenWidth);
+            }
         } else {
-            w = Math.min(w, screenHeight);
-            h = Math.min(h, screenWidth);
+            if (screenWidth >= screenHeight) {
+                w = Math.min(w, screenHeight);
+                h = Math.min(h, screenWidth);
+            } else {
+                w = Math.min(w, screenWidth);
+                h = Math.min(h, screenHeight);
+            }
         }
         w = Math.max(64, w - 260);
         h = Math.max(64, h - 100);
