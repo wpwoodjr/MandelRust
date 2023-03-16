@@ -2718,9 +2718,8 @@ function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError
             document.getElementById("imagesize").value = val;
             document.getElementById("customsize").style.display = "none";
         }
-      } else {
-        startJob();
       }
+      startJob();
       if (recordUndo && undoList) {
         addUndoItem("Import Example", [oldXML, oldPaletteSelectSliderState],
             [currentXML, paletteSelectSlider.getPaletteSelectSliderState()]);
