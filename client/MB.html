@@ -974,14 +974,13 @@ function drawZoom(left, top, width, height, doStartJob) {
             zoomDrawFrame(left, top, width, height, frameCount);
             frameCount++;
         } else {
+            if (doStartJob) {
+                // mobile devices may struggle to draw smooth zoom frames and compute too, so delay startJob
+                startJob(true);
+            }
             clearInterval(zoomTimeout);
             zoomTimeout = null;
-            if (doStartJob) {
-                // mobile devices may struggle to draw zoom frames and compute, so delay startJob
-                startJob(true);
-            } else {
-                repaint();
-            }
+            repaint();
         }
     }, FRAMEINTERVAL);
 }
