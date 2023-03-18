@@ -160,7 +160,7 @@ class Touch {
 
             // Otherwise, set timeout to see if it's a single tap gesture
             else if (this.onSingleTap) {
-                this.tapTimeout = setTimeout(() => this.onSingleTap(startX, startY), 350);
+                this.tapTimeout = setTimeout(() => this.onSingleTap(startX, startY), 400);
             }
 
             // Store the current tap time

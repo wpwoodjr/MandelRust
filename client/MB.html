@@ -1381,7 +1381,7 @@ function setCanvasToWindow() {
     let w, h;
     let statusRect = document.getElementById("status").getBoundingClientRect();
     let ratio = window.innerHeight/window.innerWidth;
-    w = statusRect.right;
+    w = Math.min(window.innerWidth, statusRect.right);
     setTooltipSize(w);
     w -= statusRect.left;
     w = Math.max(64, Math.floor(w - 15));
@@ -1436,7 +1436,7 @@ function setImageSize(w, h, undo, doDraw) {
     if (w === 0 && h === 0) {
         let statusRect = document.getElementById("status").getBoundingClientRect();
         let ratio = window.innerHeight/window.innerWidth;
-        w = statusRect.right;
+        w = Math.min(window.innerWidth, statusRect.right);
         w -= statusRect.left;
         w = Math.max(64, Math.floor(w - 15));
         h = Math.max(64, Math.floor(w*ratio));
@@ -1457,7 +1457,7 @@ function resizeWindow() {
     } else {
         // console.log("resize:", currentImageSize[0], currentImageSize[1]);
         let statusRect = document.getElementById("status").getBoundingClientRect();
-        let w = statusRect.right;
+        w = Math.min(window.innerWidth, statusRect.right);
         setTooltipSize(w);
         setImageSize(currentImageSize[0], currentImageSize[1], false);
     }
@@ -3275,10 +3275,10 @@ function initTouch() {
                 this.data.canvas = document.createElement("canvas");
                 this.data.ctx = this.data.canvas.getContext("2d");
             },
-            // onDoubleTap: function(x, y) {
-            //     let r = canvas.getBoundingClientRect();
-            //     zoom(x - r.left, y - r.top, 0.5, true, true);
-            // },
+            onDoubleTap: function(x, y) {
+                let r = canvas.getBoundingClientRect();
+                zoom(x - r.left, y - r.top, 0.5, true, true);
+            },
             onSingleTap: function(x, y) {
                 if (fullScreenCanvas) {
                     fromFullScreenCanvas();
