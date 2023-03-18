@@ -46,9 +46,13 @@
                   Added full screen mode, activated with "F" and deactivated with "F", "f", or escape.
                   Added default "Fit Window" image size in place of old default 800x600 image size
                   Streamlined UI with Help and Examples at top
+                  Optimized for mobile devices
+		          Added touch controls for pan
+                  Don't clear canvas every time image size changes
 -->
 <html>
 <head>
+<meta name='viewport' content='width=device-width', initial-scale=1, maximum-scale=3, minimum-scale=1/>
 <meta charset="UTF-8">
 <title>Mandelbrot Viewer</title>
 <!--
@@ -62,30 +66,50 @@
 <style type="text/css">
    body {
        background-color: #e8ecf3;
+       font-family: Arial, sans-serif;
    }
    canvas {
        display: block;
        background-color: #BBBBBB;
    }
-   .FullWindowCanvas {
+   .fullWindowCanvas {
         position: fixed;
         top: 0;
         left: 0;
         width: 100%;
         height: 100%;
    }
-   #canvas-holder {
-       display: inline-block;
-       border: 2px solid black;
-       margin: 0;
-       padding: 0;
+   .normalCanvas {
+        width: 100%;
+        height: 100%;
    }
+
+    /* main UI grid */
+    .mainUI {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 10px;
+/*        grid-template-rows: auto auto;*/
+    }
+    .col1 {
+        grid-column: 1;
+    }
+    .col2 {
+        grid-column: 2;
+        width: 80vw;
+/*        grid-row: 1 / span 1;
+        border: 4px solid black;*/
+/*        position: relative; */
+    }
+    .row2 {
+        border: 2px solid black; /* Add a 2 pixel solid black border to the second row */
+    }
+
    #controls {
        display: inline-block;
        background-color:white;
        border: 2px solid black;
        padding: 0;
-       margin-right:10px;
        border-radius: 8px;
    }
    #controls p {
@@ -99,16 +123,7 @@
    div.grouplast {
        padding: 0 8px;
    }
-   #imagediv p {
-       margin: 4px 0;
-       white-space: nowrap;
-   }
-   #imagediv {
-       margin-left: 20px;
-       padding: 0;
-   }
    #status {
-       white-space: nowrap;
        font-weight: normal;
        color: #AA0000;
    }
@@ -140,9 +155,6 @@
      word-wrap: normal;
      overflow-x: scroll;
    }
-    body {
-        font-family: Arial, sans-serif;
-    }
 
     /* Style the tooltip container */
     .tooltip {
@@ -534,7 +546,7 @@ let maxRowsPerJob = 32;
 let maxRowsPerJobHP = 4;
 
 function startJob(dontClear) {
-    // console.log("startJob", running, zoomTimeout != null, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
+    // console.log("startJob", running, zoomTimeout, dontClear, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     if (running) {
        stopJob();
     }
@@ -1365,40 +1377,16 @@ function doCustomSize() {
     }
     setImageSize(width,height,true);
 }
-// work around issues on some browsers with odd reported widths and heights
-const MAXVERTICALRATIO = 16/9;
-let screenWidth;
-let screenHeight;
-// let orientation = screen.orientation.type;
-// console.log(screenWidth, screenHeight);
-// console.log(screen.availWidth, screen.availHeight);
-// console.log(window.innerWidth, window.innerHeight);
-// console.log(document.documentElement.clientWidth, document.documentElement.clientHeight);
-// console.log(
-//     window.innerWidth && document.documentElement.clientWidth ? 
-// Math.min(window.innerWidth, document.documentElement.clientWidth) : 
-// window.innerWidth || 
-// document.documentElement.clientWidth || 
-// document.getElementsByTagName('body')[0].clientWidth
-// );
-// console.log(screen.orientation.type);
 function setCanvasToWindow() {
-    let w = window.innerWidth;
-    let h = window.innerHeight;
-    // console.log(w,h);
-    // console.log(screenWidth, screenHeight);
-    screenWidth = Math.max(screen.width, w);
-    screenHeight = Math.max(screen.height, h);
-    // document.getElementById("message").innerHTML = "screen " + screen.width + " " + screen.height + " / window " + window.innerWidth + " " + window.innerHeight;
-    if (w >= h === screenWidth >= screenHeight) {
-        w = Math.min(w, screenWidth);
-        h = Math.min(h, screenHeight);
-    } else {
-        w = Math.min(w, screenHeight);
-        h = Math.min(h, screenWidth);
-    }
-    w = Math.max(64, w - 260);
-    h = Math.max(64, h - 100);
+    let w, h;
+    let statusRect = document.getElementById("status").getBoundingClientRect();
+    let ratio = window.innerHeight/window.innerWidth;
+    w = statusRect.right;
+    setTooltipSize(w);
+    w -= statusRect.left;
+    w = Math.max(64, Math.floor(w - 15));
+    h = Math.max(64, Math.floor(w*ratio));
+    // console.log(w, h, w + statusRect.left, status, imagediv);
     if (canvas.width != w || canvas.height != h) {
       canvas.width = w;
       canvas.height = h;
@@ -1406,69 +1394,75 @@ function setCanvasToWindow() {
       OSC.height = h;
       checkAspect();
     }
+    let imagedivStyle = document.querySelector('#imagediv').style;
+    imagedivStyle.width = w + "px";
 }
-function setImageSizeToFixed(w, h, undoNewValue) {
+let noDrawCount = 0;
+function setImageSizeToFixed(w, h, undoNewValue, doDraw) {
     // console.log("setImageSizeToFixed", w, h);
-    if (w === canvas.width && h === canvas.height) {
+    if (!doDraw && w === canvas.width && h === canvas.height) {
         return;
     }
+    let dontClear = !doDraw && Math.abs(w/h - canvas.width/canvas.height) < 0.05;
+    doDraw = doDraw || running || !dontClear || w > canvas.width || noDrawCount > 0;
+    console.log(dontClear, doDraw, noDrawCount);
+    noDrawCount = doDraw ? 0 : noDrawCount + 1;
     stopJob();
-    canvas.width = w;
-    canvas.height = h;
     OSC.width = w;
     OSC.height = h;
+    if (dontClear) {
+        // put on screen image into off screen graphics
+        OSG.drawImage(canvas, 0, 0, w, h);
+    }
+    canvas.width = w;
+    canvas.height = h;
+    if (dontClear) {
+        // put cached image back into resized on screen image
+        graphics.drawImage(OSC, 0, 0, w, h);
+    }
     checkAspect();
     if (undoNewValue) {
         addUndoItem("Change Image Size", currentImageSize, undoNewValue);
         currentImageSize = undoNewValue;
     }
-    startJob();
+    let imagedivStyle = document.querySelector('#imagediv').style;
+    imagedivStyle.width = w + "px";
+    if (doDraw) {
+        startJob(dontClear);
+    }
 }
-function setImageSize(w, h, undo) {
+function setImageSize(w, h, undo, doDraw) {
     // console.log("setImageSize from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], w, h);
     if (w === 0 && h === 0) {
-        w = window.innerWidth;
-        h = window.innerHeight;
-        // console.log(w,h);
-        // console.log(screenWidth, screenHeight);
-        if (w >= h) {
-            if (screenWidth >= screenHeight) {
-                w = Math.min(w, screenWidth);
-                h = Math.min(h, screenHeight);
-            } else {
-                w = Math.min(w, screenHeight);
-                h = Math.min(h, screenWidth);
-            }
-        } else {
-            if (screenWidth >= screenHeight) {
-                w = Math.min(w, screenHeight);
-                h = Math.min(h, screenWidth);
-            } else {
-                w = Math.min(w, screenWidth);
-                h = Math.min(h, screenHeight);
-            }
-        }
-        w = Math.max(64, w - 260);
-        h = Math.max(64, h - 100);
-        // h = Math.min(h, Math.round(w*MAXVERTICALRATIO));
-        // console.log("setImageSize [0,0]:", w, h);
-        setImageSizeToFixed(w, h, undo ? [0, 0] : false);
+        let statusRect = document.getElementById("status").getBoundingClientRect();
+        let ratio = window.innerHeight/window.innerWidth;
+        w = statusRect.right;
+        w -= statusRect.left;
+        w = Math.max(64, Math.floor(w - 15));
+        h = Math.max(64, Math.floor(w*ratio));
+        // console.log(w, h, w + statusRect.left);
+        setImageSizeToFixed(w, h, undo ? [0, 0] : false, doDraw);
     } else {
-        setImageSizeToFixed(w, h, undo ? [w, h] : false);
+        setImageSizeToFixed(w, h, undo ? [w, h] : false, doDraw);
     }
 }
-function resizeFitWindow() {
-    // console.log("resizeFitWindow");
+function resizeWindow() {
+    // console.log("resizeWindow");
     if (fullWindowCanvas) {
+        // console.log("resize fwc:", window.innerWidth, window.innerHeight);
         setImageSizeToFixed(window.innerWidth, window.innerHeight);
     } else if (fullScreenCanvas) {
+        // console.log("resize fsc:", screen.width, screen.height);
         setImageSizeToFixed(screen.width, screen.height)
-    } else if (currentImageSize[0] === 0 && currentImageSize[1] === 0) {
-        setImageSize(0, 0, false);
+    } else {
+        // console.log("resize:", currentImageSize[0], currentImageSize[1]);
+        let statusRect = document.getElementById("status").getBoundingClientRect();
+        let w = statusRect.right;
+        setTooltipSize(w);
+        setImageSize(currentImageSize[0], currentImageSize[1], false);
     }
 }
-function setTooltipSize() {
-    const w = window.innerWidth;
+function setTooltipSize(w) {
     // console.log(w);
     let tooltip = document.querySelector('.tooltip .helptext');
     tooltip.style.width = Math.min(800, w*0.8) + "px";
@@ -1613,7 +1607,7 @@ function applyUndoItem(name, value) {
         break;
       case "Zoom Out":
       case "Zoom In":
-      case "Pan":
+      case "Move ":
         // console.log(value);
         switch (value[0]) {
             case ZOOM:
@@ -2706,7 +2700,7 @@ function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError
       createPaletteColors();
       setLimits(xmin,xmax,ymin,ymax,false);
       if (respectSize) {
-        setImageSize(width, height, false);
+        setImageSize(width, height, false, true);
         let val = width + " " + height;
         if (["0 0", "640 480", "800 600", "1024 768", "1600 1200", "1920 1080", "1920 1200", "2560 1440", "2880 1800", "3840 1080", "3840 2160", "5120 1440", "7680 4320"].indexOf(val) < 0) {
             document.getElementById("imagesize").value = "Custom";
@@ -2718,8 +2712,9 @@ function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError
             document.getElementById("imagesize").value = val;
             document.getElementById("customsize").style.display = "none";
         }
+      } else {
+        startJob();
       }
-      startJob();
       if (recordUndo && undoList) {
         addUndoItem("Import Example", [oldXML, oldPaletteSelectSliderState],
             [currentXML, paletteSelectSlider.getPaletteSelectSliderState()]);
@@ -2859,8 +2854,7 @@ function init() {
     changeWorkerCount(); // has to be done before setDefaults
     createSliders();
     initTouch();
-    setTooltipSize();
-    window.addEventListener('resize', resizeFitWindow);
+    window.addEventListener('resize', resizeWindow);
     setDefaults();
     checkForExample();
     undoList = [];
@@ -3079,35 +3073,40 @@ function createSliders() {
 let fullWindowCanvas = false;
 let fullScreenCanvas = false;
 function toFullWindowCanvas() {
-    canvas.classList.add('FullWindowCanvas');
-    screenWidth = window.innerWidth;
-    screenHeight = window.innerHeight;
-    // document.getElementById("message").innerHTML = "screen " + screen.width + " " + screen.height + " / window " + window.innerWidth + " " + window.innerHeight;
+    canvas.classList.remove('normalCanvas');
+    canvas.classList.add('fullWindowCanvas');
+    // console.log(window.innerWidth, window.innerHeight);
     setImageSizeToFixed(window.innerWidth, window.innerHeight);
     fullWindowCanvas = true;
 }
 function fromFullWindowCanvas() {
-    canvas.classList.remove('FullWindowCanvas');
+    canvas.classList.remove('fullWindowCanvas');
+    canvas.classList.add('normalCanvas');
     setImageSize(currentImageSize[0], currentImageSize[1], false);
     fullWindowCanvas = false;
 }
 function toFullScreenCanvas() {
-    canvas.classList.add('FullWindowCanvas');
+    // console.log("tfsc");
+    canvas.classList.add('fullWindowCanvas');
     canvas.requestFullscreen();
-    document.addEventListener("fullscreenchange", escapeFromFullScreenCanvas);
+    document.addEventListener("fullscreenchange", fullscreenChange);
     fullScreenCanvas = true;
 }
 function fromFullScreenCanvas() {
-    document.removeEventListener("fullscreenchange", escapeFromFullScreenCanvas);
-    canvas.classList.remove('FullWindowCanvas');
+    // console.log("ffsc");
+    document.removeEventListener("fullscreenchange", fullscreenChange);
+    canvas.classList.remove('fullWindowCanvas');
     if (document.fullscreenElement) {
         document.exitFullscreen();
     }
     fullScreenCanvas = false;
 }
-function escapeFromFullScreenCanvas() {
+function fullscreenChange() {
+    // console.log("fsc");
     if (! document.fullscreenElement) {
         fromFullScreenCanvas();
+        // resize event happens before fullscreenChange event, so need to call it again
+        resizeWindow();
     }
 }
 
@@ -3124,13 +3123,13 @@ function doPanZoomKey(name, x, y, w, h) {
         panKeyOldValue[0] += x;
         panKeyOldValue[1] += y;
         panZoomKeyTimeout = setTimeout(() => {
-            addUndoItem(name,
+            addUndoItem("Move ",
                 [ZOOMOUTRECT, panKeyOldValue[0], panKeyOldValue[1], w, h],
                 [ZOOMINRECT, panKeyOldValue[0], panKeyOldValue[1], w, h]);
             panZoomKeyTimeout = null;
         }, 500);
     // } else {
-    //     addUndoItem("Pan",
+    //     addUndoItem("Move ",
     //         [ZOOMOUTRECT, panKeyOldValue[0], panKeyOldValue[1], w, h],
     //         [ZOOMINRECT, panKeyOldValue[0], panKeyOldValue[1], w, h]);
     }
@@ -3422,11 +3421,11 @@ function initTouch() {
 </td>
 </tr>
 </table>
+
 <p id="message"></p>
 
-<table border=0 cellpadding=0 cellspacing=0>
-<tr valign="top"><td>
-<div id="controls">
+<div class="mainUI">
+<div id="controls" class="col1">
    <div class="group">
       <p><button id="restoreButton" title="Restore default limits, image size, palette, max iterations.">Restore Defaults</button><button id="stop" style="margin-left:20px" title="Abort the current computation, if any, leaving an incomplete image.">Stop</button></p>
    </div>
@@ -3501,16 +3500,13 @@ function initTouch() {
       <p><button id="importXML" title="Put up an input box into which you can copy-and-paste the XML code for an example, or get the XML for the current example.">Show XML Import/Export</button></p>
    </div>
 </div>
-<td>
-  <div id="imagediv">
-  <p id="status">Idle</p>
-  <p><div id="canvas-holder">
-     <canvas id="canvas" width="64" height="64"></canvas>
-  </div></p>
-  </div>
-</td>
-</tr>
-</table>
+<div class="col2">
+  <div id="status" class="row2">Idle</div>
+  <div id="imagediv" class="row2">
+    <canvas id="canvas" width=64 height=64 class="normalCanvas"></canvas>
+</div>
+</div>
+</div>
 
 <div id="xmlimportbg">
 </div>

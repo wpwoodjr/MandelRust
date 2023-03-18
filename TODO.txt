@@ -1,3 +1,10 @@
+Look at #imagediv px stuff - use canvas?
+Why is status ''
+What does gap: 10 do
+doDraw and dontClear logic
+vw width
+need normalcanvas?
+
 Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore
 UCArray stuff
