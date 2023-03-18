@@ -1405,7 +1405,7 @@ function setImageSizeToFixed(w, h, undoNewValue, doDraw) {
     }
     let dontClear = !doDraw && Math.abs(w/h - canvas.width/canvas.height) < 0.05;
     doDraw = doDraw || running || !dontClear || w > canvas.width || noDrawCount > 0;
-    console.log(dontClear, doDraw, noDrawCount);
+    // console.log(dontClear, doDraw, noDrawCount);
     noDrawCount = doDraw ? 0 : noDrawCount + 1;
     stopJob();
     OSC.width = w;
@@ -1457,7 +1457,7 @@ function resizeWindow() {
     } else {
         // console.log("resize:", currentImageSize[0], currentImageSize[1]);
         let statusRect = document.getElementById("status").getBoundingClientRect();
-        w = Math.min(window.innerWidth, statusRect.right);
+        let w = Math.min(window.innerWidth, statusRect.right);
         setTooltipSize(w);
         setImageSize(currentImageSize[0], currentImageSize[1], false);
     }
@@ -3277,7 +3277,10 @@ function initTouch() {
             },
             onDoubleTap: function(x, y) {
                 let r = canvas.getBoundingClientRect();
-                zoom(x - r.left, y - r.top, 0.5, true, true);
+                // on mobile the bounding rectangle can be different than the canvas size
+                x = (x - r.left)*canvas.width/(r.right - r.left);
+                y = (y - r.top)*canvas.height/(r.bottom - r.top);
+                zoom(x, y, 0.5, true, true);
             },
             onSingleTap: function(x, y) {
                 if (fullScreenCanvas) {

@@ -24,13 +24,12 @@ class Touch {
 
         // Variables to store touch positions and state
         this.startTouches = [];
-        this.lastTapTime = 0;
         this.isDragging = false;
         this.dragId = NaN;
         this.isPinching = false;
         this.pinchTouches = [];
         this.init = false;
-        this.tapTimeout = null;
+        this.singleTapTimeout = null;
         this.parentElement.addEventListener("touchstart", (event) => this.handleTouchStart(event));
     }
 
@@ -140,31 +139,28 @@ class Touch {
             const startY = this.startTouches[0].clientY;
             const endX = event.changedTouches[0].clientX;
             const endY = event.changedTouches[0].clientY;
-            const distance = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+            const distanceSq = Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2);
 
-            // Calculate the time since the last tap
-            const currentTime = Date.now();
-            const timeSinceLastTap = currentTime - this.lastTapTime;
-
-            // If the distance is less than a threshold value and the time since the last tap is less than a threshold value, it's a double tap gesture
-            if (distance < 10 && timeSinceLastTap < 350) {
-                if (this.tapTimeout) {
-                    clearTimeout(this.tapTimeout);
-                }
+            // If the distance is less than a threshold value and the single tap setTimeout hasn't fired, it's a double tap gesture
+            if (distanceSq < 15*15 && this.singleTapTimeout != null) {
+                clearTimeout(this.singleTapTimeout);
+                this.singleTapTimeout = null;
                 if (this.onDoubleTap) {
                     // prevent emulated mouse dblclick
                     event.preventDefault();
-                    this.onDoubleTap(startX, startY);
+                    this.onDoubleTap((startX + endX)/2, (startY + endY)/2);
                 }
             }
 
-            // Otherwise, set timeout to see if it's a single tap gesture
-            else if (this.onSingleTap) {
-                this.tapTimeout = setTimeout(() => this.onSingleTap(startX, startY), 400);
+            // Otherwise, set timeout for a single tap gesture
+            else {
+                this.singleTapTimeout = setTimeout(() => {
+                    this.singleTapTimeout = null;
+                    if (this.onSingleTap) {
+                        this.onSingleTap(startX, startY);
+                    }
+                }, 350);
             }
-
-            // Store the current tap time
-            this.lastTapTime = currentTime;
         }
     }
  
