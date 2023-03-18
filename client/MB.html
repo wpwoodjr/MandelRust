@@ -1164,6 +1164,9 @@ function setUpDragging() {  // for image canvas
         var r = canvas.getBoundingClientRect();
         var x = evt.clientX - r.left;
         var y = evt.clientY - r.top;
+        // on mobile the bounding rectangle can be at a different scale than the canvas size
+        x = x*canvas.width/(r.right - r.left);
+        y = y*canvas.height/(r.bottom - r.top);
         var zoomFactor = evt.shiftKey? 2 : 0.5;
         zoom(x,y,zoomFactor,!evt.altKey && !evt.ctrlKey, true);
     }
@@ -3277,7 +3280,7 @@ function initTouch() {
             },
             onDoubleTap: function(x, y) {
                 let r = canvas.getBoundingClientRect();
-                // on mobile the bounding rectangle can be different than the canvas size
+                // on mobile the bounding rectangle can be at a different scale than the canvas size
                 x = (x - r.left)*canvas.width/(r.right - r.left);
                 y = (y - r.top)*canvas.height/(r.bottom - r.top);
                 zoom(x, y, 0.5, true, true);

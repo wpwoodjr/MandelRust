@@ -23,12 +23,13 @@ class Touch {
         this.data = options.data || {};
 
         // Variables to store touch positions and state
+        this.init = false;
         this.startTouches = [];
         this.isDragging = false;
         this.dragId = NaN;
         this.isPinching = false;
         this.pinchTouches = [];
-        this.init = false;
+        this.isTapping = false;
         this.singleTapTimeout = null;
         this.parentElement.addEventListener("touchstart", (event) => this.handleTouchStart(event));
     }
@@ -43,7 +44,7 @@ class Touch {
             if (this.onInit) {
                 this.onInit();
             }
-        } else if (this.isDragging || this.isPinching) {
+        } else if (this.isDragging || this.isPinching || this.isTapping) {
             return;
         }
 
@@ -134,27 +135,29 @@ class Touch {
 
         // Check for tap gesture
         } else if (event.targetTouches.length === 0 && this.startTouches.length === 1) {
-            // Calculate the distance between start and end touches
             const startX = this.startTouches[0].clientX;
             const startY = this.startTouches[0].clientY;
-            const endX = event.changedTouches[0].clientX;
-            const endY = event.changedTouches[0].clientY;
-            const distanceSq = Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2);
 
-            // If the distance is less than a threshold value and the single tap setTimeout hasn't fired, it's a double tap gesture
-            if (distanceSq < 15*15 && this.singleTapTimeout != null) {
+            // If the single tap setTimeout hasn't fired, it's a double tap gesture
+            if (this.singleTapTimeout != null) {
+                this.isTapping = false;
                 clearTimeout(this.singleTapTimeout);
                 this.singleTapTimeout = null;
                 if (this.onDoubleTap) {
                     // prevent emulated mouse dblclick
                     event.preventDefault();
+                    const endX = event.changedTouches[0].clientX;
+                    const endY = event.changedTouches[0].clientY;
+                    console.log(startX,startY,endX,endY);
                     this.onDoubleTap((startX + endX)/2, (startY + endY)/2);
                 }
             }
 
             // Otherwise, set timeout for a single tap gesture
             else {
+                this.isTapping = true;
                 this.singleTapTimeout = setTimeout(() => {
+                    this.isTapping = false;
                     this.singleTapTimeout = null;
                     if (this.onSingleTap) {
                         this.onSingleTap(startX, startY);
@@ -171,6 +174,12 @@ class Touch {
             this.dragEnd(event, true);
         } else if (this.isPinching && this.onPinchCancel) {
             this.onPinchCancel();
+        } else if (this.isTapping) {
+            this.isTapping = false;
+            if (this.singleTapTimeout) {
+                clearTimeout(this.singleTapTimeout);
+                this.singleTapTimeout = null;
+            }
         }
     }
 
