@@ -74,12 +74,11 @@ class Touch {
                 }
             }
 
-        else if (this.isPinching) {
+        } else if (this.isPinching) {
             if (this.onPinchMove) {
                 this.onPinchMove(event.targetTouches[0].clientX, event.targetTouches[0].clientY,
                     event.targetTouches[1].clientX, event.targetTouches[1].clientY);
             }
-        }
 
         // check for start of one touch drag
         } else if (event.targetTouches.length === 1 && this.startTouches.length === 1) {

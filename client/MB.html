@@ -3314,8 +3314,8 @@ function initTouch() {
                 // console.log(this.startTime);
                 if (elapsed > 1000/FPS) {
                     this.startTime = now;
-                    const shiftX = this.data.lastX - this.data.startX;
-                    const shiftY = this.data.lastY - this.data.startY;
+                    const shiftX = x - this.data.startX;
+                    const shiftY = y - this.data.startY;
 
                     // translate image into OSG with gray surround
                     OSG.fillStyle = "#BBBBBB";
@@ -3332,9 +3332,36 @@ function initTouch() {
             },
             onPinchStart: function(x1, y1, x2, y2) {
                 this.data.pinchStart = [x1, y1, x2, y2];
+                this.startTime = Date.now();
+                this.data.canvas.width = canvas.width;
+                this.data.canvas.height = canvas.height;
+                // get latest OSC
+                stopJob();
+                this.data.ctx.drawImage(OSC, 0, 0);
             },
             onPinchMove: function(x1, y1, x2, y2) {
                 this.data.pinchLast = [x1, y1, x2, y2];
+                let now = Date.now();
+                let elapsed = now - this.startTime;
+                // console.log(this.startTime, elapsed);
+                if (elapsed > 1000/FPS) {
+                    this.startTime = now;
+                    const ps = this.data.pinchStart;
+                    const pl = this.data.pinchLast;
+
+                    const centerXStart = (ps[0] + ps[2])/2;
+                    const centerYStart = (ps[1] + ps[3])/2;
+                    const centerXLast = (pl[0] + pl[2])/2;
+                    const centerYLast = (pl[1] + pl[3])/2;
+                    const shiftX = centerXLast - centerXStart;
+                    const shiftY = centerYLast - centerYStart;
+
+                    // translate image into OSG with gray surround
+                    OSG.fillStyle = "#BBBBBB";
+                    OSG.fillRect(0, 0, canvas.width, canvas.height);
+                    OSG.drawImage(this.data.canvas, shiftX, shiftY);
+                    graphics.drawImage(OSC, 0, 0);
+                }
             },
             onPinchEnd: function() {
                 const ps = this.data.pinchStart;
