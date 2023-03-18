@@ -28,7 +28,7 @@ class Touch {
         this.isDragging = false;
         this.dragId = NaN;
         this.isPinching = false;
-        this.pinchTouches = [];
+        // this.pinchTouches = [];
         this.isTapping = false;
         this.singleTapTimeout = null;
         this.parentElement.addEventListener("touchstart", (event) => this.handleTouchStart(event));
@@ -51,8 +51,8 @@ class Touch {
         // Store the initial touch position
         this.startTouches = this.copyTouches(event.targetTouches);
 
-        // Reset pinchTouches array
-        this.pinchTouches = [];
+        // // Reset pinchTouches array
+        // this.pinchTouches = [];
 
         if (this.onTouchStart) {
             this.onTouchStart(event);
@@ -69,9 +69,17 @@ class Touch {
                 for (const e of event.changedTouches) {
                     if (e.identifier === this.dragId) {
                         this.onDragMove(e.clientX, e.clientY);
+                        break;
                     }
                 }
             }
+
+        else if (this.isPinching) {
+            if (this.onPinchMove) {
+                this.onPinchMove(event.targetTouches[0].clientX, event.targetTouches[0].clientY,
+                    event.targetTouches[1].clientX, event.targetTouches[1].clientY);
+            }
+        }
 
         // check for start of one touch drag
         } else if (event.targetTouches.length === 1 && this.startTouches.length === 1) {
@@ -86,30 +94,40 @@ class Touch {
 
         // Check if there are two touches for pinch gesture
         } else if (event.targetTouches.length === 2 && this.startTouches.length === 2) {
-            // Store the pinch touch positions
-            this.pinchTouches = event.targetTouches;
-
-            // Calculate the distance between pinch touches
-            const pinchStartX1 = this.pinchTouches[0].clientX;
-            const pinchStartY1 = this.pinchTouches[0].clientY;
-            const pinchStartX2 = this.pinchTouches[1].clientX;
-            const pinchStartY2 = this.pinchTouches[1].clientY;
-            const pinchStartDistance = Math.sqrt(Math.pow(pinchStartX2 - pinchStartX1, 2) + Math.pow(pinchStartY2 - pinchStartY1, 2));
-
-            const pinchEndX1 = event.changedTouches[0].clientX;
-            const pinchEndY1 = event.changedTouches[0].clientY;
-            const pinchEndX2 = event.changedTouches[1].clientX;
-            const pinchEndY2 = event.changedTouches[1].clientY;
-            const pinchEndDistance = Math.sqrt(Math.pow(pinchEndX2 - pinchEndX1, 2) + Math.pow(pinchEndY2 - pinchEndY1, 2));
-
-            // If the distance between pinch touches has increased, it's a pinch out gesture
-            if (pinchEndDistance > pinchStartDistance) {
-                console.log("Pinch out gesture detected");
+            this.isPinching = true;
+            if (this.onPinchStart) {
+                this.onPinchStart(this.startTouches[0].clientX, this.startTouches[0].clientY,
+                    this.startTouches[1].clientX, this.startTouches[1].clientY);
+            };
+            if (this.onPinchMove) {
+                this.onPinchMove(event.targetTouches[0].clientX, event.targetTouches[0].clientY,
+                    event.targetTouches[1].clientX, event.targetTouches[1].clientY);
             }
-            // If the distance between pinch touches has decreased, it's a pinch in gesture
-            else if (pinchEndDistance < pinchStartDistance) {
-                console.log("Pinch in gesture detected");
-            }
+
+            // // Store the pinch touch positions
+            // this.pinchTouches = this.copyTouches(event.targetTouches);
+
+            // // Calculate the distance between pinch touches
+            // const pinchStartX1 = this.pinchTouches[0].clientX;
+            // const pinchStartY1 = this.pinchTouches[0].clientY;
+            // const pinchStartX2 = this.pinchTouches[1].clientX;
+            // const pinchStartY2 = this.pinchTouches[1].clientY;
+            // const pinchStartDistance = Math.sqrt(Math.pow(pinchStartX2 - pinchStartX1, 2) + Math.pow(pinchStartY2 - pinchStartY1, 2));
+
+            // const pinchEndX1 = event.changedTouches[0].clientX;
+            // const pinchEndY1 = event.changedTouches[0].clientY;
+            // const pinchEndX2 = event.changedTouches[1].clientX;
+            // const pinchEndY2 = event.changedTouches[1].clientY;
+            // const pinchEndDistance = Math.sqrt(Math.pow(pinchEndX2 - pinchEndX1, 2) + Math.pow(pinchEndY2 - pinchEndY1, 2));
+
+            // // If the distance between pinch touches has increased, it's a pinch out gesture
+            // if (pinchEndDistance > pinchStartDistance) {
+            //     console.log("Pinch out gesture detected");
+            // }
+            // // If the distance between pinch touches has decreased, it's a pinch in gesture
+            // else if (pinchEndDistance < pinchStartDistance) {
+            //     console.log("Pinch in gesture detected");
+            // }
         }
 
         if (this.isDragging || this.isPinching) {
@@ -148,7 +166,7 @@ class Touch {
                     event.preventDefault();
                     const endX = event.changedTouches[0].clientX;
                     const endY = event.changedTouches[0].clientY;
-                    console.log(startX,startY,endX,endY);
+                    // console.log(startX,startY,endX,endY);
                     this.onDoubleTap((startX + endX)/2, (startY + endY)/2);
                 }
             }

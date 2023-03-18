@@ -4,6 +4,9 @@ What does gap: 10 do
 doDraw and dontClear logic
 vw width
 need normalcanvas?
+Undo zoom is wrong if change window size between zoom and undo zoom
+zoom is choppy on mobile
+should preventdefault on all touch events?
 
 Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore

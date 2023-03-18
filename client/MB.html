@@ -3272,7 +3272,9 @@ function initTouch() {
                 lastY: NaN,
                 startTime: NaN,
                 canvas: null,
-                ctx: null
+                ctx: null,
+                pinchStart: [],
+                pinchLast: []
             },
             onInit: function() {
                 this.data.canvas = document.createElement("canvas");
@@ -3328,8 +3330,33 @@ function initTouch() {
                 doTranslate(shiftX, shiftY, true);
                 startJob(true);
             },
-            onPinchStart: function() {
+            onPinchStart: function(x1, y1, x2, y2) {
+                this.data.pinchStart = [x1, y1, x2, y2];
+            },
+            onPinchMove: function(x1, y1, x2, y2) {
+                this.data.pinchLast = [x1, y1, x2, y2];
+            },
+            onPinchEnd: function() {
+                const ps = this.data.pinchStart;
+                const pl = this.data.pinchLast;
 
+                const centerXStart = (ps[0] + ps[2])/2;
+                const centerYStart = (ps[1] + ps[3])/2;
+                let centerXLast = (pl[0] + pl[2])/2;
+                let centerYLast = (pl[1] + pl[3])/2;
+                const shiftX = centerXStart - centerXLast;
+                const shiftY = centerYStart - centerYLast;
+                doTranslate(shiftX, shiftY, false);
+
+                const lenStart = Math.sqrt(Math.pow(ps[0] - ps[2], 2) + Math.pow(ps[1] - ps[3], 2));
+                const lenLast = Math.sqrt(Math.pow(pl[0] - pl[2], 2) + Math.pow(pl[1] - pl[3], 2));
+                const zoomFactor = lenStart/lenLast;
+
+                let r = canvas.getBoundingClientRect();
+                // on mobile the bounding rectangle can be at a different scale than the canvas size
+                centerXLast = (centerXLast - r.left)*canvas.width/(r.right - r.left);
+                centerYLast = (centerYLast - r.top)*canvas.height/(r.bottom - r.top);
+                zoom(centerXLast, centerYLast, zoomFactor, false, false);
             }
         });
     }
