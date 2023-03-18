@@ -943,10 +943,10 @@ let OSZC;  // Zoom canvas.
 let OSZG;  // Graphics context for zoom canvas.
 const FPS = 60;
 const ZOOMTIME = 250;   // zoom time in ms
-const NFRAMES = Math.floor(ZOOMTIME/1000*(FPS/2));
+const NFRAMES = Math.floor(ZOOMTIME/1000*FPS);
 const FRAMEINTERVAL = ZOOMTIME/NFRAMES;
 
-function drawZoom(left, top, width, height) {
+function drawZoom(left, top, width, height, doStartJob) {
     // console.log("drawZoom from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], left, top, width, height, NFRAMES, FRAMEINTERVAL);
 
     // draw latest OSC
@@ -976,7 +976,12 @@ function drawZoom(left, top, width, height) {
         } else {
             clearInterval(zoomTimeout);
             zoomTimeout = null;
-            repaint();
+            if (doStartJob) {
+                // mobile devices may struggle to draw zoom frames and compute, so delay startJob
+                startJob(true);
+            } else {
+                repaint();
+            }
         }
     }, FRAMEINTERVAL);
 }
@@ -1098,8 +1103,8 @@ function zoom(x, y, zoomFactor, recenter, undo) {  // (x,y) is center of zoom, i
         left = x*(1 - zoomFactor);
         top = y*(1 - zoomFactor);
     }
-    drawZoom(left, top, width, height);
-    startJob();
+    drawZoom(left, top, width, height, true);
+    // startJob();
 }
 
 function doTranslate(x, y, undo) {
