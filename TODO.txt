@@ -7,6 +7,8 @@ need normalcanvas?
 Undo zoom is wrong if change window size between zoom and undo zoom
 zoom is choppy on mobile
 should preventdefault on all touch events?
+why does zoom require rescaling while xlate does not?
+bug - 800x600, undo, fullwindow, exit - back to 800x600
 
 Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore
