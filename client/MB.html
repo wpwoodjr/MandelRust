@@ -997,7 +997,7 @@ function zoomDrawFrame(left, top, width, height, frameCount) {
     graphics.drawImage(OSZC, leftZ, topZ, widthZ, heightZ, 0, 0, canvas.width, canvas.height);
 }
 
-function doZoomInOnRect(x,y,width,height,undo) {
+function doZoomInOnRect(x,y,width,height, undo, dontCallDrawZoom) {
     // console.log("doZoomInOnRect", x, y, width, height);
     var rectX = new BigDecimal("" + Math.round(x));  // (Firefox can have fractional parts)
     var rectY = new BigDecimal("" + Math.round(y));
@@ -1018,7 +1018,9 @@ function doZoomInOnRect(x,y,width,height,undo) {
     if (undo) {
         addUndoItem("Zoom In", [ZOOMOUTRECT, x, y, width, height], [ZOOMINRECT, x, y, width, height]);
     }
-    drawZoom(x, y, width, height);
+    if (! dontCallDrawZoom) {
+        drawZoom(x, y, width, height);
+    }
 }
 
 function doZoomOutFromRect(x,y,width,height, undo) {
@@ -3356,15 +3358,30 @@ function initTouch() {
 
                     const centerXStart = (ps[0] + ps[2])/2;
                     const centerYStart = (ps[1] + ps[3])/2;
-                    const centerXLast = (pl[0] + pl[2])/2;
-                    const centerYLast = (pl[1] + pl[3])/2;
-                    const shiftX = centerXLast - centerXStart;
-                    const shiftY = centerYLast - centerYStart;
+                    let centerXLast = (pl[0] + pl[2])/2;
+                    let centerYLast = (pl[1] + pl[3])/2;
+                    const shiftX = centerXStart - centerXLast;
+                    const shiftY = centerYStart - centerYLast;
 
-                    // translate image into OSG with gray surround
+                    const lenStart = Math.sqrt(Math.pow(ps[0] - ps[2], 2) + Math.pow(ps[1] - ps[3], 2));
+                    const lenLast = Math.sqrt(Math.pow(pl[0] - pl[2], 2) + Math.pow(pl[1] - pl[3], 2));
+                    const zoomFactor = lenStart/lenLast;
+
+                    let r = canvas.getBoundingClientRect();
+                    // on mobile the bounding rectangle can be at a different scale than the canvas size
+                    centerXLast = (centerXLast - r.left)*canvas.width/(r.right - r.left);
+                    centerYLast = (centerYLast - r.top)*canvas.height/(r.bottom - r.top);
+
+                    let width = canvas.width*zoomFactor;
+                    let height = canvas.height*zoomFactor;
+                    let left, top;
+                    left = centerXLast*(1 - zoomFactor) + shiftX;
+                    top = centerYLast*(1 - zoomFactor) + shiftY;
+
+                    // translate and zoom image into OSG with gray surround
                     OSG.fillStyle = "#BBBBBB";
                     OSG.fillRect(0, 0, canvas.width, canvas.height);
-                    OSG.drawImage(this.data.canvas, shiftX, shiftY);
+                    OSG.drawImage(this.data.canvas, left, top, width, height, 0, 0, canvas.width, canvas.height);
                     graphics.drawImage(OSC, 0, 0);
                 }
             },
@@ -3378,7 +3395,6 @@ function initTouch() {
                 let centerYLast = (pl[1] + pl[3])/2;
                 const shiftX = centerXStart - centerXLast;
                 const shiftY = centerYStart - centerYLast;
-                doTranslate(shiftX, shiftY, false);
 
                 const lenStart = Math.sqrt(Math.pow(ps[0] - ps[2], 2) + Math.pow(ps[1] - ps[3], 2));
                 const lenLast = Math.sqrt(Math.pow(pl[0] - pl[2], 2) + Math.pow(pl[1] - pl[3], 2));
@@ -3388,7 +3404,15 @@ function initTouch() {
                 // on mobile the bounding rectangle can be at a different scale than the canvas size
                 centerXLast = (centerXLast - r.left)*canvas.width/(r.right - r.left);
                 centerYLast = (centerYLast - r.top)*canvas.height/(r.bottom - r.top);
-                zoom(centerXLast, centerYLast, zoomFactor, false, false);
+
+                let width = canvas.width*zoomFactor;
+                let height = canvas.height*zoomFactor;
+                let left, top;
+                left = centerXLast*(1 - zoomFactor) + shiftX;
+                top = centerYLast*(1 - zoomFactor) + shiftY;
+
+                doZoomInOnRect(left, top, width, height, true, true);
+                startJob(true);
             }
         });
     }
