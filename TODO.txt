@@ -20,6 +20,7 @@ UCArray stuff
 Keep JS worker?
 ///stuff
 
+>"show XML" section is expanding with image
 >zoom is choppy on mobile
 >1000000 iters then back to 500 takes forever
 >optimize redraw on undo
