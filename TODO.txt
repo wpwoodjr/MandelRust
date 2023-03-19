@@ -3,14 +3,16 @@ Look at #imagediv px stuff - use canvas?
 Why is status ''
 What does gap: 10 do
 doDraw and dontClear logic
-vw width
+this code should use canvas instead of imagediv?
+    let imagedivStyle = document.querySelector('#imagediv').style;
+    imagedivStyle.width = w + "px";
 need normalcanvas?
 Undo zoom is wrong if change window size between zoom and undo zoom
-zoom is choppy on mobile
 should preventdefault on all touch events?
 why does zoom require rescaling while xlate does not?
 bug - 800x600, undo, fullwindow, exit - back to 800x600
 check tooltip position calculations
+image too small when window maximised, check width calcs and vw width
 
 Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore
@@ -18,6 +20,7 @@ UCArray stuff
 Keep JS worker?
 ///stuff
 
+>zoom is choppy on mobile
 >1000000 iters then back to 500 takes forever
 >optimize redraw on undo
 >set an undo for arrow keys? no would be too many
