@@ -231,14 +231,14 @@
     #header-table {
         border-collapse: collapse;
         width: 100%;
-        font-size: 22px;
+        font-size: 20px;
         table-layout: fixed;
     }
     #header-table > tbody > tr > td {
         text-align: Left;
     }
     #header-table > tbody > tr > td:first-child {
-        width: 30%;
+        width: 33%;
     }
     #header-table > tbody > tr > td:nth-child(2) {
         width: 20%;
@@ -1470,22 +1470,18 @@ function resizeWindow() {
     } else {
         // console.log("resize:", currentImageSize[0], currentImageSize[1]);
         let statusRect = document.getElementById("status").getBoundingClientRect();
-        let w = Math.min(window.innerWidth, statusRect.right);
+        let w = Math.min(window.innerWidth - 10, statusRect.right);
         setTooltipSize(w);
         setImageSize(currentImageSize[0], currentImageSize[1], false);
     }
 }
 function setTooltipSize(w) {
-    // console.log(w);
+    console.log(w);
     let tooltip = document.querySelector('.tooltip .helptext');
-    tooltip.style.width = Math.min(800, w*0.8) + "px";
+    tooltip.style.width = Math.min(800, w*0.7) + "px";
 
     tooltip = document.querySelector('.tooltip .exampletext');
-    if (w < 475) {
-        tooltip.style.width = Math.min(800, w*0.65) + "px";
-    } else {
-        tooltip.style.width = Math.min(800, w*0.75) + "px";
-    }
+    tooltip.style.width = Math.min(800, w*0.7) + "px";
 }
 
 function doApplyStandardPalette(newPaletteNum, newPalette) {
