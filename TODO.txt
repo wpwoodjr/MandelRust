@@ -1,3 +1,4 @@
+Two-finger tap to zoom out?
 Look at #imagediv px stuff - use canvas?
 Why is status ''
 What does gap: 10 do

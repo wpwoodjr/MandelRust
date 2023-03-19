@@ -48,6 +48,7 @@
                   Streamlined UI with Help and Examples at top
                   Optimized for mobile devices
                   Added touch controls for pan
+                  Added touch controls for pinch to zoom out and spread to zoom in
                   Don't clear canvas every time image size changes
 -->
 <html>
@@ -2973,7 +2974,7 @@ function createSliders() {
     };
     mainPaletteLengthSlider.setDefaultsFromMaxIter = function () {
         this.setMaxValue(2*maxIterSlider.value, false);
-        this.setValue(maxIterSlider.value/2);
+        this.setValue(maxIterSlider.value/4);
     };
 
     mainPaletteOffsetSlider = new Slider(
