@@ -81,8 +81,7 @@
         height: 100%;
    }
    .normalCanvas {
-        width: 100%;
-        height: 100%;
+        border: 2px solid black;
    }
 
     /* main UI grid */
@@ -98,9 +97,6 @@
         grid-column: 2;
         width: 80vw;
         grid-row: 1 / span 2;
-    }
-    .row2 {
-        border: 2px solid black; /* Add a 2 pixel solid black border to the second row */
     }
 
    #controls {
@@ -771,6 +767,7 @@ function startSecondPass() {
         }
         //jobs.reverse();     // keep original order (don't need to since now we're waiting for all rows to finish before drawing)
     }
+
     for (var i = 0; i < workerCount; i++) {
         var j = jobs.pop();
         j.workerNum = i;
@@ -1387,15 +1384,16 @@ function doCustomSize() {
 function setCanvasToWindow() {
     currentImageSize = [0, 0];
     let w, h;
-    let statusRect = document.getElementById("status").getBoundingClientRect();
-    let ratio = window.innerHeight/window.innerWidth;
+    const statusRect = document.getElementById("status").getBoundingClientRect();
+    const ratio = window.innerHeight/window.innerWidth;
+
     w = Math.min(window.innerWidth - 10, statusRect.right);
     // console.log(window.innerWidth, window.devicePixelRatio, statusRect.right, window.outerWidth);
     setTooltipSize(w);
     w -= statusRect.left;
     w = Math.max(64, Math.floor(w - 15));
     h = Math.max(64, Math.floor(w*ratio));
-    // console.log(w, h, w + statusRect.left, status, imagediv);
+    // console.log(w, h);
 
     canvas.width = w;
     canvas.height = h;
@@ -1403,8 +1401,8 @@ function setCanvasToWindow() {
     OSC.height = h;
     checkAspect();
 
-    let imagedivStyle = document.querySelector('#imagediv').style;
-    imagedivStyle.width = w + "px";
+    // let imagedivStyle = document.querySelector('#canvas').style;
+    // imagedivStyle.width = w + "px";
 }
 let noDrawCount = 0;
 function setImageSizeToFixed(w, h, oldImageSize, doDraw) {
@@ -1412,8 +1410,8 @@ function setImageSizeToFixed(w, h, oldImageSize, doDraw) {
     if (!doDraw && w === canvas.width && h === canvas.height) {
         return;
     }
-    let dontClear = !doDraw && Math.abs(w/h - canvas.width/canvas.height) < 0.05;
-    doDraw = doDraw || running || !dontClear || w > canvas.width || noDrawCount > 0;
+    const dontClear = !doDraw && Math.abs(w/h - canvas.width/canvas.height) < 0.01;
+    doDraw = true;//doDraw || running || !dontClear || w > canvas.width || noDrawCount > 0;
     // console.log(dontClear, doDraw, noDrawCount);
     noDrawCount = doDraw ? 0 : noDrawCount + 1;
     stopJob();
@@ -1433,8 +1431,8 @@ function setImageSizeToFixed(w, h, oldImageSize, doDraw) {
     if (oldImageSize) {
         addUndoItem("Change Image Size", oldImageSize, currentImageSize);
     }
-    let imagedivStyle = document.querySelector('#imagediv').style;
-    imagedivStyle.width = w + "px";
+    // let imagedivStyle = document.querySelector('#canvas').style;
+    // imagedivStyle.width = w + "px";
     if (doDraw) {
         startJob(dontClear);
     } else {
@@ -1444,11 +1442,11 @@ function setImageSizeToFixed(w, h, oldImageSize, doDraw) {
 }
 function setImageSize(w, h, undo, doDraw) {
     // console.log("setImageSize from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], w, h);
-    let oldImageSize = currentImageSize;
+    const oldImageSize = currentImageSize;
     currentImageSize = [w, h];
     if (w === 0 && h === 0) {
-        let statusRect = document.getElementById("status").getBoundingClientRect();
-        let ratio = window.innerHeight/window.innerWidth;
+        const statusRect = document.getElementById("status").getBoundingClientRect();
+        const ratio = window.innerHeight/window.innerWidth;
         w = Math.min(window.innerWidth - 10, statusRect.right);
         // console.log(window.innerWidth, window.devicePixelRatio, statusRect.right, window.outerWidth);
         w -= statusRect.left;
@@ -1497,6 +1495,9 @@ function doApplyStandardPalette(newPaletteNum, newPalette) {
 function changeSecondPass() {
     var checked = document.getElementById("secondpass").checked;
     if (checked && !running && state == DONE_FIRST_PASS) {
+        // hack to improve accuracy of rowsPerSecond and jobsPerSecond when a second pass is run sometime after first pass
+        const elapsedSecs = rowsCompleted/rowsPerSecond;
+        jobStartTime = Date.now() - elapsedSecs*1000;
         startSecondPass();
     }
 }
@@ -3589,9 +3590,7 @@ function initTouch() {
 </div>
 <div class="col2">
   <div id="status">Idle</div>
-  <div id="imagediv" class="row2">
-    <canvas id="canvas" width=64 height=64 class="normalCanvas"></canvas>
-</div>
+  <canvas id="canvas" width=64 height=64 class="normalCanvas"></canvas>
 </div>
 </div>
 

@@ -1,5 +1,6 @@
 Two-finger tap to zoom out?
-Look at #imagediv px stuff - use canvas?
+Pinch zoom check id's what happens when lift a finger, etc
+Look at #imagediv px stuff - use canvas? trying now... Chrome was acting weird... now seems ok... should retry imagediv again
 Why is status ''
 doDraw and dontClear logic
 this code should use canvas instead of imagediv?
@@ -12,6 +13,13 @@ why does zoom require rescaling while xlate does not?
 check tooltip position calculations
 image too small when window maximised, check width calcs and vw width
 re-eval whether to not redraw on image smaller but same aspect ratio
+re-eval 2nd pass not drawing as completing.  less clear than orig?
+0.05 on the dontClear check?
+http://localhost:8000/MB.html?ex=examples%2fstar.xml
+    Fit window at 4:3 ratio
+    select from examples, uncheck 2nd pass, 800x600, check 2nd pass - nothing happens
+    select from examples, uncheck 2nd pass, 800x600, undo, redo, check 2nd pass - completed 792 of 601 rows
+        792 is the height when it is fit window
 
 Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore
@@ -19,6 +27,7 @@ UCArray stuff
 Keep JS worker?
 ///stuff
 
+>If check 2nd pass sometime after 1st pass, rows/sec is wrong
 >bug - 800x600, 640x480, restore defaults, undo - back to 800x600
 >bug - 640x480, restore defaults, undo, 800x600, undo - back to fullwindow
 >bug - 800x600, undo, fullwindow, exit - back to 800x600
