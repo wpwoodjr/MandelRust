@@ -1010,7 +1010,7 @@ function doZoomInOnRect(x,y,width,height, undo, undoText, dontCallDrawZoom) {
     newYmin = newYmax.subtract(newHeight);
     setLimits(newXmin, newXmax, newYmin, newYmax, false);
     if (undo) {
-        undoText = undoText === null ? "Zoom In" : undoText;
+        undoText = undoText ? undoText : "Zoom In";
         addUndoItem(undoText, [ZOOMOUTRECT, x, y, width, height], [ZOOMINRECT, x, y, width, height]);
     }
     if (! dontCallDrawZoom) {
