@@ -90,7 +90,6 @@
         display: grid;
         grid-template-columns: auto 1fr;
         gap: 10px;
-/*        grid-template-rows: auto auto;*/
     }
     .col1 {
         grid-column: 1;
@@ -99,8 +98,6 @@
         grid-column: 2;
         width: 80vw;
         grid-row: 1 / span 2;
-/*        border: 4px solid black;*/
-/*        position: relative; */
     }
     .row2 {
         border: 2px solid black; /* Add a 2 pixel solid black border to the second row */
@@ -854,7 +851,6 @@ function setDefaults() {
     createPaletteColors();
     document.getElementById("customsize").style.display = "none";
     document.getElementById("imagesize").value = "0 0";
-    currentImageSize = [0, 0];
     setCanvasToWindow();
     startJob();
     if (undoList) {
@@ -1389,6 +1385,7 @@ function doCustomSize() {
     setImageSize(width,height,true);
 }
 function setCanvasToWindow() {
+    currentImageSize = [0, 0];
     let w, h;
     let statusRect = document.getElementById("status").getBoundingClientRect();
     let ratio = window.innerHeight/window.innerWidth;
@@ -1399,18 +1396,18 @@ function setCanvasToWindow() {
     w = Math.max(64, Math.floor(w - 15));
     h = Math.max(64, Math.floor(w*ratio));
     // console.log(w, h, w + statusRect.left, status, imagediv);
-    if (canvas.width != w || canvas.height != h) {
-      canvas.width = w;
-      canvas.height = h;
-      OSC.width = w;
-      OSC.height = h;
-      checkAspect();
-    }
+
+    canvas.width = w;
+    canvas.height = h;
+    OSC.width = w;
+    OSC.height = h;
+    checkAspect();
+
     let imagedivStyle = document.querySelector('#imagediv').style;
     imagedivStyle.width = w + "px";
 }
 let noDrawCount = 0;
-function setImageSizeToFixed(w, h, undoNewValue, doDraw) {
+function setImageSizeToFixed(w, h, oldImageSize, doDraw) {
     // console.log("setImageSizeToFixed", w, h);
     if (!doDraw && w === canvas.width && h === canvas.height) {
         return;
@@ -1433,18 +1430,22 @@ function setImageSizeToFixed(w, h, undoNewValue, doDraw) {
         graphics.drawImage(OSC, 0, 0, w, h);
     }
     checkAspect();
-    if (undoNewValue) {
-        addUndoItem("Change Image Size", currentImageSize, undoNewValue);
-        currentImageSize = undoNewValue;
+    if (oldImageSize) {
+        addUndoItem("Change Image Size", oldImageSize, currentImageSize);
     }
     let imagedivStyle = document.querySelector('#imagediv').style;
     imagedivStyle.width = w + "px";
     if (doDraw) {
         startJob(dontClear);
+    } else {
+        // startJob does this so need to do it if not calling startJob
+        currentXML = currentExampletoXML();
     }
 }
 function setImageSize(w, h, undo, doDraw) {
     // console.log("setImageSize from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], w, h);
+    let oldImageSize = currentImageSize;
+    currentImageSize = [w, h];
     if (w === 0 && h === 0) {
         let statusRect = document.getElementById("status").getBoundingClientRect();
         let ratio = window.innerHeight/window.innerWidth;
@@ -1454,10 +1455,8 @@ function setImageSize(w, h, undo, doDraw) {
         w = Math.max(64, Math.floor(w - 15));
         h = Math.max(64, Math.floor(w*ratio));
         // console.log(w, h, w + statusRect.left);
-        setImageSizeToFixed(w, h, undo ? [0, 0] : false, doDraw);
-    } else {
-        setImageSizeToFixed(w, h, undo ? [w, h] : false, doDraw);
     }
+    setImageSizeToFixed(w, h, undo ? oldImageSize : false, doDraw);
 }
 function resizeWindow() {
     // console.log("resizeWindow");

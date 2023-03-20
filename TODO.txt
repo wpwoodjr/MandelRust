@@ -1,7 +1,6 @@
 Two-finger tap to zoom out?
 Look at #imagediv px stuff - use canvas?
 Why is status ''
-What does gap: 10 do
 doDraw and dontClear logic
 this code should use canvas instead of imagediv?
     let imagedivStyle = document.querySelector('#imagediv').style;
@@ -10,9 +9,9 @@ need normalcanvas?
 Undo zoom is wrong if change window size between zoom and undo zoom
 should preventdefault on all touch events?
 why does zoom require rescaling while xlate does not?
-bug - 800x600, undo, fullwindow, exit - back to 800x600
 check tooltip position calculations
 image too small when window maximised, check width calcs and vw width
+re-eval whether to not redraw on image smaller but same aspect ratio
 
 Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore
@@ -20,6 +19,10 @@ UCArray stuff
 Keep JS worker?
 ///stuff
 
+>bug - 800x600, 640x480, restore defaults, undo - back to 800x600
+>bug - 640x480, restore defaults, undo, 800x600, undo - back to fullwindow
+>bug - 800x600, undo, fullwindow, exit - back to 800x600
+>What does gap: 10 do - cols and rows gap
 >"show XML" section is expanding with image
 >zoom is choppy on mobile
 >1000000 iters then back to 500 takes forever
