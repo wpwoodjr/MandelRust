@@ -991,7 +991,7 @@ function zoomDrawFrame(left, top, width, height, frameCount) {
     graphics.drawImage(OSZC, leftZ, topZ, widthZ, heightZ, 0, 0, canvas.width, canvas.height);
 }
 
-function doZoomInOnRect(x,y,width,height, undo, dontCallDrawZoom) {
+function doZoomInOnRect(x,y,width,height, undo, undoText, dontCallDrawZoom) {
     // console.log("doZoomInOnRect", x, y, width, height);
     var rectX = new BigDecimal("" + Math.round(x));  // (Firefox can have fractional parts)
     var rectY = new BigDecimal("" + Math.round(y));
@@ -1010,7 +1010,8 @@ function doZoomInOnRect(x,y,width,height, undo, dontCallDrawZoom) {
     newYmin = newYmax.subtract(newHeight);
     setLimits(newXmin, newXmax, newYmin, newYmax, false);
     if (undo) {
-        addUndoItem("Zoom In", [ZOOMOUTRECT, x, y, width, height], [ZOOMINRECT, x, y, width, height]);
+        undoText = undoText === null ? "Zoom In" : undoText;
+        addUndoItem(undoText, [ZOOMOUTRECT, x, y, width, height], [ZOOMINRECT, x, y, width, height]);
     }
     if (! dontCallDrawZoom) {
         drawZoom(x, y, width, height);
@@ -1614,6 +1615,8 @@ function applyUndoItem(name, value) {
         mainPaletteLengthSlider.setValue(value[1]);
         setFixedPaletteLength(mainPaletteLengthSlider.value);
         break;
+      case "Pinch Zoom Out":
+      case "Pinch Zoom In":
       case "Zoom Out":
       case "Zoom In":
       case "Move ":
@@ -3398,6 +3401,7 @@ function initTouch() {
                 const lenStart = Math.sqrt(Math.pow(ps[0] - ps[2], 2) + Math.pow(ps[1] - ps[3], 2));
                 const lenLast = Math.sqrt(Math.pow(pl[0] - pl[2], 2) + Math.pow(pl[1] - pl[3], 2));
                 const zoomFactor = lenStart/lenLast;
+                const undoText = zoomFactor > 1 ? "Pinch Zoom Out" : "Pinch Zoom In";
 
                 let r = canvas.getBoundingClientRect();
                 // on mobile the bounding rectangle can be at a different scale than the canvas size
@@ -3410,7 +3414,7 @@ function initTouch() {
                 left = centerXLast*(1 - zoomFactor) + shiftX;
                 top = centerYLast*(1 - zoomFactor) + shiftY;
 
-                doZoomInOnRect(left, top, width, height, true, true);
+                doZoomInOnRect(left, top, width, height, true, undoText, true);
                 startJob(true);
             }
         });
