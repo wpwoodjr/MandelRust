@@ -1166,7 +1166,7 @@ function setUpDragging() {  // for image canvas
         var r = canvas.getBoundingClientRect();
         var x = evt.clientX - r.left;
         var y = evt.clientY - r.top;
-        // on mobile the bounding rectangle can be at a different scale than the canvas size
+        // on some devices the bounding rectangle can be at a different scale than the canvas size
         x = x*canvas.width/(r.right - r.left);
         y = y*canvas.height/(r.bottom - r.top);
         var zoomFactor = evt.shiftKey? 2 : 0.5;
@@ -3291,7 +3291,7 @@ function initTouch() {
             },
             onDoubleTap: function(x, y) {
                 let r = canvas.getBoundingClientRect();
-                // on mobile the bounding rectangle can be at a different scale than the canvas size
+                // on some devices the bounding rectangle can be at a different scale than the canvas size
                 x = (x - r.left)*canvas.width/(r.right - r.left);
                 y = (y - r.top)*canvas.height/(r.bottom - r.top);
                 zoom(x, y, 0.5, true, true);
@@ -3369,21 +3369,30 @@ function initTouch() {
                     const lenLast = Math.sqrt(Math.pow(pl[0] - pl[2], 2) + Math.pow(pl[1] - pl[3], 2));
                     const zoomFactor = lenStart/lenLast;
 
-                    let r = canvas.getBoundingClientRect();
-                    // on mobile the bounding rectangle can be at a different scale than the canvas size
+                    const r = canvas.getBoundingClientRect();
+                    // on some devices the bounding rectangle can be at a different scale than the canvas size
                     centerXLast = (centerXLast - r.left)*canvas.width/(r.right - r.left);
                     centerYLast = (centerYLast - r.top)*canvas.height/(r.bottom - r.top);
 
-                    let width = canvas.width*zoomFactor;
-                    let height = canvas.height*zoomFactor;
-                    let left, top;
-                    left = centerXLast*(1 - zoomFactor) + shiftX;
-                    top = centerYLast*(1 - zoomFactor) + shiftY;
+                    const width = canvas.width*zoomFactor;
+                    const height = canvas.height*zoomFactor;
+                    let left = centerXLast*(1 - zoomFactor) + shiftX;
+                    let top = centerYLast*(1 - zoomFactor) + shiftY;
+                    let canvasLeft = 0;
+                    if (left < 0) {
+                        canvasLeft = -left*canvas.width/width;
+                        left = 0;
+                    }
+                    let canvasTop = 0;
+                    if (top < 0) {
+                        canvasTop = -top*canvas.height/height;
+                        top = 0;
+                    }
 
                     // translate and zoom image into OSG with gray surround
                     OSG.fillStyle = "#BBBBBB";
                     OSG.fillRect(0, 0, canvas.width, canvas.height);
-                    OSG.drawImage(this.data.canvas, left, top, width, height, 0, 0, canvas.width, canvas.height);
+                    OSG.drawImage(this.data.canvas, left, top, width, height, canvasLeft, canvasTop, canvas.width, canvas.height);
                     graphics.drawImage(OSC, 0, 0);
                 }
             },
@@ -3404,7 +3413,7 @@ function initTouch() {
                 const undoText = zoomFactor > 1 ? "Pinch Zoom Out" : "Pinch Zoom In";
 
                 let r = canvas.getBoundingClientRect();
-                // on mobile the bounding rectangle can be at a different scale than the canvas size
+                // on some devices the bounding rectangle can be at a different scale than the canvas size
                 centerXLast = (centerXLast - r.left)*canvas.width/(r.right - r.left);
                 centerYLast = (centerYLast - r.top)*canvas.height/(r.bottom - r.top);
 
