@@ -3379,22 +3379,10 @@ function initTouch() {
                     let left = centerXLast*(1 - zoomFactor) + shiftX;
                     let top = centerYLast*(1 - zoomFactor) + shiftY;
 
-                    // ios can't handle left or top < 0
-                    let canvasLeft = 0;
-                    if (left < 0) {
-                        canvasLeft = -left*canvas.width/width;
-                        left = 0;
-                    }
-                    let canvasTop = 0;
-                    if (top < 0) {
-                        canvasTop = -top*canvas.height/height;
-                        top = 0;
-                    }
-
                     // translate and zoom image into OSG with gray surround
                     OSG.fillStyle = "#BBBBBB";
                     OSG.fillRect(0, 0, canvas.width, canvas.height);
-                    OSG.drawImage(this.data.canvas, left, top, width, height, canvasLeft, canvasTop, canvas.width, canvas.height);
+                    OSG.drawImage(this.data.canvas, left, top, width, height, 0, 0, canvas.width, canvas.height);
                     graphics.drawImage(OSC, 0, 0);
                 }
             },
@@ -3431,6 +3419,30 @@ function initTouch() {
         });
     }
 }
+
+// polyfill for Safari when left and/or top is negative
+(function () {
+  const originalDrawImage = CanvasRenderingContext2D.prototype.drawImage;
+
+  CanvasRenderingContext2D.prototype.drawImage = function(canvas, left, top, ...args) {
+    if (args.length === 6 && (left < 0 || top < 0)) {
+        let canvasLeft = 0;
+        if (left < 0) {
+            canvasLeft = -left*args[4]/args[0];
+            left = 0;
+        }
+        let canvasTop = 0;
+        if (top < 0) {
+            canvasTop = -top*args[5]/args[1];
+            top = 0;
+        }
+
+      originalDrawImage.call(this, canvas, left, top, args[0], args[1], canvasLeft, canvasTop, args[4], args[5]);
+    } else {
+      originalDrawImage.call(this, canvas, left, top, ...args);
+    }
+  };
+})();
 
 </script>
 </head>

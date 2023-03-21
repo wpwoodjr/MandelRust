@@ -1,5 +1,7 @@
 Two-finger tap to zoom out?
 Safari doesn't handle negative numbers properly in drawImage
+Double-tap not working ios - zooms to wrong place, then partially draws (sometimes), never completes, says First pass... but no rps
+Drag not working when add another finger then release first finger
 Pinch zoom check id's what happens when lift a finger, etc
 Look at #imagediv px stuff - use canvas? trying now... Chrome was acting weird... now seems ok... should retry imagediv again
 Why is status ''
