@@ -27,16 +27,16 @@ class Touch {
         this.isPinching = false;
         this.isTapping = false;
         this.singleTapTimeout = null;
-        this.parentElement.addEventListener("touchstart", (event) => this.handleTouchStart(event));
+        this.parentElement.addEventListener("touchstart", (event) => this.handleTouchStart(event), {passive: false});
     }
 
     handleTouchStart(event) {
         // console.log("touch start");
         if (! this.init) {
             this.init = true;
-            this.parentElement.addEventListener("touchmove", (event) => this.handleTouchMove(event));
-            this.parentElement.addEventListener("touchend", (event) => this.handleTouchEnd(event));
-            this.parentElement.addEventListener("touchcancel", (event) => this.handleTouchCancel(event));
+            this.parentElement.addEventListener("touchmove", (event) => this.handleTouchMove(event), {passive: false});
+            this.parentElement.addEventListener("touchend", (event) => this.handleTouchEnd(event), {passive: false});
+            this.parentElement.addEventListener("touchcancel", (event) => this.handleTouchCancel(event), {passive: false});
             if (this.onInit) {
                 this.onInit();
             }
