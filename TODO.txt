@@ -1,4 +1,5 @@
 Two-finger tap to zoom out?
+Safari doesn't handle negative numbers properly in drawImage
 Pinch zoom check id's what happens when lift a finger, etc
 Look at #imagediv px stuff - use canvas? trying now... Chrome was acting weird... now seems ok... should retry imagediv again
 Why is status ''
@@ -13,7 +14,7 @@ why does zoom require rescaling while xlate does not?
 check tooltip position calculations
 image too small when window maximised, check width calcs and vw width
 re-eval whether to not redraw on image smaller but same aspect ratio
-re-eval 2nd pass not drawing as completing.  less clear than orig?
+re-eval 2nd pass not drawing until complete.  less clear than orig?
 0.05 on the dontClear check?
 http://localhost:8000/MB.html?ex=examples%2fstar.xml
     Fit window at 4:3 ratio

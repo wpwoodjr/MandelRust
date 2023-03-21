@@ -3378,6 +3378,8 @@ function initTouch() {
                     const height = canvas.height*zoomFactor;
                     let left = centerXLast*(1 - zoomFactor) + shiftX;
                     let top = centerYLast*(1 - zoomFactor) + shiftY;
+
+                    // ios can't handle left or top < 0
                     let canvasLeft = 0;
                     if (left < 0) {
                         canvasLeft = -left*canvas.width/width;
