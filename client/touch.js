@@ -31,7 +31,7 @@ class Touch {
         this.element.addEventListener("touchend", (event) => this.handleTouchEnd(event), {passive: false});
         this.element.addEventListener("touchcancel", (event) => this.handleTouchCancel(event), {passive: false});
         if (! this.allowDocumentTouches) {
-            document.addEventListener('touchstart', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+            // document.addEventListener('touchstart', (event) => this.handleDocumentTouchEvent(event), {passive: false});
             // document.addEventListener('touchmove', (event) => this.handleDocumentTouchEvent(event), {passive: false});
             // document.addEventListener('touchend', (event) => this.handleDocumentTouchEvent(event), {passive: false});
         }
