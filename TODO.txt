@@ -1,5 +1,8 @@
 Two-finger tap to zoom out?
+A drag is a pinch with one finger
+Maybe need to kill workers to increase responsiveness to touch on mobile with "default" settings
 Safari doesn't handle negative numbers properly in drawImage
+Safari on macOS doesn't show zoom animation when shft-double-clicking
 Double-tap not working ios - zooms to wrong place, then partially draws (sometimes), never completes, says First pass... but no rps
 Drag not working when add another finger then release first finger
 Pinch zoom check id's what happens when lift a finger, etc
@@ -13,11 +16,10 @@ need normalcanvas?
 Undo zoom is wrong if change window size between zoom and undo zoom
 should preventdefault on all touch events?
 why does zoom require rescaling while xlate does not?
-check tooltip position calculations
-image too small when window maximised, check width calcs and vw width
 re-eval whether to not redraw on image smaller but same aspect ratio
 re-eval 2nd pass not drawing until complete.  less clear than orig?
 0.05 on the dontClear check?
+Polyfill for drawImage generalized to handle non-0 target left and top?
 http://localhost:8000/MB.html?ex=examples%2fstar.xml
     Fit window at 4:3 ratio
     select from examples, uncheck 2nd pass, 800x600, check 2nd pass - nothing happens
@@ -30,6 +32,8 @@ UCArray stuff
 Keep JS worker?
 ///stuff
 
+>check tooltip position calculations
+>image too small when window maximised, check width calcs and vw width
 >pinch in (zoom out) leaves an undo that says zoom in
 >If check 2nd pass sometime after 1st pass, rows/sec is wrong
 >bug - 800x600, 640x480, restore defaults, undo - back to 800x600

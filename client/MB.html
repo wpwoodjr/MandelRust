@@ -3302,6 +3302,7 @@ function initTouch() {
                 }
             },
             onDragStart: function(x, y) {
+                // console.log("onDragStart");
                 this.data.startX = x;
                 this.data.startY = y;
                 this.startTime = Date.now();
@@ -3416,28 +3417,30 @@ function initTouch() {
     }
 }
 
-// polyfill for Safari when left and/or top is negative
+// polyfill for Safari drawImage when left and/or top is negative
 (function () {
-  const originalDrawImage = CanvasRenderingContext2D.prototype.drawImage;
+    const originalDrawImage = CanvasRenderingContext2D.prototype.drawImage;
 
-  CanvasRenderingContext2D.prototype.drawImage = function(canvas, left, top, ...args) {
-    if (args.length === 6 && (left < 0 || top < 0)) {
-        let canvasLeft = 0;
-        if (left < 0) {
-            canvasLeft = -left*args[4]/args[0];
-            left = 0;
-        }
-        let canvasTop = 0;
-        if (top < 0) {
-            canvasTop = -top*args[5]/args[1];
-            top = 0;
-        }
+    CanvasRenderingContext2D.prototype.drawImage = function(canvas, left, top, ...args) {
+        if (args.length === 6 && (left < 0 || top < 0)) {
+            // console.log(left, top);
+            let canvasLeft = 0;
+            // assumes that args[2] and args[3] === 0
+            if (left < 0) {
+                canvasLeft = -left*args[4]/args[0];
+                left = 0;
+            }
+            let canvasTop = 0;
+            if (top < 0) {
+                canvasTop = -top*args[5]/args[1];
+                top = 0;
+            }
 
-      originalDrawImage.call(this, canvas, left, top, args[0], args[1], canvasLeft, canvasTop, args[4], args[5]);
-    } else {
-      originalDrawImage.call(this, canvas, left, top, ...args);
-    }
-  };
+            originalDrawImage.call(this, canvas, left, top, args[0], args[1], canvasLeft, canvasTop, args[4], args[5]);
+        } else {
+            originalDrawImage.call(this, canvas, left, top, ...args);
+        }
+    };
 })();
 
 </script>
