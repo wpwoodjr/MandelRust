@@ -6,7 +6,7 @@
 class Touch {
     constructor(id, options) {
         this.id = id;
-        this.parentElement = document.getElementById(id);
+        this.element = document.getElementById(id);
         options = options || {};
         this.onInit = options.onInit || null;
         this.onDragStart = options.onDragStart || null;
@@ -17,6 +17,7 @@ class Touch {
         this.onPinchStart = options.onPinchStart || null;
         this.onPinchMove = options.onPinchMove || null;
         this.onPinchEnd = options.onPinchEnd || null;
+        this.allowDocumentTouches = options.allowDocumentTouches || false;
         this.data = options.data || {};
 
         // Variables to store touch positions and state
@@ -25,10 +26,22 @@ class Touch {
         this.isPinching = false;
         this.isTapping = false;
         this.singleTapTimeout = null;
-        this.parentElement.addEventListener("touchstart", (event) => this.handleTouchStart(event), {passive: false});
-        this.parentElement.addEventListener("touchmove", (event) => this.handleTouchMove(event), {passive: false});
-        this.parentElement.addEventListener("touchend", (event) => this.handleTouchEnd(event), {passive: false});
-        this.parentElement.addEventListener("touchcancel", (event) => this.handleTouchCancel(event), {passive: false});
+        this.element.addEventListener("touchstart", (event) => this.handleTouchStart(event), {passive: false});
+        this.element.addEventListener("touchmove", (event) => this.handleTouchMove(event), {passive: false});
+        this.element.addEventListener("touchend", (event) => this.handleTouchEnd(event), {passive: false});
+        this.element.addEventListener("touchcancel", (event) => this.handleTouchCancel(event), {passive: false});
+        if (! this.allowDocumentTouches) {
+            document.addEventListener('touchstart', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+            // document.addEventListener('touchmove', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+            // document.addEventListener('touchend', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+        }
+    }
+
+    // prevent touches on the document from interfering with element touches
+    handleDocumentTouchEvent(event) {
+        if (this.startTouches.length !== 0) {
+            event.preventDefault();
+        }
     }
 
     handleTouchStart(event) {
@@ -38,8 +51,10 @@ class Touch {
             this.onInit = null;
         }
 
-        // Store the initial touch positions; ignore if already tracking some touches
-        if (! (this.isDragging || this.isPinching || this.isTapping)) {
+        // Store the touch positions if touch events aren't happening outside the target element
+        // and dragging, pinching, or tapping have not started yet
+        if (event.touches.length === event.targetTouches.length
+            && ! (this.isDragging || this.isPinching || this.isTapping)) {
             this.startTouches = this.copyTouches(event.targetTouches);
         }
     }
@@ -50,6 +65,7 @@ class Touch {
 
         // check for continue drag
         if (this.isDragging) {
+            event.preventDefault();
             if (this.onDragMove) {
                 const id = this.startTouches[0].identifier;
                 for (const e of event.changedTouches) {
@@ -62,6 +78,7 @@ class Touch {
 
         // check for continue two finger pinching///???check ids?
         } else if (this.isPinching) {
+            event.preventDefault();
             if (this.onPinchMove) {
                 this.onPinchMove(event.targetTouches[0].clientX, event.targetTouches[0].clientY,
                     event.targetTouches[1].clientX, event.targetTouches[1].clientY);
@@ -69,6 +86,7 @@ class Touch {
 
         // check for start of one touch drag
         } else if (event.targetTouches.length === 1 && this.startTouches.length === 1) {
+            event.preventDefault();
             this.isDragging = true;
             if (this.onDragStart) {
                 this.onDragStart(this.startTouches[0].clientX, this.startTouches[0].clientY);
@@ -79,6 +97,7 @@ class Touch {
 
         // check if there are two touches for pinch gesture
         } else if (event.targetTouches.length === 2 && this.startTouches.length === 2) {
+            event.preventDefault();
             this.isPinching = true;
             if (this.onPinchStart) {
                 this.onPinchStart(this.startTouches[0].clientX, this.startTouches[0].clientY,
@@ -89,9 +108,6 @@ class Touch {
                     event.targetTouches[1].clientX, event.targetTouches[1].clientY);
             }
         }
-
-        // Prevent scrolling on the page
-        event.preventDefault();
     }
 
     // Handle touch end event
@@ -132,6 +148,8 @@ class Touch {
                     }
                 }, 350);
             }
+        } else {
+            this.startTouches = [];
         }
     }
  
