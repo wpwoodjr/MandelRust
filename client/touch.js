@@ -53,8 +53,9 @@ class Touch {
 
         // Store the touch positions if touch events aren't happening outside the target element
         // and dragging, pinching, or tapping have not started yet
-        if (event.touches.length === event.targetTouches.length
-            && ! (this.isDragging || this.isPinching || this.isTapping)) {
+        // if (event.touches.length === event.targetTouches.length
+        //     && ! (this.isDragging || this.isPinching || this.isTapping)) {
+        if (! (this.isDragging || this.isPinching || this.isTapping)) {
             this.startTouches = this.copyTouches(event.targetTouches);
         }
     }
