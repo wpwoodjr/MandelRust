@@ -9,6 +9,7 @@ class Touch {
         this.element = document.getElementById(id);
         options = options || {};
         this.onInit = options.onInit || null;
+        this.onTouchStart = options.onTouchStart || null;
         this.onDragStart = options.onDragStart || null;
         this.onDragMove = options.onDragMove || null;
         this.onDragEnd = options.onDragEnd || null;
@@ -51,11 +52,15 @@ class Touch {
             this.onInit = null;
         }
 
+        if (this.onTouchStart) {
+            this.onTouchStart();
+        }
+
         // Store the touch positions if touch events aren't happening outside the target element
         // and dragging, pinching, or tapping have not started yet
-        if (event.touches.length === event.targetTouches.length
-            && ! (this.isDragging || this.isPinching || this.isTapping)) {
-        // if (! (this.isDragging || this.isPinching || this.isTapping)) {
+        // if (event.touches.length === event.targetTouches.length
+        //     && ! (this.isDragging || this.isPinching || this.isTapping)) {
+        if (! (this.isDragging || this.isPinching || this.isTapping)) {
             this.startTouches = this.copyTouches(event.targetTouches);
         }
     }
