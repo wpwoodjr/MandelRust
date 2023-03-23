@@ -8,6 +8,7 @@ class Touch {
         this.id = id;
         this.element = document.getElementById(id);
         options = options || {};
+        this.FPS = options.FPS || 60;
         this.onInit = options.onInit || null;
         this.onTouchStart = options.onTouchStart || null;
         this.onDragStart = options.onDragStart || null;
@@ -18,10 +19,10 @@ class Touch {
         this.onPinchStart = options.onPinchStart || null;
         this.onPinchMove = options.onPinchMove || null;
         this.onPinchEnd = options.onPinchEnd || null;
-        // this.allowDocumentTouches = options.allowDocumentTouches || false;
         this.data = options.data || {};
 
         // Variables to store touch positions and state
+        this.startTime = NaN;
         this.startTouches = [];
         this.isDragging = false;
         this.isPinching = false;
@@ -31,20 +32,7 @@ class Touch {
         this.element.addEventListener("touchmove", (event) => this.handleTouchMove(event), {passive: false});
         this.element.addEventListener("touchend", (event) => this.handleTouchEnd(event), {passive: false});
         this.element.addEventListener("touchcancel", (event) => this.handleTouchCancel(event), {passive: false});
-        // if (! this.allowDocumentTouches) {
-        //     document.addEventListener('touchstart', (event) => this.handleDocumentTouchEvent(event), {passive: false});
-        //     document.addEventListener('touchmove', (event) => this.handleDocumentTouchEvent(event), {passive: false});
-        //     document.addEventListener('touchend', (event) => this.handleDocumentTouchEvent(event), {passive: false});
-        //     document.addEventListener('touchcancel', (event) => this.handleDocumentTouchEvent(event), {passive: false});
-        // }
     }
-
-    // // prevent touches on the document from interfering with element touches
-    // handleDocumentTouchEvent(event) {
-    //     if (this.startTouches.length !== 0) {
-    //         event.preventDefault();
-    //     }
-    // }
 
     handleTouchStart(event) {
         // console.log("touch start");
@@ -72,11 +60,15 @@ class Touch {
         // check for continue drag
         if (this.isDragging) {
             if (this.onDragMove) {
-                const id = this.startTouches[0].identifier;
-                for (const e of event.changedTouches) {
-                    if (e.identifier === id) {
-                        this.onDragMove(e.clientX, e.clientY);
-                        break;
+                const elapsed = Date.now() - this.startTime;
+                if (elapsed >= 1000/this.FPS) {
+                    this.startTime = Date.now();
+                    const id = this.startTouches[0].identifier;
+                    for (const e of event.changedTouches) {
+                        if (e.identifier === id) {
+                            this.onDragMove(this.startTouches[0].clientX, this.startTouches[0].clientY, e.clientX, e.clientY);
+                            break;
+                        }
                     }
                 }
             }
@@ -97,11 +89,9 @@ class Touch {
             // const dist = Math.pow(startX - endX, 2) + Math.pow(startY - endY, 2);
             // message.innerHTML = dist;
             this.isDragging = true;
+            this.startTime = Date.now();
             if (this.onDragStart) {
                 this.onDragStart(startX, startY);
-            }
-            if (this.onDragMove) {
-                this.onDragMove(endX, endY);
             }
 
         // check if there are two touches for pinch gesture
@@ -181,10 +171,14 @@ class Touch {
         const id = this.startTouches[0].identifier;
         for (const e of event.changedTouches) {
             if (e.identifier === id) {
+                const startX = this.startTouches[0].clientX;
+                const startY = this.startTouches[0].clientY;
+                const endX = event.changedTouches[0].clientX;
+                const endY = event.changedTouches[0].clientY;
                 this.isDragging = false;
                 this.startTouches = [];
                 if (this.onDragEnd) {
-                    this.onDragEnd();
+                    this.onDragEnd(startX, startY, endX, endY);
                 }
                 return;
             }

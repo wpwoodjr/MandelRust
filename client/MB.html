@@ -1116,8 +1116,8 @@ function zoom(x, y, zoomFactor, recenter, undo) {  // (x,y) is center of zoom, i
 
 function doTranslate(x, y, undo) {
     // console.log("doTranslate", x, y);
-    var rectX = new BigDecimal("" + Math.round(x));  // (Firefox can have fractional parts)
-    var rectY = new BigDecimal("" + Math.round(y));
+    var rectX = new BigDecimal("" + Math.round(-x));  // (Firefox can have fractional parts)
+    var rectY = new BigDecimal("" + Math.round(-y));
     var rectW = new BigDecimal("" + Math.round(canvas.width));
     var rectH = new BigDecimal("" + Math.round(canvas.height));
     var ImageWidth = new BigDecimal("" + canvas.width);
@@ -3274,12 +3274,8 @@ function initTouch() {
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints;
     if (isTouchDevice) {
         touch = new Touch("canvas", {
+            FPS: FPS,
             data: {
-                startX: NaN,
-                startY: NaN,
-                lastX: NaN,
-                lastY: NaN,
-                startTime: NaN,
                 canvas: null,
                 ctx: null,
                 pinchStart: [],
@@ -3308,38 +3304,28 @@ function initTouch() {
                     toFullWindowCanvas();
                 }
             },
-            onDragStart: function(x, y) {
+            onDragStart: function(startX, startY) {
                 // console.log("onDragStart");
-                this.data.startX = x;
-                this.data.startY = y;
-                this.startTime = Date.now();
                 this.data.canvas.width = canvas.width;
                 this.data.canvas.height = canvas.height;
                 // get latest OSC
                 // stopJob();
                 this.data.ctx.drawImage(OSC, 0, 0);
             },
-            onDragMove: function(x, y) {
-                this.data.lastX = x;
-                this.data.lastY = y;
-                let now = Date.now();
-                let elapsed = now - this.startTime;
-                // console.log(this.startTime);
-                if (elapsed > 1000/FPS) {
-                    this.startTime = now;
-                    const shiftX = x - this.data.startX;
-                    const shiftY = y - this.data.startY;
+            onDragMove: function(startX, startY, endX, endY) {
+                const shiftX = endX - startX;
+                const shiftY = endY - startY;
 
-                    // translate image into OSG with gray surround
-                    OSG.fillStyle = "#BBBBBB";
-                    OSG.fillRect(0, 0, canvas.width, canvas.height);
-                    OSG.drawImage(this.data.canvas, shiftX, shiftY);
-                    graphics.drawImage(OSC, 0, 0);
-                }
+                // translate image into OSG with gray surround
+                OSG.fillStyle = "#BBBBBB";
+                OSG.fillRect(0, 0, canvas.width, canvas.height);
+                OSG.drawImage(this.data.canvas, shiftX, shiftY);
+                graphics.drawImage(OSC, 0, 0);
             },
-            onDragEnd: function() {
-                const shiftX = this.data.startX - this.data.lastX;
-                const shiftY = this.data.startY - this.data.lastY;
+            onDragEnd: function(startX, startY, endX, endY) {
+                const shiftX = endX - startX;
+                const shiftY = endY - startY;
+
                 doTranslate(shiftX, shiftY, true);
                 startJob(true);
             },
