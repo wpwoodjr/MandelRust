@@ -32,11 +32,11 @@ class Touch {
         this.element.addEventListener("touchmove", (event) => this.handleTouchMove(event), {passive: false});
         this.element.addEventListener("touchend", (event) => this.handleTouchEnd(event), {passive: false});
         this.element.addEventListener("touchcancel", (event) => this.handleTouchCancel(event), {passive: false});
-        // if (! this.allowDocumentTouches) {
-        //     document.addEventListener('touchstart', (event) => this.handleDocumentTouchEvent(event), {passive: false});
-        //     // document.addEventListener('touchmove', (event) => this.handleDocumentTouchEvent(event), {passive: false});
-        //     // document.addEventListener('touchend', (event) => this.handleDocumentTouchEvent(event), {passive: false});
-        // }
+        if (! this.allowDocumentTouches) {
+            document.addEventListener('touchstart', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+            // document.addEventListener('touchmove', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+            // document.addEventListener('touchend', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+        }
     }
 
     // prevent touches on the document from interfering with element touches
