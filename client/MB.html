@@ -1398,7 +1398,7 @@ function setCanvasToWindow() {
     setTooltipSize();
     let w, h;
     const ratio = window.outerHeight/window.outerWidth;
-    message.innerHTML = "setCanvasToWindow: " + ratio;
+    message.innerHTML = "setCanvasToWindow (outer): " + ratio;
     w = canvas.parentElement.clientWidth;
     w = Math.max(64, w);
     h = Math.max(64, Math.round(w*ratio));
