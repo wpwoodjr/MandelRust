@@ -23,7 +23,6 @@ class Touch {
 
         // Variables to store touch positions and state
         this.startTouches = [];
-        this.startTimer = null;
         this.isDragging = false;
         this.isPinching = false;
         this.isTapping = false;
