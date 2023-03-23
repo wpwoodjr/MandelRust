@@ -1,6 +1,7 @@
 Two-finger tap to zoom out?
 A drag is a pinch with one finger
 Maybe need to kill workers to increase responsiveness to touch on mobile with "default" settings
+When first open site on Pixel, image height is too large; then resizes as soon as you touch anything
 Safari doesn't handle negative numbers properly in drawImage
 Safari on macOS doesn't show zoom animation when shft-double-clicking
 Double-tap not working ios - zooms to wrong place, then partially draws (sometimes), never completes, says First pass... but no rps

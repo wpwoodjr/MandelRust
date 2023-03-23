@@ -523,7 +523,7 @@ function newWorkers(count) {
     }
 }
 
-const MAX_SECONDS_PER_JOB = 4;
+const MAX_SECONDS_PER_JOB = 1;
 function stopJob(dontUpdateStatusToIdle) {
     // console.log("stopJob", running, jobsPerSecond, workerCount/MAX_SECONDS_PER_JOB, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     if (zoomTimeout) {
