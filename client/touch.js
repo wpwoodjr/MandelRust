@@ -164,7 +164,7 @@ class Touch {
                     if (this.onSingleTap) {
                         this.onSingleTap(startX, startY);
                     }
-                }, 275);
+                }, 300);
             }
         } else {
             this.startTouches = [];
