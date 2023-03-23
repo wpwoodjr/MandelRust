@@ -94,8 +94,8 @@ class Touch {
             const startY = this.startTouches[0].clientY;
             const endX = event.targetTouches[0].clientX;
             const endY = event.targetTouches[0].clientY;
-            // const dist = Math.pow(startX - endX, 2) + Math.pow(startY - endY, 2);
-            // message.innerHTML = dist;
+            const dist = Math.pow(startX - endX, 2) + Math.pow(startY - endY, 2);
+            message.innerHTML = dist;
             this.isDragging = true;
             if (this.onDragStart) {
                 this.onDragStart(startX, startY);
