@@ -1397,8 +1397,7 @@ function setCanvasToWindow() {
     canvas.classList.add("fitWindowCanvas");
     setTooltipSize();
     let w, h;
-    const ratio = window.outerHeight/window.outerWidth;
-    message.innerHTML = "setCanvasToWindow (outer): " + ratio;
+    const ratio = window.innerHeight/window.innerWidth;
     w = canvas.parentElement.clientWidth;
     w = Math.max(64, w);
     h = Math.max(64, Math.round(w*ratio));
@@ -1471,8 +1470,6 @@ function resizeWindow() {
     } else {
         // console.log("resize:", currentImageSize[0], currentImageSize[1]);
         setTooltipSize();
-        const ratio = window.innerHeight/window.innerWidth;
-        message.innerHTML += " resizeWindow: " + ratio;
         setImageSize(currentImageSize[0], currentImageSize[1], false);
     }
 }
