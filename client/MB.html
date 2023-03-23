@@ -1451,6 +1451,7 @@ function setImageSize(w, h, undo, doDraw) {
     if (w === 0 && h === 0) {
         canvas.classList.add("fitWindowCanvas");
         const ratio = window.innerHeight/window.innerWidth;
+        message.innerHTML = "setImageSize: " + ratio;
         w = canvas.parentElement.clientWidth;
         w = Math.max(64, w);
         h = Math.max(64, Math.round(w*ratio));
@@ -1470,6 +1471,8 @@ function resizeWindow() {
     } else {
         // console.log("resize:", currentImageSize[0], currentImageSize[1]);
         setTooltipSize();
+        const ratio = window.innerHeight/window.innerWidth;
+        message.innerHTML = "resizeWindow: " + ratio;
         setImageSize(currentImageSize[0], currentImageSize[1], false);
     }
 }
