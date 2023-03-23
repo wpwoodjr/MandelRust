@@ -3278,8 +3278,6 @@ function initTouch() {
             data: {
                 canvas: null,
                 ctx: null,
-                pinchStart: [],
-                pinchLast: []
             },
             onTouchStart: function() {
                 stopJob();
@@ -3304,7 +3302,7 @@ function initTouch() {
                     toFullWindowCanvas();
                 }
             },
-            onDragStart: function(startX, startY) {
+            onDragStart: function() {
                 // console.log("onDragStart");
                 this.data.canvas.width = canvas.width;
                 this.data.canvas.height = canvas.height;
@@ -3329,28 +3327,19 @@ function initTouch() {
                 doTranslate(shiftX, shiftY, true);
                 startJob(true);
             },
-            onPinchStart: function(x1, y1, x2, y2) {
-                this.data.pinchStart = [x1, y1, x2, y2];
-                this.data.canvas.width = canvas.width;
-                this.data.canvas.height = canvas.height;
-                // get latest OSC
-                // stopJob();
-                this.data.ctx.drawImage(OSC, 0, 0);
+            onPinchStart: function() {
+                this.onDragStart();
             },
-            onPinchMove: function(x1, y1, x2, y2) {
-                this.data.pinchLast = [x1, y1, x2, y2];
-                const ps = this.data.pinchStart;
-                const pl = this.data.pinchLast;
-
+            onPinchMove: function(ps, pe) {
                 const centerXStart = (ps[0] + ps[2])/2;
                 const centerYStart = (ps[1] + ps[3])/2;
-                let centerXLast = (pl[0] + pl[2])/2;
-                let centerYLast = (pl[1] + pl[3])/2;
+                let centerXLast = (pe[0] + pe[2])/2;
+                let centerYLast = (pe[1] + pe[3])/2;
                 const shiftX = centerXStart - centerXLast;
                 const shiftY = centerYStart - centerYLast;
 
                 const lenStart = Math.sqrt(Math.pow(ps[0] - ps[2], 2) + Math.pow(ps[1] - ps[3], 2));
-                const lenLast = Math.sqrt(Math.pow(pl[0] - pl[2], 2) + Math.pow(pl[1] - pl[3], 2));
+                const lenLast = Math.sqrt(Math.pow(pe[0] - pe[2], 2) + Math.pow(pe[1] - pe[3], 2));
                 const zoomFactor = lenStart/lenLast;
 
                 const r = canvas.getBoundingClientRect();
@@ -3369,19 +3358,16 @@ function initTouch() {
                 OSG.drawImage(this.data.canvas, left, top, width, height, 0, 0, canvas.width, canvas.height);
                 graphics.drawImage(OSC, 0, 0);
             },
-            onPinchEnd: function() {
-                const ps = this.data.pinchStart;
-                const pl = this.data.pinchLast;
-
+            onPinchEnd: function(ps, pe) {
                 const centerXStart = (ps[0] + ps[2])/2;
                 const centerYStart = (ps[1] + ps[3])/2;
-                let centerXLast = (pl[0] + pl[2])/2;
-                let centerYLast = (pl[1] + pl[3])/2;
+                let centerXLast = (pe[0] + pe[2])/2;
+                let centerYLast = (pe[1] + pe[3])/2;
                 const shiftX = centerXStart - centerXLast;
                 const shiftY = centerYStart - centerYLast;
 
                 const lenStart = Math.sqrt(Math.pow(ps[0] - ps[2], 2) + Math.pow(ps[1] - ps[3], 2));
-                const lenLast = Math.sqrt(Math.pow(pl[0] - pl[2], 2) + Math.pow(pl[1] - pl[3], 2));
+                const lenLast = Math.sqrt(Math.pow(pe[0] - pe[2], 2) + Math.pow(pe[1] - pe[3], 2));
                 const zoomFactor = lenStart/lenLast;
                 const undoText = zoomFactor > 1 ? "Pinch Zoom Out" : "Pinch Zoom In";
 

@@ -24,6 +24,7 @@ class Touch {
         // Variables to store touch positions and state
         this.startTime = NaN;
         this.startTouches = [];
+        this.endTouches = [];
         this.isDragging = false;
         this.isPinching = false;
         this.isTapping = false;
@@ -75,12 +76,16 @@ class Touch {
 
         // check for continue two finger pinching///???check ids?
         } else if (this.isPinching) {
+            this.endTouches = this.copyTouches(event.targetTouches);
             if (this.onPinchMove) {
                 const elapsed = Date.now() - this.startTime;
                 if (elapsed >= 1000/this.FPS) {
                     this.startTime = Date.now();
-                    this.onPinchMove(event.targetTouches[0].clientX, event.targetTouches[0].clientY,
-                        event.targetTouches[1].clientX, event.targetTouches[1].clientY);
+                    this.onPinchMove(
+                        [this.startTouches[0].clientX, this.startTouches[0].clientY,
+                            this.startTouches[1].clientX, this.startTouches[1].clientY],
+                        [event.targetTouches[0].clientX, event.targetTouches[0].clientY,
+                            event.targetTouches[1].clientX, event.targetTouches[1].clientY]);
                 }
             }
 
@@ -94,7 +99,7 @@ class Touch {
             // message.innerHTML = dist;
             this.isDragging = true;
             if (this.onDragStart) {
-                this.onDragStart(startX, startY);
+                this.onDragStart();
             }
             this.startTime = Date.now();
             if (this.onDragMove) {
@@ -105,13 +110,16 @@ class Touch {
         } else if (event.targetTouches.length === 2 && this.startTouches.length === 2) {
             this.isPinching = true;
             if (this.onPinchStart) {
-                this.onPinchStart(this.startTouches[0].clientX, this.startTouches[0].clientY,
-                    this.startTouches[1].clientX, this.startTouches[1].clientY);
+                this.onPinchStart();
             };
+            this.endTouches = this.copyTouches(event.targetTouches);
             this.startTime = Date.now();
             if (this.onPinchMove) {
-                this.onPinchMove(event.targetTouches[0].clientX, event.targetTouches[0].clientY,
-                    event.targetTouches[1].clientX, event.targetTouches[1].clientY);
+                this.onPinchMove(
+                    [this.startTouches[0].clientX, this.startTouches[0].clientY,
+                        this.startTouches[1].clientX, this.startTouches[1].clientY],
+                    [event.targetTouches[0].clientX, event.targetTouches[0].clientY,
+                        event.targetTouches[1].clientX, event.targetTouches[1].clientY]);
             }
         }
 
@@ -179,34 +187,27 @@ class Touch {
         const id = this.startTouches[0].identifier;
         for (const e of event.changedTouches) {
             if (e.identifier === id) {
-                const startX = this.startTouches[0].clientX;
-                const startY = this.startTouches[0].clientY;
-                const endX = event.changedTouches[0].clientX;
-                const endY = event.changedTouches[0].clientY;
                 this.isDragging = false;
-                this.startTouches = [];
                 if (this.onDragEnd) {
-                    this.onDragEnd(startX, startY, endX, endY);
+                    this.onDragEnd(this.startTouches[0].clientX, this.startTouches[0].clientY, e.clientX, e.clientY);
                 }
+                this.startTouches = [];
                 return;
             }
         }
     }
 
     pinchEnd(event) {
-        const id0 = this.startTouches[0].identifier;
-        const id1 = this.startTouches[1].identifier;
-        for (const e of event.changedTouches) {
-            // end if one of the original fingers was lifted
-            if (e.identifier === id0 || e.identifier === id1) {
-                this.isPinching = false;
-                this.startTouches = [];
-                if (this.onPinchEnd) {
-                    this.onPinchEnd();
-                }
-                return;
-            }
+        this.isPinching = false;
+        if (this.onPinchEnd) {
+            this.onPinchEnd(
+                [this.startTouches[0].clientX, this.startTouches[0].clientY,
+                    this.startTouches[1].clientX, this.startTouches[1].clientY],
+                [this.endTouches[0].clientX, this.endTouches[0].clientY,
+                this.endTouches[1].clientX, this.endTouches[1].clientY]);
         }
+        this.startTouches = [];
+        this.endTouches = [];
     }
 
     tapEnd() {

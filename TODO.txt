@@ -1,5 +1,6 @@
 Two-finger tap to zoom out?
 A drag is a pinch with one finger
+Undo Move for touch move doesn't translate image first
 Maybe need to kill workers to increase responsiveness to touch on mobile with "default" settings
 When first open site on Pixel, image height is too large; then resizes as soon as you touch anything
 Safari doesn't handle negative numbers properly in drawImage
