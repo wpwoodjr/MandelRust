@@ -75,9 +75,6 @@ class Touch {
                 const id = this.startTouches[0].identifier;
                 for (const e of event.changedTouches) {
                     if (e.identifier === id) {
-                        const dist = Math.sqrt(Math.pow(this.startTouches[0].clientX - event.targetTouches[0].clientX, 2) +
-                            Math.pow(this.startTouches[0].clientY - event.targetTouches[0].clientY, 2));
-                        message.innerHTML = dist;
                         this.onDragMove(e.clientX, e.clientY);
                         break;
                     }
@@ -93,15 +90,19 @@ class Touch {
 
         // check for start of one touch drag
         } else if (event.targetTouches.length === 1 && this.startTouches.length === 1) {
-            const dist = Math.sqrt(Math.pow(this.startTouches[0].clientX - event.targetTouches[0].clientX, 2) +
-                Math.pow(this.startTouches[0].clientY - event.targetTouches[0].clientY, 2));
-            message.innerHTML = dist;
-            this.isDragging = true;
-            if (this.onDragStart) {
-                this.onDragStart(this.startTouches[0].clientX, this.startTouches[0].clientY);
-            };
-            if (this.onDragMove) {
-                this.onDragMove(event.targetTouches[0].clientX, event.targetTouches[0].clientY);
+            const startX = this.startTouches[0].clientX;
+            const startY = this.startTouches[0].clientY;
+            const endX = event.targetTouches[0].clientX;
+            const endY = event.targetTouches[0].clientY;
+            const dist = Math.pow(startX - endX, 2) + Math.pow(startY - endY, 2);
+            if (dist >= 4) {
+                this.isDragging = true;
+                if (this.onDragStart) {
+                    this.onDragStart(startX, startY);
+                }
+                if (this.onDragMove) {
+                    this.onDragMove(endX, endY);
+                }
             }
 
         // check if there are two touches for pinch gesture
