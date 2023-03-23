@@ -3285,9 +3285,9 @@ function initTouch() {
                 pinchStart: [],
                 pinchLast: []
             },
-            // onTouchStart: function() {
-            //     stopJob();
-            // },
+            onTouchStart: function() {
+                stopJob();
+            },
             onInit: function() {
                 this.data.canvas = document.createElement("canvas");
                 this.data.ctx = this.data.canvas.getContext("2d");
@@ -3316,7 +3316,7 @@ function initTouch() {
                 this.data.canvas.width = canvas.width;
                 this.data.canvas.height = canvas.height;
                 // get latest OSC
-                stopJob();
+                // stopJob();
                 this.data.ctx.drawImage(OSC, 0, 0);
             },
             onDragMove: function(x, y) {
@@ -3349,7 +3349,7 @@ function initTouch() {
                 this.data.canvas.width = canvas.width;
                 this.data.canvas.height = canvas.height;
                 // get latest OSC
-                stopJob();
+                // stopJob();
                 this.data.ctx.drawImage(OSC, 0, 0);
             },
             onPinchMove: function(x1, y1, x2, y2) {
