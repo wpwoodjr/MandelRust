@@ -526,6 +526,10 @@ function newWorkers(count) {
 const MAX_SECONDS_PER_JOB = 4;
 function stopJob(dontUpdateStatusToIdle) {
     // console.log("stopJob", running, jobsPerSecond, workerCount/MAX_SECONDS_PER_JOB, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
+    if (zoomTimeout) {
+        clearInterval(zoomTimeout);
+        zoomTimeout = null;
+    }
     if (running) {
         jobNum++;
         running = false;
@@ -3312,7 +3316,7 @@ function initTouch() {
                 this.data.canvas.width = canvas.width;
                 this.data.canvas.height = canvas.height;
                 // get latest OSC
-                // stopJob();
+                stopJob();
                 this.data.ctx.drawImage(OSC, 0, 0);
             },
             onDragMove: function(x, y) {
@@ -3345,7 +3349,7 @@ function initTouch() {
                 this.data.canvas.width = canvas.width;
                 this.data.canvas.height = canvas.height;
                 // get latest OSC
-                // stopJob();
+                stopJob();
                 this.data.ctx.drawImage(OSC, 0, 0);
             },
             onPinchMove: function(x1, y1, x2, y2) {

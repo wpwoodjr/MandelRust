@@ -32,6 +32,7 @@ UCArray stuff
 Keep JS worker?
 ///stuff
 
+>Zoom out too fast and it hangs
 >check tooltip position calculations
 >image too small when window maximised, check width calcs and vw width
 >pinch in (zoom out) leaves an undo that says zoom in

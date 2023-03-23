@@ -52,9 +52,9 @@ class Touch {
             this.onInit = null;
         }
 
-        if (this.onTouchStart) {
-            this.onTouchStart();
-        }
+        // if (this.onTouchStart) {
+        //     this.onTouchStart();
+        // }
 
         // Store the touch positions if touch events aren't happening outside the target element
         // and dragging, pinching, or tapping have not started yet
