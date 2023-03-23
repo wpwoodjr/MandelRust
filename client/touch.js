@@ -32,9 +32,10 @@ class Touch {
         this.element.addEventListener("touchend", (event) => this.handleTouchEnd(event), {passive: false});
         this.element.addEventListener("touchcancel", (event) => this.handleTouchCancel(event), {passive: false});
         if (! this.allowDocumentTouches) {
-            // document.addEventListener('touchstart', (event) => this.handleDocumentTouchEvent(event), {passive: false});
-            // document.addEventListener('touchmove', (event) => this.handleDocumentTouchEvent(event), {passive: false});
-            // document.addEventListener('touchend', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+            document.addEventListener('touchstart', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+            document.addEventListener('touchmove', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+            document.addEventListener('touchend', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+            document.addEventListener('touchcancel', (event) => this.handleDocumentTouchEvent(event), {passive: false});
         }
     }
 
@@ -56,11 +57,10 @@ class Touch {
             this.onTouchStart();
         }
 
-        // Store the touch positions if touch events aren't happening outside the target element
-        // and dragging, pinching, or tapping have not started yet
+        // Store the touch positions if touch events aren't also happening outside the target element,
+        // and if dragging, pinching, or tapping have not started yet
         if (event.touches.length === event.targetTouches.length
             && ! (this.isDragging || this.isPinching || this.isTapping)) {
-        // if (! (this.isDragging || this.isPinching || this.isTapping)) {
             this.startTouches = this.copyTouches(event.targetTouches);
         }
     }
@@ -94,17 +94,15 @@ class Touch {
             const startY = this.startTouches[0].clientY;
             const endX = event.targetTouches[0].clientX;
             const endY = event.targetTouches[0].clientY;
-            const dist = Math.pow(startX - endX, 2) + Math.pow(startY - endY, 2);
-            message.innerHTML = dist;
-            // if (dist >= 4) {
-                this.isDragging = true;
-                if (this.onDragStart) {
-                    this.onDragStart(startX, startY);
-                }
-                if (this.onDragMove) {
-                    this.onDragMove(endX, endY);
-                }
-            // }
+            // const dist = Math.pow(startX - endX, 2) + Math.pow(startY - endY, 2);
+            // message.innerHTML = dist;
+            this.isDragging = true;
+            if (this.onDragStart) {
+                this.onDragStart(startX, startY);
+            }
+            if (this.onDragMove) {
+                this.onDragMove(endX, endY);
+            }
 
         // check if there are two touches for pinch gesture
         } else if (event.targetTouches.length === 2 && this.startTouches.length === 2) {
