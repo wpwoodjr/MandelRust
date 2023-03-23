@@ -32,7 +32,7 @@ class Touch {
         this.element.addEventListener("touchend", (event) => this.handleTouchEnd(event), {passive: false});
         this.element.addEventListener("touchcancel", (event) => this.handleTouchCancel(event), {passive: false});
         if (! this.allowDocumentTouches) {
-            document.addEventListener('touchstart', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+            // document.addEventListener('touchstart', (event) => this.handleDocumentTouchEvent(event), {passive: false});
             // document.addEventListener('touchmove', (event) => this.handleDocumentTouchEvent(event), {passive: false});
             // document.addEventListener('touchend', (event) => this.handleDocumentTouchEvent(event), {passive: false});
         }
@@ -95,7 +95,8 @@ class Touch {
             const endX = event.targetTouches[0].clientX;
             const endY = event.targetTouches[0].clientY;
             const dist = Math.pow(startX - endX, 2) + Math.pow(startY - endY, 2);
-            if (dist >= 4) {
+            message.innerHTML = dist;
+            // if (dist >= 4) {
                 this.isDragging = true;
                 if (this.onDragStart) {
                     this.onDragStart(startX, startY);
@@ -103,7 +104,7 @@ class Touch {
                 if (this.onDragMove) {
                     this.onDragMove(endX, endY);
                 }
-            }
+            // }
 
         // check if there are two touches for pinch gesture
         } else if (event.targetTouches.length === 2 && this.startTouches.length === 2) {
