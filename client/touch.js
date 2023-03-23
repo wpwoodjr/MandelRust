@@ -59,21 +59,16 @@ class Touch {
 
         // Store the touch positions if touch events aren't happening outside the target element
         // and dragging, pinching, or tapping have not started yet
-        if (event.touches.length === event.targetTouches.length
-            && ! (this.isDragging || this.isPinching || this.isTapping)) {
-        // if (! (this.isDragging || this.isPinching || this.isTapping)) {
+        // if (event.touches.length === event.targetTouches.length
+        //     && ! (this.isDragging || this.isPinching || this.isTapping)) {
+        if (! (this.isDragging || this.isPinching || this.isTapping)) {
             this.startTouches = this.copyTouches(event.targetTouches);
-            // this.startTimer = Date.now();
         }
     }
-      
+
     // Handle touch move event
     handleTouchMove(event) {
-        // const elapsed = Date.now() - this.startTimer;
-        // // console.log("touch move:", elapsed);
-        // if (elapsed < 125) {
-        //     return;
-        // }
+        // console.log("touch move");
 
         // check for continue drag
         if (this.isDragging) {
@@ -124,8 +119,7 @@ class Touch {
 
     // Handle touch end event
     handleTouchEnd(event) {
-        // const elapsed = Date.now() - this.startTimer;
-        // console.log("touch end:", elapsed);
+        // console.log("touch end");
 
         if (this.isDragging) {
             this.dragEnd(event);
