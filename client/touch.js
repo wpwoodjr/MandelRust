@@ -58,9 +58,9 @@ class Touch {
 
         // Store the touch positions if touch events aren't happening outside the target element
         // and dragging, pinching, or tapping have not started yet
-        // if (event.touches.length === event.targetTouches.length
-        //     && ! (this.isDragging || this.isPinching || this.isTapping)) {
-        if (! (this.isDragging || this.isPinching || this.isTapping)) {
+        if (event.touches.length === event.targetTouches.length
+            && ! (this.isDragging || this.isPinching || this.isTapping)) {
+        // if (! (this.isDragging || this.isPinching || this.isTapping)) {
             this.startTouches = this.copyTouches(event.targetTouches);
         }
     }
@@ -75,6 +75,9 @@ class Touch {
                 const id = this.startTouches[0].identifier;
                 for (const e of event.changedTouches) {
                     if (e.identifier === id) {
+                        const dist = Math.sqrt(Math.pow(this.startTouches[0].clientX - event.targetTouches[0].clientX, 2) +
+                            Math.pow(this.startTouches[0].clientY - event.targetTouches[0].clientY, 2));
+                        message.innerHTML = dist;
                         this.onDragMove(e.clientX, e.clientY);
                         break;
                     }
@@ -90,6 +93,9 @@ class Touch {
 
         // check for start of one touch drag
         } else if (event.targetTouches.length === 1 && this.startTouches.length === 1) {
+            const dist = Math.sqrt(Math.pow(this.startTouches[0].clientX - event.targetTouches[0].clientX, 2) +
+                Math.pow(this.startTouches[0].clientY - event.targetTouches[0].clientY, 2));
+            message.innerHTML = dist;
             this.isDragging = true;
             if (this.onDragStart) {
                 this.onDragStart(this.startTouches[0].clientX, this.startTouches[0].clientY);
