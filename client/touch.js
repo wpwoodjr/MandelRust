@@ -32,11 +32,11 @@ class Touch {
         this.element.addEventListener("touchmove", (event) => this.handleTouchMove(event), {passive: false});
         this.element.addEventListener("touchend", (event) => this.handleTouchEnd(event), {passive: false});
         this.element.addEventListener("touchcancel", (event) => this.handleTouchCancel(event), {passive: false});
-        if (! this.allowDocumentTouches) {
-            document.addEventListener('touchstart', (event) => this.handleDocumentTouchEvent(event), {passive: false});
-            // document.addEventListener('touchmove', (event) => this.handleDocumentTouchEvent(event), {passive: false});
-            // document.addEventListener('touchend', (event) => this.handleDocumentTouchEvent(event), {passive: false});
-        }
+        // if (! this.allowDocumentTouches) {
+        //     document.addEventListener('touchstart', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+        //     // document.addEventListener('touchmove', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+        //     // document.addEventListener('touchend', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+        // }
     }
 
     // prevent touches on the document from interfering with element touches
@@ -53,27 +53,27 @@ class Touch {
             this.onInit = null;
         }
 
-        if (this.onTouchStart) {
-            this.onTouchStart();
-        }
+        // if (this.onTouchStart) {
+        //     this.onTouchStart();
+        // }
 
         // Store the touch positions if touch events aren't happening outside the target element
         // and dragging, pinching, or tapping have not started yet
-        if (event.touches.length === event.targetTouches.length
-            && ! (this.isDragging || this.isPinching || this.isTapping)) {
-        // if (! (this.isDragging || this.isPinching || this.isTapping)) {
+        // if (event.touches.length === event.targetTouches.length
+        //     && ! (this.isDragging || this.isPinching || this.isTapping)) {
+        if (! (this.isDragging || this.isPinching || this.isTapping)) {
             this.startTouches = this.copyTouches(event.targetTouches);
-            this.startTimer = Date.now();
+            // this.startTimer = Date.now();
         }
     }
       
     // Handle touch move event
     handleTouchMove(event) {
-        const elapsed = Date.now() - this.startTimer;
-        // console.log("touch move:", elapsed);
-        if (elapsed < 125) {
-            return;
-        }
+        // const elapsed = Date.now() - this.startTimer;
+        // // console.log("touch move:", elapsed);
+        // if (elapsed < 125) {
+        //     return;
+        // }
 
         // check for continue drag
         if (this.isDragging) {
