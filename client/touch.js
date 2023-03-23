@@ -23,6 +23,7 @@ class Touch {
 
         // Variables to store touch positions and state
         this.startTouches = [];
+        this.startTimer = null;
         this.isDragging = false;
         this.isPinching = false;
         this.isTapping = false;
@@ -52,9 +53,9 @@ class Touch {
             this.onInit = null;
         }
 
-        // if (this.onTouchStart) {
-        //     this.onTouchStart();
-        // }
+        if (this.onTouchStart) {
+            this.onTouchStart();
+        }
 
         // Store the touch positions if touch events aren't happening outside the target element
         // and dragging, pinching, or tapping have not started yet
@@ -62,12 +63,17 @@ class Touch {
             && ! (this.isDragging || this.isPinching || this.isTapping)) {
         // if (! (this.isDragging || this.isPinching || this.isTapping)) {
             this.startTouches = this.copyTouches(event.targetTouches);
+            this.startTimer = Date.now();
         }
     }
       
     // Handle touch move event
     handleTouchMove(event) {
-        // console.log("move");
+        const elapsed = Date.now() - this.startTimer;
+        // console.log("touch move:", elapsed);
+        if (elapsed < 125) {
+            return;
+        }
 
         // check for continue drag
         if (this.isDragging) {
@@ -118,7 +124,8 @@ class Touch {
 
     // Handle touch end event
     handleTouchEnd(event) {
-        // console.log("touch end", event);
+        // const elapsed = Date.now() - this.startTimer;
+        // console.log("touch end:", elapsed);
 
         if (this.isDragging) {
             this.dragEnd(event);
@@ -152,7 +159,7 @@ class Touch {
                     if (this.onSingleTap) {
                         this.onSingleTap(startX, startY);
                     }
-                }, 350);
+                }, 300);
             }
         } else {
             this.startTouches = [];
