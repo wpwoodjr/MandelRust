@@ -3331,7 +3331,6 @@ function initTouch() {
             },
             onPinchStart: function(x1, y1, x2, y2) {
                 this.data.pinchStart = [x1, y1, x2, y2];
-                this.startTime = Date.now();
                 this.data.canvas.width = canvas.width;
                 this.data.canvas.height = canvas.height;
                 // get latest OSC
@@ -3340,41 +3339,35 @@ function initTouch() {
             },
             onPinchMove: function(x1, y1, x2, y2) {
                 this.data.pinchLast = [x1, y1, x2, y2];
-                let now = Date.now();
-                let elapsed = now - this.startTime;
-                // console.log(this.startTime, elapsed);
-                if (elapsed > 1000/FPS) {
-                    this.startTime = now;
-                    const ps = this.data.pinchStart;
-                    const pl = this.data.pinchLast;
+                const ps = this.data.pinchStart;
+                const pl = this.data.pinchLast;
 
-                    const centerXStart = (ps[0] + ps[2])/2;
-                    const centerYStart = (ps[1] + ps[3])/2;
-                    let centerXLast = (pl[0] + pl[2])/2;
-                    let centerYLast = (pl[1] + pl[3])/2;
-                    const shiftX = centerXStart - centerXLast;
-                    const shiftY = centerYStart - centerYLast;
+                const centerXStart = (ps[0] + ps[2])/2;
+                const centerYStart = (ps[1] + ps[3])/2;
+                let centerXLast = (pl[0] + pl[2])/2;
+                let centerYLast = (pl[1] + pl[3])/2;
+                const shiftX = centerXStart - centerXLast;
+                const shiftY = centerYStart - centerYLast;
 
-                    const lenStart = Math.sqrt(Math.pow(ps[0] - ps[2], 2) + Math.pow(ps[1] - ps[3], 2));
-                    const lenLast = Math.sqrt(Math.pow(pl[0] - pl[2], 2) + Math.pow(pl[1] - pl[3], 2));
-                    const zoomFactor = lenStart/lenLast;
+                const lenStart = Math.sqrt(Math.pow(ps[0] - ps[2], 2) + Math.pow(ps[1] - ps[3], 2));
+                const lenLast = Math.sqrt(Math.pow(pl[0] - pl[2], 2) + Math.pow(pl[1] - pl[3], 2));
+                const zoomFactor = lenStart/lenLast;
 
-                    const r = canvas.getBoundingClientRect();
-                    // on some devices the bounding rectangle can be at a different scale than the canvas size
-                    centerXLast = (centerXLast - r.left)*canvas.width/(r.right - r.left);
-                    centerYLast = (centerYLast - r.top)*canvas.height/(r.bottom - r.top);
+                const r = canvas.getBoundingClientRect();
+                // on some devices the bounding rectangle can be at a different scale than the canvas size
+                centerXLast = (centerXLast - r.left)*canvas.width/(r.right - r.left);
+                centerYLast = (centerYLast - r.top)*canvas.height/(r.bottom - r.top);
 
-                    const width = canvas.width*zoomFactor;
-                    const height = canvas.height*zoomFactor;
-                    let left = centerXLast*(1 - zoomFactor) + shiftX;
-                    let top = centerYLast*(1 - zoomFactor) + shiftY;
+                const width = canvas.width*zoomFactor;
+                const height = canvas.height*zoomFactor;
+                let left = centerXLast*(1 - zoomFactor) + shiftX;
+                let top = centerYLast*(1 - zoomFactor) + shiftY;
 
-                    // translate and zoom image into OSG with gray surround
-                    OSG.fillStyle = "#BBBBBB";
-                    OSG.fillRect(0, 0, canvas.width, canvas.height);
-                    OSG.drawImage(this.data.canvas, left, top, width, height, 0, 0, canvas.width, canvas.height);
-                    graphics.drawImage(OSC, 0, 0);
-                }
+                // translate and zoom image into OSG with gray surround
+                OSG.fillStyle = "#BBBBBB";
+                OSG.fillRect(0, 0, canvas.width, canvas.height);
+                OSG.drawImage(this.data.canvas, left, top, width, height, 0, 0, canvas.width, canvas.height);
+                graphics.drawImage(OSC, 0, 0);
             },
             onPinchEnd: function() {
                 const ps = this.data.pinchStart;
