@@ -18,7 +18,7 @@ class Touch {
         this.onPinchStart = options.onPinchStart || null;
         this.onPinchMove = options.onPinchMove || null;
         this.onPinchEnd = options.onPinchEnd || null;
-        this.allowDocumentTouches = options.allowDocumentTouches || false;
+        // this.allowDocumentTouches = options.allowDocumentTouches || false;
         this.data = options.data || {};
 
         // Variables to store touch positions and state
@@ -31,20 +31,20 @@ class Touch {
         this.element.addEventListener("touchmove", (event) => this.handleTouchMove(event), {passive: false});
         this.element.addEventListener("touchend", (event) => this.handleTouchEnd(event), {passive: false});
         this.element.addEventListener("touchcancel", (event) => this.handleTouchCancel(event), {passive: false});
-        if (! this.allowDocumentTouches) {
-            document.addEventListener('touchstart', (event) => this.handleDocumentTouchEvent(event), {passive: false});
-            document.addEventListener('touchmove', (event) => this.handleDocumentTouchEvent(event), {passive: false});
-            document.addEventListener('touchend', (event) => this.handleDocumentTouchEvent(event), {passive: false});
-            document.addEventListener('touchcancel', (event) => this.handleDocumentTouchEvent(event), {passive: false});
-        }
+        // if (! this.allowDocumentTouches) {
+        //     document.addEventListener('touchstart', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+        //     document.addEventListener('touchmove', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+        //     document.addEventListener('touchend', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+        //     document.addEventListener('touchcancel', (event) => this.handleDocumentTouchEvent(event), {passive: false});
+        // }
     }
 
-    // prevent touches on the document from interfering with element touches
-    handleDocumentTouchEvent(event) {
-        if (this.startTouches.length !== 0) {
-            event.preventDefault();
-        }
-    }
+    // // prevent touches on the document from interfering with element touches
+    // handleDocumentTouchEvent(event) {
+    //     if (this.startTouches.length !== 0) {
+    //         event.preventDefault();
+    //     }
+    // }
 
     handleTouchStart(event) {
         // console.log("touch start");
@@ -94,8 +94,8 @@ class Touch {
             const startY = this.startTouches[0].clientY;
             const endX = event.targetTouches[0].clientX;
             const endY = event.targetTouches[0].clientY;
-            const dist = Math.pow(startX - endX, 2) + Math.pow(startY - endY, 2);
-            message.innerHTML = dist;
+            // const dist = Math.pow(startX - endX, 2) + Math.pow(startY - endY, 2);
+            // message.innerHTML = dist;
             this.isDragging = true;
             if (this.onDragStart) {
                 this.onDragStart(startX, startY);
