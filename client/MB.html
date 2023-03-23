@@ -1418,6 +1418,8 @@ function setCanvasToWindow() {
     OSC.width = w;
     OSC.height = h;
     checkAspect();
+    let c = canvas.getBoundingClientRect();
+    message.innerHTML = c.right - c.left + " " + canvas.width;
 }
 // let noDrawCount = 0;
 function setImageSizeToFixed(w, h, oldImageSize, doDraw) {
