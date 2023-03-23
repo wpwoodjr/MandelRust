@@ -123,10 +123,10 @@
    div.grouplast {
        padding: 0 8px;
    }
-   #status {
-       font-weight: normal;
-       color: #AA0000;
-   }
+    #status {
+        font-weight: normal;
+        color: #AA0000;
+    }
    #xmlimportbg {
        position: fixed;
        z-index: 10;
@@ -263,7 +263,18 @@
         height: auto;
         display: block;
     }
-
+    .selectable {
+        user-select: text;
+        -webkit-user-select: text;
+        -moz-user-select: text;
+        -ms-user-select: text;
+    }
+    .unselectable {
+        user-select: none;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+    }
   </style>
 </style>
 
@@ -523,7 +534,7 @@ function newWorkers(count) {
     }
 }
 
-const MAX_SECONDS_PER_JOB = 1;
+const MAX_SECONDS_PER_JOB = 4;
 function stopJob(dontUpdateStatusToIdle) {
     // console.log("stopJob", running, jobsPerSecond, workerCount/MAX_SECONDS_PER_JOB, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     if (zoomTimeout) {
@@ -3420,11 +3431,11 @@ function initTouch() {
 
 <noscript><b>Sorry, this page requires JavaScript.</b></noscript>
 
-<table id="header-table">
+<table id="header-table" class="unselectable">
 <tr><td>Explore the <a href=MB.html>Mandelbrot Set</a></td>
 <td>
     <span class="tooltip">Help
-        <span class="helptext">
+        <span class="helptext selectable">
             <h3>Basic Help</h3>
                 Double-click the image to zoom in, or click and drag on it to zoom in to a rectangle.
                 On the left is a selection of settings for the color palette, image size, etc.  Hover over a
@@ -3463,7 +3474,7 @@ function initTouch() {
 </td>
 <td>
     <span class="tooltip">Examples
-        <span class="exampletext">
+        <span class="exampletext selectable">
             <h3 id="gallery">Some Loadable Examples</h3>
 
             <p>Here are 15 images from the program.  Click on one of the images to open
@@ -3510,7 +3521,7 @@ function initTouch() {
 
 <p id="message"></p>
 
-<div id="mainUI" class="mainUI">
+<div id="mainUI" class="mainUI unselectable">
 <div id="controls" class="col1">
    <div class="group">
       <p><button id="restoreButton" title="Restore default limits, image size, palette, max iterations.">Restore Defaults</button><button id="stop" style="margin-left:20px" title="Abort the current computation, if any, leaving an incomplete image.">Stop</button></p>
@@ -3587,8 +3598,8 @@ function initTouch() {
    </div>
 </div>
 <div class="col2">
-  <div id="status">Idle</div>
   <canvas id="canvas" class="fixedCanvas fitWindowCanvas"></canvas>
+  <div id="status">Idle</div>
 </div>
 </div>
 
