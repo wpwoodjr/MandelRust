@@ -74,7 +74,7 @@ class Touch {
                 }
             }
 
-        // check for continue two finger pinching///???check ids?
+        // check for continue two finger pinching
         } else if (this.isPinching) {
             this.endTouches = this.copyTouches(event.targetTouches);
             if (this.onPinchMove) {
@@ -95,8 +95,6 @@ class Touch {
             const startY = this.startTouches[0].clientY;
             const endX = event.targetTouches[0].clientX;
             const endY = event.targetTouches[0].clientY;
-            // const dist = Math.pow(startX - endX, 2) + Math.pow(startY - endY, 2);
-            // message.innerHTML = dist;
             this.isDragging = true;
             if (this.onDragStart) {
                 this.onDragStart();
@@ -164,7 +162,7 @@ class Touch {
                     if (this.onSingleTap) {
                         this.onSingleTap(startX, startY);
                     }
-                }, 300);
+                }, 350);
             }
         } else {
             this.startTouches = [];

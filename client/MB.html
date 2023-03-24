@@ -1184,13 +1184,11 @@ function setUpDragging() {  // for image canvas
         if (dragbox || evt.button != 0) {
             return;
         }
-        var r = canvas.getBoundingClientRect();
-        var x = evt.clientX - r.left;
-        var y = evt.clientY - r.top;
-        // on some devices the bounding rectangle can be at a different scale than the canvas size
-        x = x*canvas.width/(r.right - r.left);
-        y = y*canvas.height/(r.bottom - r.top);
-        var zoomFactor = evt.shiftKey? 2 : 0.5;
+        const r = canvas.getBoundingClientRect();
+        // account for canvas border margin
+        const x = evt.clientX - (r.left + r.right - canvas.width)/2;
+        const y = evt.clientY - (r.top + r.bottom - canvas.height)/2;
+        const zoomFactor = evt.shiftKey ? 2 : 0.5;
         zoom(x,y,zoomFactor,!evt.altKey && !evt.ctrlKey, true);
     }
  }
@@ -1206,9 +1204,10 @@ function Mouser(canvas, startDrag, continueDrag, endDrag, mouseMoveOnCanvasOnly)
         if (dragging) {
             return;
         }
-        var r = canvas.getBoundingClientRect();
-        var x = evt.clientX - r.left;
-        var y = evt.clientY - r.top;
+        const r = canvas.getBoundingClientRect();
+        // account for canvas border margin
+        const x = evt.clientX - (r.left + r.right - canvas.width)/2;
+        const y = evt.clientY - (r.top + r.bottom - canvas.height)/2;
         if (startDrag(x,y,evt)) {
             dragging = true;
             (mouseMoveOnCanvasOnly? canvas : document).addEventListener("mousemove",doMouseMove,false);
@@ -1219,9 +1218,10 @@ function Mouser(canvas, startDrag, continueDrag, endDrag, mouseMoveOnCanvasOnly)
         if (!dragging) {
             return;
         }
-        var r = canvas.getBoundingClientRect();
-        var x = evt.clientX - r.left;
-        var y = evt.clientY - r.top;
+        const r = canvas.getBoundingClientRect();
+        // account for canvas border margin
+        const x = evt.clientX - (r.left + r.right - canvas.width)/2;
+        const y = evt.clientY - (r.top + r.bottom - canvas.height)/2;
         continueDrag(x,y,evt); 
     }
     function doMouseUp(evt) {
@@ -1241,9 +1241,10 @@ function Mouser(canvas, startDrag, continueDrag, endDrag, mouseMoveOnCanvasOnly)
         if (dragging) {
             return;
         }
-        var r = canvas.getBoundingClientRect();
-        var x = evt.touches[0].clientX - r.left;
-        var y = evt.touches[0].clientY - r.top;
+        const r = canvas.getBoundingClientRect();
+        // account for canvas border margin
+        const x = evt.touches[0].clientX - (r.left + r.right - canvas.width)/2;
+        const y = evt.touches[0].clientY - (r.top + r.bottom - canvas.height)/2;
         if (startDrag(x,y)) {
             dragging = true;
             canvas.addEventListener("touchmove", doTouchMove);
@@ -1259,9 +1260,10 @@ function Mouser(canvas, startDrag, continueDrag, endDrag, mouseMoveOnCanvasOnly)
            doTouchCancel();
            return;
         }
-        var r = canvas.getBoundingClientRect();
-        var x = evt.touches[0].clientX - r.left;
-        var y = evt.touches[0].clientY - r.top;
+        const r = canvas.getBoundingClientRect();
+        // account for canvas border margin
+        const x = evt.touches[0].clientX - (r.left + r.right - canvas.width)/2;
+        const y = evt.touches[0].clientY - (r.top + r.bottom - canvas.height)/2;
         continueDrag(x,y);
     }
     function doTouchEnd(evt) {
@@ -3298,10 +3300,10 @@ function initTouch() {
                 this.data.ctx = this.data.canvas.getContext("2d");
             },
             onDoubleTap: function(x, y) {
-                let r = canvas.getBoundingClientRect();
-                // on some devices the bounding rectangle can be at a different scale than the canvas size
-                x = (x - r.left)*canvas.width/(r.right - r.left);
-                y = (y - r.top)*canvas.height/(r.bottom - r.top);
+                const r = canvas.getBoundingClientRect();
+                // account for canvas border margin
+                x -= (r.left + r.right - canvas.width)/2;
+                y -= (r.top + r.bottom - canvas.height)/2;
                 zoom(x, y, 0.5, true, true);
             },
             onSingleTap: function(x, y) {
@@ -3354,9 +3356,9 @@ function initTouch() {
                 const zoomFactor = lenStart/lenLast;
 
                 const r = canvas.getBoundingClientRect();
-                // on some devices the bounding rectangle can be at a different scale than the canvas size
-                centerXLast = (centerXLast - r.left)*canvas.width/(r.right - r.left);
-                centerYLast = (centerYLast - r.top)*canvas.height/(r.bottom - r.top);
+                // account for canvas border margin
+                centerXLast -= (r.left + r.right - canvas.width)/2;
+                centerYLast -= (r.top + r.bottom - canvas.height)/2;
 
                 const width = canvas.width*zoomFactor;
                 const height = canvas.height*zoomFactor;
@@ -3382,10 +3384,10 @@ function initTouch() {
                 const zoomFactor = lenStart/lenLast;
                 const undoText = zoomFactor > 1 ? "Pinch Zoom Out" : "Pinch Zoom In";
 
-                let r = canvas.getBoundingClientRect();
-                // on some devices the bounding rectangle can be at a different scale than the canvas size
-                centerXLast = (centerXLast - r.left)*canvas.width/(r.right - r.left);
-                centerYLast = (centerYLast - r.top)*canvas.height/(r.bottom - r.top);
+                const r = canvas.getBoundingClientRect();
+                // account for canvas border margin
+                centerXLast -= (r.left + r.right - canvas.width)/2;
+                centerYLast -= (r.top + r.bottom - canvas.height)/2;
 
                 let width = canvas.width*zoomFactor;
                 let height = canvas.height*zoomFactor;
