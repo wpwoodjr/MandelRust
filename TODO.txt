@@ -1,29 +1,16 @@
-Two-finger tap to zoom out?
 A drag is a pinch with one finger
+Touch need to account for border of canvas?
+should preventdefault on all touch events?
 Maybe need to kill workers to increase responsiveness to touch on mobile with "default" settings
 When first open site on Pixel, image height is too large; then resizes as soon as you touch anything
 Safari doesn't handle negative numbers properly in drawImage
-Safari on macOS doesn't show zoom animation when shft-double-clicking
-Double-tap not working ios - zooms to wrong place, then partially draws (sometimes), never completes, says First pass... but no rps
-Drag not working when add another finger then release first finger
-Pinch zoom check id's what happens when lift a finger, etc
-Look at #imagediv px stuff - use canvas? trying now... Chrome was acting weird... now seems ok... should retry imagediv again
-Why is status ''
-this code should use canvas instead of imagediv?
-    let imagedivStyle = document.querySelector('#imagediv').style;
-    imagedivStyle.width = w + "px";
-Undo zoom is wrong if change window size between zoom and undo zoom
-should preventdefault on all touch events?
-why does zoom require rescaling while xlate does not?
-re-eval whether to not redraw on image smaller but same aspect ratio
-re-eval 2nd pass not drawing until complete.  less clear than orig?
-0.05 on the dontClear check?
 Polyfill for drawImage generalized to handle non-0 target left and top?
-http://localhost:8000/MB.html?ex=examples%2fstar.xml
-    Fit window at 4:3 ratio
-    select from examples, uncheck 2nd pass, 800x600, check 2nd pass - nothing happens
-    select from examples, uncheck 2nd pass, 800x600, undo, redo, check 2nd pass - completed 792 of 601 rows
-        792 is the height when it is fit window
+Safari 15 on macOS doesn't show zoom animation when shft-double-clicking
+Double-tap not working ios - zooms to wrong place, then partially draws (sometimes), never completes, says First pass... but no rps
+Pinch zoom check id's what happens when lift a finger, etc
+Why is status ''
+Undo zoom is wrong if change window size between zoom and undo zoom
+re-eval 2nd pass not drawing until complete.  less clear than orig?
 
 Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore
@@ -31,6 +18,20 @@ UCArray stuff
 Keep JS worker?
 ///stuff
 
+>http://localhost:8000/MB.html?ex=examples%2fstar.xml
+    Fit window at 4:3 ratio
+    select from examples, uncheck 2nd pass, 800x600, check 2nd pass - nothing happens
+    select from examples, uncheck 2nd pass, 800x600, undo, redo, check 2nd pass - completed 792 of 601 rows
+        792 is the height when it is fit window
+>why does zoom require rescaling while xlate does not?
+>0.05 on the dontClear check?
+>this code should use canvas instead of imagediv?
+    let imagedivStyle = document.querySelector('#imagediv').style;
+    imagedivStyle.width = w + "px";
+>Look at #imagediv px stuff - use canvas? trying now... Chrome was acting weird... now seems ok... should retry imagediv again
+>Drag not working when add another finger then release first finger
+>Two-finger tap to zoom out?
+>re-eval whether to not redraw on image smaller but same aspect ratio
 >doDraw and dontClear logic
 >need normalcanvas?
 >Undo Move for touch move doesn't translate image first

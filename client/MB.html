@@ -1421,8 +1421,6 @@ function setImageSizeToFixed(w, h, oldImageSize, doDraw) {
     if (oldImageSize) {
         addUndoItem("Change Image Size", oldImageSize, currentImageSize);
     }
-    // let imagedivStyle = document.querySelector('#canvas').style;
-    // imagedivStyle.width = w + "px";
     startJob(dontClear);
 }
 function setImageSize(w, h, undo, doDraw) {
