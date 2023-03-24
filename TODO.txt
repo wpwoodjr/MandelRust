@@ -6,7 +6,6 @@ When first open site on Pixel, image height is too large; then resizes as soon a
 Safari doesn't handle negative numbers properly in drawImage
 Polyfill for drawImage generalized to handle non-0 target left and top?
 Safari 15 on macOS doesn't show zoom animation when shft-double-clicking
-Double-tap not working ios - zooms to wrong place, then partially draws (sometimes), never completes, says First pass... but no rps
 Pinch zoom check id's what happens when lift a finger, etc
 Why is status ''
 Undo zoom is wrong if change window size between zoom and undo zoom
@@ -18,6 +17,7 @@ UCArray stuff
 Keep JS worker?
 ///stuff
 
+>Double-tap not working ios - zooms to wrong place, then partially draws (sometimes), never completes, says First pass... but no rps
 >http://localhost:8000/MB.html?ex=examples%2fstar.xml
     Fit window at 4:3 ratio
     select from examples, uncheck 2nd pass, 800x600, check 2nd pass - nothing happens

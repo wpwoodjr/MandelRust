@@ -145,7 +145,7 @@ class Touch {
             if (this.singleTapTimeout != null) {
                 this.tapEnd();
                 if (this.onDoubleTap) {
-                    // prevent emulated mouse dblclick
+                    // prevent emulated mouse dblclick (doesn't work in ios)
                     event.preventDefault();
                     const endX = event.changedTouches[0].clientX;
                     const endY = event.changedTouches[0].clientY;

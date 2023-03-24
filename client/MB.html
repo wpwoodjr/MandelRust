@@ -3260,13 +3260,13 @@ function initTouch() {
                 this.data.canvas = document.createElement("canvas");
                 this.data.ctx = this.data.canvas.getContext("2d");
             },
-            onDoubleTap: function(x, y) {
-                const r = canvas.getBoundingClientRect();
-                // account for canvas border margin
-                x -= (r.left + r.right - canvas.width)/2;
-                y -= (r.top + r.bottom - canvas.height)/2;
-                zoom(x, y, 0.5, true, true);
-            },
+            // onDoubleTap: function(x, y) {
+            //     const r = canvas.getBoundingClientRect();
+            //     // account for canvas border margin
+            //     x -= (r.left + r.right - canvas.width)/2;
+            //     y -= (r.top + r.bottom - canvas.height)/2;
+            //     zoom(x, y, 0.5, true, true);
+            // },
             onSingleTap: function(x, y) {
                 if (fullScreenCanvas) {
                     fromFullScreenCanvas();
