@@ -1125,29 +1125,6 @@ function zoom(x, y, zoomFactor, recenter, undo) {  // (x,y) is center of zoom, i
     // startJob();
 }
 
-function doTranslate(x, y, undo) {
-    // console.log("doTranslate", x, y);
-    var rectX = new BigDecimal("" + Math.round(-x));  // (Firefox can have fractional parts)
-    var rectY = new BigDecimal("" + Math.round(-y));
-    var rectW = new BigDecimal("" + Math.round(canvas.width));
-    var rectH = new BigDecimal("" + Math.round(canvas.height));
-    var ImageWidth = new BigDecimal("" + canvas.width);
-    var ImageHeight = new BigDecimal("" + canvas.height);
-    var pixelWidth = xmax.subtract(xmin).divide(ImageWidth,BigDecimal.ROUND_HALF_EVEN);
-    var pixelHeight = ymax.subtract(ymin).divide(ImageHeight,BigDecimal.ROUND_HALF_EVEN);
-    var newXmin,newXmax,newYmin,newYmax;
-    newXmin = xmin.add(pixelWidth.multiply(rectX));
-    newYmax = ymax.subtract(pixelHeight.multiply(rectY));
-    var newWidth = pixelWidth.multiply(rectW);
-    var newHeight = pixelHeight.multiply(rectH);
-    newXmax = newXmin.add(newWidth);
-    newYmin = newYmax.subtract(newHeight);
-    setLimits(newXmin, newXmax, newYmin, newYmax, false);
-    if (undo) {
-        addUndoItem("Move", [-x, -y], [x, y]);
-    }
-}
-
 function setUpDragging() {  // for image canvas
     var zoomin;
     var startX, startY; // for mouse only
@@ -1634,7 +1611,7 @@ function applyUndoItem(name, value) {
       case "Pinch Zoom In":
       case "Zoom Out":
       case "Zoom In":
-      case "Move ":
+      case "Move":
         // console.log(value);
         switch (value[0]) {
             case ZOOM:
@@ -1651,11 +1628,6 @@ function applyUndoItem(name, value) {
                 startJob();
                 break;
         }
-        break;
-    case "Move":
-        stopJob();
-        doTranslate(value[0], value[1]);
-        startJob();
         break;
     }
     applyUndoInProgress = false;
@@ -3148,13 +3120,13 @@ function doPanZoomKey(name, x, y, w, h) {
         panKeyOldValue[0] += x;
         panKeyOldValue[1] += y;
         panZoomKeyTimeout = setTimeout(() => {
-            addUndoItem("Move ",
+            addUndoItem("Move",
                 [ZOOMOUTRECT, panKeyOldValue[0], panKeyOldValue[1], w, h],
                 [ZOOMINRECT, panKeyOldValue[0], panKeyOldValue[1], w, h]);
             panZoomKeyTimeout = null;
         }, 500);
     // } else {
-    //     addUndoItem("Move ",
+    //     addUndoItem("Move",
     //         [ZOOMOUTRECT, panKeyOldValue[0], panKeyOldValue[1], w, h],
     //         [ZOOMINRECT, panKeyOldValue[0], panKeyOldValue[1], w, h]);
     }
@@ -3334,10 +3306,10 @@ function initTouch() {
                 graphics.drawImage(OSC, 0, 0);
             },
             onDragEnd: function(startX, startY, endX, endY) {
-                const shiftX = endX - startX;
-                const shiftY = endY - startY;
+                const shiftX = startX - endX;
+                const shiftY = startY - endY;
 
-                doTranslate(shiftX, shiftY, true);
+                doZoomInOnRect(shiftX, shiftY, canvas.width, canvas.height, true, "Move", true);
                 startJob(true);
             },
             onPinchStart: function() {
