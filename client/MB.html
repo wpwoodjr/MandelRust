@@ -1398,16 +1398,12 @@ function setCanvasToWindow() {
     OSC.height = h;
     checkAspect();
 }
-// let noDrawCount = 0;
 function setImageSizeToFixed(w, h, oldImageSize, doDraw) {
     // console.log("setImageSizeToFixed", w, h);
     if (!doDraw && w === canvas.width && h === canvas.height) {
         return;
     }
     const dontClear = !doDraw && Math.abs(w/h - canvas.width/canvas.height) < 0.01;
-    doDraw = true;//doDraw || running || !dontClear || w > canvas.width || noDrawCount > 0;
-    // console.log(dontClear, doDraw, noDrawCount);
-    // noDrawCount = doDraw ? 0 : noDrawCount + 1;
     stopJob();
     OSC.width = w;
     OSC.height = h;
@@ -1427,12 +1423,7 @@ function setImageSizeToFixed(w, h, oldImageSize, doDraw) {
     }
     // let imagedivStyle = document.querySelector('#canvas').style;
     // imagedivStyle.width = w + "px";
-    if (doDraw) {
-        startJob(dontClear);
-    } else {
-        // startJob does this so need to do it if not calling startJob
-        currentXML = currentExampletoXML();
-    }
+    startJob(dontClear);
 }
 function setImageSize(w, h, undo, doDraw) {
     // console.log("setImageSize from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], w, h);

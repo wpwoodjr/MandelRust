@@ -1,6 +1,5 @@
 Two-finger tap to zoom out?
 A drag is a pinch with one finger
-Undo Move for touch move doesn't translate image first
 Maybe need to kill workers to increase responsiveness to touch on mobile with "default" settings
 When first open site on Pixel, image height is too large; then resizes as soon as you touch anything
 Safari doesn't handle negative numbers properly in drawImage
@@ -10,11 +9,9 @@ Drag not working when add another finger then release first finger
 Pinch zoom check id's what happens when lift a finger, etc
 Look at #imagediv px stuff - use canvas? trying now... Chrome was acting weird... now seems ok... should retry imagediv again
 Why is status ''
-doDraw and dontClear logic
 this code should use canvas instead of imagediv?
     let imagedivStyle = document.querySelector('#imagediv').style;
     imagedivStyle.width = w + "px";
-need normalcanvas?
 Undo zoom is wrong if change window size between zoom and undo zoom
 should preventdefault on all touch events?
 why does zoom require rescaling while xlate does not?
@@ -34,6 +31,9 @@ UCArray stuff
 Keep JS worker?
 ///stuff
 
+>doDraw and dontClear logic
+>need normalcanvas?
+>Undo Move for touch move doesn't translate image first
 >Zoom out too fast and it hangs
 >check tooltip position calculations
 >image too small when window maximised, check width calcs and vw width
