@@ -3323,8 +3323,8 @@ function initTouch() {
 
                 const width = canvas.width*zoomFactor;
                 const height = canvas.height*zoomFactor;
-                let left = centerXLast*(1 - zoomFactor) + shiftX;
-                let top = centerYLast*(1 - zoomFactor) + shiftY;
+                const left = centerXLast*(1 - zoomFactor) + shiftX;
+                const top = centerYLast*(1 - zoomFactor) + shiftY;
 
                 // translate and zoom image into OSG with gray surround
                 OSG.fillStyle = "#BBBBBB";
@@ -3350,11 +3350,10 @@ function initTouch() {
                 centerXLast -= (r.left + r.right - canvas.width)/2;
                 centerYLast -= (r.top + r.bottom - canvas.height)/2;
 
-                let width = canvas.width*zoomFactor;
-                let height = canvas.height*zoomFactor;
-                let left, top;
-                left = centerXLast*(1 - zoomFactor) + shiftX;
-                top = centerYLast*(1 - zoomFactor) + shiftY;
+                const width = canvas.width*zoomFactor;
+                const height = canvas.height*zoomFactor;
+                const left = centerXLast*(1 - zoomFactor) + shiftX;
+                const top = centerYLast*(1 - zoomFactor) + shiftY;
 
                 doZoomInOnRect(left, top, width, height, true, undoText, true);
                 startJob(true);
