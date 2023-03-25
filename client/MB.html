@@ -3368,7 +3368,7 @@ function initTouch() {
     const originalDrawImage = CanvasRenderingContext2D.prototype.drawImage;
 
     CanvasRenderingContext2D.prototype.drawImage = function(canvas, left, top, ...args) {
-        if (args.length === 6 && (left < 0 || top < 0)) {
+        if (args.length === 6) {
             // console.log(left, top);
             let canvasLeft = 0;
             // assumes that args[2] and args[3] === 0
