@@ -76,16 +76,19 @@ class Touch {
 
         // check for continue two finger pinching
         } else if (this.isPinching) {
-            this.endTouches = this.copyTouches(event.targetTouches);
-            if (this.onPinchMove) {
-                const elapsed = Date.now() - this.startTime;
-                if (elapsed >= 1000/this.FPS) {
-                    this.startTime = Date.now();
-                    this.onPinchMove(
-                        [this.startTouches[0].clientX, this.startTouches[0].clientY,
-                            this.startTouches[1].clientX, this.startTouches[1].clientY],
-                        [event.targetTouches[0].clientX, event.targetTouches[0].clientY,
-                            event.targetTouches[1].clientX, event.targetTouches[1].clientY]);
+            // check length because Firefox doesn't always call handleTouchEnd before here
+            if (event.targetTouches.length === 2) {
+                this.endTouches = this.copyTouches(event.targetTouches);
+                if (this.onPinchMove) {
+                    const elapsed = Date.now() - this.startTime;
+                    if (elapsed >= 1000/this.FPS) {
+                        this.startTime = Date.now();
+                        this.onPinchMove(
+                            [this.startTouches[0].clientX, this.startTouches[0].clientY,
+                                this.startTouches[1].clientX, this.startTouches[1].clientY],
+                            [event.targetTouches[0].clientX, event.targetTouches[0].clientY,
+                                event.targetTouches[1].clientX, event.targetTouches[1].clientY]);
+                    }
                 }
             }
 
