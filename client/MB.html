@@ -3250,6 +3250,7 @@ function initTouch() {
         touch = new Touch("canvas", {
             FPS: FPS,
             data: {
+                startJob: false,
                 canvas: null,
                 ctx: null,
             },
@@ -3257,19 +3258,15 @@ function initTouch() {
                 stopJob();
             },
             onTouchEnd: function() {
-                startJob(true);
+                if (this.startJob) {
+                    startJob(true);
+                    this.startJob = false;
+                }
             },
             onInit: function() {
                 this.data.canvas = document.createElement("canvas");
                 this.data.ctx = this.data.canvas.getContext("2d");
             },
-            // onDoubleTap: function(x, y) {
-            //     const r = canvas.getBoundingClientRect();
-            //     // account for canvas border margin
-            //     x -= (r.left + r.right - canvas.width)/2;
-            //     y -= (r.top + r.bottom - canvas.height)/2;
-            //     zoom(x, y, 0.5, true, true);
-            // },
             onSingleTap: function(x, y) {
                 if (fullScreenCanvas) {
                     fromFullScreenCanvas();
@@ -3279,6 +3276,13 @@ function initTouch() {
                     toFullWindowCanvas();
                 }
             },
+            // onDoubleTap: function(x, y) {
+            //     const r = canvas.getBoundingClientRect();
+            //     // account for canvas border margin
+            //     x -= (r.left + r.right - canvas.width)/2;
+            //     y -= (r.top + r.bottom - canvas.height)/2;
+            //     zoom(x, y, 0.5, true, true);
+            // },
             onDragStart: function() {
                 // console.log("onDragStart");
                 this.data.canvas.width = canvas.width;
@@ -3302,6 +3306,7 @@ function initTouch() {
                 const shiftY = startY - endY;
 
                 doZoomInOnRect(shiftX, shiftY, canvas.width, canvas.height, true, "Move", true);
+                this.startJob = true;
             },
             onPinchStart: function() {
                 this.onDragStart();
@@ -3358,6 +3363,7 @@ function initTouch() {
                 const top = centerYLast*(1 - zoomFactor) + shiftY;
 
                 doZoomInOnRect(left, top, width, height, true, undoText, true);
+                this.startJob = true;
             }
         });
     }
