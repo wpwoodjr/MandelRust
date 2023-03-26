@@ -1,4 +1,3 @@
-A drag is a pinch with one finger
 Touch need to account for border of canvas?
 should preventdefault on all touch events?
 Maybe need to kill workers to increase responsiveness to touch on mobile with "default" settings
@@ -17,6 +16,9 @@ UCArray stuff
 Keep JS worker?
 ///stuff
 
+>dbl-tap and hold, then move - startouches[0] is undefined in handletouchmove
+>dbl-tap hold then move should move
+>A drag is a pinch with one finger
 >Double-tap not working ios - zooms to wrong place, then partially draws (sometimes), never completes, says First pass... but no rps
 >http://localhost:8000/MB.html?ex=examples%2fstar.xml
     Fit window at 4:3 ratio
