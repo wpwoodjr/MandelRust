@@ -35,6 +35,7 @@ class Touch {
         this.TAP = 2;
         this.DOUBLE_TAP = 3;
         this.PINCH = 4;
+        this.END_PINCH = 5;
         this.action = this.NONE;
     }
 
@@ -154,7 +155,8 @@ class Touch {
             // still dragging?
             if (event.targetTouches.length === 1) {
                 // console.log("start drag from pinch");
-                this.handleTouchStart(event);
+                this.action = this.END_PINCH;
+                this.startTouches = this.copyTouches(event.targetTouches);
             }
 
         // Check for tap gesture
@@ -169,10 +171,14 @@ class Touch {
                     this.onDoubleTap(event.changedTouches[0].clientX, event.changedTouches[0].clientY);
                 }
                 this.startTouches = [];
-            }
+
+            // end pinch with no drag
+            } else if (this.action === this.END_PINCH) {
+                this.action = this.NONE;
+                this.startTouches = [];
 
             // Otherwise, set timeout for a single tap gesture
-            else {
+            } else {
                 this.action = this.TAP;
                 const clientX = event.changedTouches[0].clientX;
                 const clientY = event.changedTouches[0].clientY;
@@ -197,7 +203,7 @@ class Touch {
             this.pinchEnd();
         } else if (this.action === this.TAP) {
             this.tapEnd();
-        } else if (this.action === this.DOUBLE_TAP) {
+        } else if (this.action === this.DOUBLE_TAP || this.action === this.END_PINCH) {
             this.action = this.NONE;
             this.startTouches = [];
         }
