@@ -3257,7 +3257,7 @@ function initTouch() {
                 stopJob();
             },
             onTouchEnd: function() {
-                startJob();
+                startJob(true);
             },
             onInit: function() {
                 this.data.canvas = document.createElement("canvas");
