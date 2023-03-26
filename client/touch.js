@@ -36,7 +36,8 @@ class Touch {
         this.TAP = 2;
         this.DOUBLE_TAP = 3;
         this.PINCH = 4;
-        this.TOUCHING = 5;
+        this.END_PINCH = 5;
+        this.TOUCHING = 6;
         this.state = this.NONE;
     }
 
@@ -161,7 +162,7 @@ class Touch {
             // still dragging?
             if (event.targetTouches.length === 1) {
                 // console.log("start drag from pinch");
-                this.state = this.TOUCHING;
+                this.state = this.END_PINCH;
                 this.startTouches = this.copyTouches(event.targetTouches);
             }
 
@@ -179,7 +180,7 @@ class Touch {
                 this.startTouches = [];
 
             // end pinch with no drag
-            } else if (this.state === this.TOUCHING) {
+            } else if (this.state === this.END_PINCH) {
                 this.state = this.NONE;
                 this.startTouches = [];
 
@@ -189,6 +190,7 @@ class Touch {
                 const clientX = event.changedTouches[0].clientX;
                 const clientY = event.changedTouches[0].clientY;
                 this.singleTapTimeout = setTimeout(() => {
+                    console.log("singleTap");
                     this.tapEnd();
                     if (this.onSingleTap) {
                         this.onSingleTap(clientX, clientY);
