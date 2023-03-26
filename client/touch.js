@@ -11,6 +11,7 @@ class Touch {
         this.FPS = options.FPS || 60;
         this.onInit = options.onInit || null;
         this.onTouchStart = options.onTouchStart || null;
+        this.onTouchEnd = options.onTouchEnd || null;
         this.onDragStart = options.onDragStart || null;
         this.onDragMove = options.onDragMove || null;
         this.onDragEnd = options.onDragEnd || null;
@@ -35,8 +36,8 @@ class Touch {
         this.TAP = 2;
         this.DOUBLE_TAP = 3;
         this.PINCH = 4;
-        this.END_PINCH = 5;
-        this.action = this.NONE;
+        this.TOUCHING = 5;
+        this.state = this.NONE;
     }
 
     handleTouchStart(event) {
@@ -46,18 +47,23 @@ class Touch {
             this.onInit = null;
         }
 
-        if (this.onTouchStart) {
+        if (this.state === this.NONE && this.onTouchStart) {
+            console.log("touchStart");
             this.onTouchStart();
         }
 
         // End if another touch was added
-        if (this.action === this.DRAG) {
+        if (this.state === this.DRAG) {
             this.dragEnd(event.targetTouches);
-        } else if (this.action === this.PINCH) {
+            this.state = this.TOUCHING;
+        } else if (this.state === this.PINCH) {
             this.pinchEnd();
-        } else if (this.action === this.TAP) {
+            this.state = this.TOUCHING;
+        } else if (this.state === this.TAP) {
             this.tapEnd();
-            this.action = this.DOUBLE_TAP;
+            this.state = this.DOUBLE_TAP;
+        } else {
+            this.state = this.TOUCHING;
         }
 
         // Store the initial touch positions if not tapping and all touches are inside the element
@@ -71,7 +77,7 @@ class Touch {
         // console.log("touch move");
 
         // check for continue drag
-        if (this.action === this.DRAG) {
+        if (this.state === this.DRAG) {
             if (event.touches.length !== event.targetTouches.length) {
                 this.dragEnd(event.targetTouches);
             } else if (this.onDragMove) {
@@ -89,7 +95,7 @@ class Touch {
             }
 
         // check for continue two finger pinching
-        } else if (this.action === this.PINCH) {
+        } else if (this.state === this.PINCH) {
             if (event.touches.length !== event.targetTouches.length) {
                 this.pinchEnd();
             // check length because Firefox doesn't always call handleTouchEnd before here
@@ -110,7 +116,7 @@ class Touch {
 
         // check for start of one touch drag
         } else if (event.targetTouches.length === 1 && this.startTouches.length === 1) {
-            this.action = this.DRAG;
+            this.state = this.DRAG;
             if (this.onDragStart) {
                 this.onDragStart();
             }
@@ -123,7 +129,7 @@ class Touch {
         // check if there are two touches for pinch gesture
         } else if (event.targetTouches.length === 2 && this.startTouches.length === 2) {
             // console.log("start pinch");
-            this.action = this.PINCH;
+            this.state = this.PINCH;
             if (this.onPinchStart) {
                 this.onPinchStart();
             };
@@ -138,7 +144,7 @@ class Touch {
             }
         }
 
-        if (this.action !== this.NONE) {
+        if (this.state !== this.NONE) {
             event.preventDefault();
         }
     }
@@ -147,15 +153,15 @@ class Touch {
     handleTouchEnd(event) {
         // console.log("touch end");
 
-        if (this.action === this.DRAG) {
+        if (this.state === this.DRAG) {
             this.dragEnd(event.changedTouches);
 
-        } else if (this.action === this.PINCH) {
+        } else if (this.state === this.PINCH) {
             this.pinchEnd();
             // still dragging?
             if (event.targetTouches.length === 1) {
                 // console.log("start drag from pinch");
-                this.action = this.END_PINCH;
+                this.state = this.TOUCHING;
                 this.startTouches = this.copyTouches(event.targetTouches);
             }
 
@@ -163,8 +169,8 @@ class Touch {
         } else if (event.targetTouches.length === 0 && this.startTouches.length === 1) {
 
             // check for a double tap
-            if (this.action === this.DOUBLE_TAP) {
-                this.action = this.NONE;
+            if (this.state === this.DOUBLE_TAP) {
+                this.state = this.NONE;
                 if (this.onDoubleTap) {
                     // prevent emulated mouse dblclick (doesn't work in ios)
                     event.preventDefault();
@@ -173,13 +179,13 @@ class Touch {
                 this.startTouches = [];
 
             // end pinch with no drag
-            } else if (this.action === this.END_PINCH) {
-                this.action = this.NONE;
+            } else if (this.state === this.TOUCHING) {
+                this.state = this.NONE;
                 this.startTouches = [];
 
             // Otherwise, set timeout for a single tap gesture
             } else {
-                this.action = this.TAP;
+                this.state = this.TAP;
                 const clientX = event.changedTouches[0].clientX;
                 const clientY = event.changedTouches[0].clientY;
                 this.singleTapTimeout = setTimeout(() => {
@@ -192,20 +198,29 @@ class Touch {
         } else {
             this.startTouches = [];
         }
+
+        if (this.state === this.NONE && this.onTouchEnd) {
+            console.log("touchEnd");
+            this.onTouchEnd();
+        }
     }
  
     // Handle touch cancel event
     handleTouchCancel(event) {
         // console.log("touch canceled");
-        if (this.action === this.DRAG) {
+        if (this.state === this.DRAG) {
             this.dragEnd(event.changedTouches);
-        } else if (this.action === this.PINCH) {
+        } else if (this.state === this.PINCH) {
             this.pinchEnd();
-        } else if (this.action === this.TAP) {
+        } else if (this.state === this.TAP) {
             this.tapEnd();
-        } else if (this.action === this.DOUBLE_TAP || this.action === this.END_PINCH) {
-            this.action = this.NONE;
+        } else if (this.state === this.DOUBLE_TAP || this.state === this.TOUCHING) {
+            this.state = this.NONE;
             this.startTouches = [];
+        }
+        if (this.onTouchEnd) {
+            console.log("touchEnd from touchCancel");
+            this.onTouchEnd();
         }
     }
 
@@ -213,7 +228,7 @@ class Touch {
         const id = this.startTouches[0].identifier;
         for (const t of touches) {
             if (t.identifier === id) {
-                this.action = this.NONE;///??? only end if find id?
+                this.state = this.NONE;///??? only end if find id?
                 if (this.onDragEnd) {
                     this.onDragEnd(this.startTouches[0].clientX, this.startTouches[0].clientY, t.clientX, t.clientY);
                 }
@@ -224,7 +239,7 @@ class Touch {
     }
 
     pinchEnd() {
-        this.action = this.NONE;
+        this.state = this.NONE;
         if (this.onPinchEnd) {
             this.onPinchEnd(
                 [this.startTouches[0].clientX, this.startTouches[0].clientY,
@@ -237,7 +252,7 @@ class Touch {
     }
 
     tapEnd() {
-        this.action = this.NONE;
+        this.state = this.NONE;
         if (this.singleTapTimeout) {
             clearTimeout(this.singleTapTimeout);
             this.singleTapTimeout = null;

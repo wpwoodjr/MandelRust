@@ -3256,6 +3256,9 @@ function initTouch() {
             onTouchStart: function() {
                 stopJob();
             },
+            onTouchEnd: function() {
+                startJob();
+            },
             onInit: function() {
                 this.data.canvas = document.createElement("canvas");
                 this.data.ctx = this.data.canvas.getContext("2d");
@@ -3299,7 +3302,6 @@ function initTouch() {
                 const shiftY = startY - endY;
 
                 doZoomInOnRect(shiftX, shiftY, canvas.width, canvas.height, true, "Move", true);
-                startJob(true);
             },
             onPinchStart: function() {
                 this.onDragStart();
@@ -3356,7 +3358,6 @@ function initTouch() {
                 const top = centerYLast*(1 - zoomFactor) + shiftY;
 
                 doZoomInOnRect(left, top, width, height, true, undoText, true);
-                startJob(true);
             }
         });
     }
