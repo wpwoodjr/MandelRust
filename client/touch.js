@@ -39,6 +39,7 @@ class Touch {
         this.END_PINCH = 5;
         this.TOUCHING = 6;
         this.state = this.NONE;
+        this.nTouches = 0;
     }
 
     handleTouchStart(event) {
@@ -83,6 +84,7 @@ class Touch {
         }
 
         this.startTouches = this.copyTouches(event.targetTouches);
+        this.nTouches = this.startTouches.length;
     }
 
     // Handle touch move event
@@ -144,7 +146,7 @@ class Touch {
 
             case this.TOUCHING:
                 // check for start of one touch drag
-                if (event.targetTouches.length === 1 && this.startTouches.length === 1) {
+                if (this.nTouches === 1) {
                     console.log("start drag");
                     this.state = this.DRAG;
                     if (this.onDragStart) {
@@ -157,7 +159,7 @@ class Touch {
                     }
 
                 // check if there are two touches for pinch gesture
-                } else if (event.targetTouches.length === 2 && this.startTouches.length === 2) {
+                } else if (this.nTouches === 2) {
                     console.log("start pinch");
                     this.state = this.PINCH;
                     if (this.onPinchStart) {
@@ -244,6 +246,7 @@ class Touch {
             console.log("touchEnd");
             this.onTouchEnd();
         }
+        this.nTouches = event.targetTouches.length;
     }
  
     // Handle touch cancel event
