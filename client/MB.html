@@ -1125,6 +1125,9 @@ function zoom(x, y, zoomFactor, recenter, undo) {  // (x,y) is center of zoom, i
     // startJob();
 }
 
+// let singleClickTimeout = null;
+// let cancelSingleClick = false;
+let cancelDoubleClick = false;
 function setUpDragging() {  // for image canvas
     var zoomin;
     var startX, startY; // for mouse only
@@ -1140,7 +1143,7 @@ function setUpDragging() {  // for image canvas
         zoomin = ! (evt && evt.shiftKey); 
         return true;
     }
-    function continueDrag(x,y) {  
+    function continueDrag(x,y) {
         if (dragbox == null) {
             if ( Math.abs(startX - x) < 3 && Math.abs(startY - y) < 3) {
                 return;  // don't show zoombox until mouse/touch has moved a bit.
@@ -1157,8 +1160,8 @@ function setUpDragging() {  // for image canvas
             dragbox = null;
         }
     }
-    function doMouseDoubleClick(evt) { 
-        if (dragbox || evt.button != 0) {
+    function doMouseDoubleClick(evt) {
+        if (cancelDoubleClick || dragbox || evt.button != 0) {
             return;
         }
         const r = canvas.getBoundingClientRect();
@@ -1168,7 +1171,7 @@ function setUpDragging() {  // for image canvas
         const zoomFactor = evt.shiftKey ? 2 : 0.5;
         zoom(x,y,zoomFactor,!evt.altKey && !evt.ctrlKey, true);
     }
- }
+}
 
 function Mouser(canvas, startDrag, continueDrag, endDrag, mouseMoveOnCanvasOnly) {
       // functions startDrag, continueDrag take canvas coords (x,y); for a mouse event event object is also passed.
@@ -1177,7 +1180,13 @@ function Mouser(canvas, startDrag, continueDrag, endDrag, mouseMoveOnCanvasOnly)
     var dragging = false;
     canvas.addEventListener("mousedown",doMouseDown,false);
     // canvas.addEventListener("touchstart",doTouchStart,false);
-    function doMouseDown(evt) { 
+    function doMouseDown(evt) {
+        // if (singleClickTimeout != null) {
+        //     cancelSingleClick = true;
+        //     clearTimeout(singleClickTimeout);
+        //     singleClickTimeout = null;
+        // }
+        cancelDoubleClick = false;
         if (dragging) {
             return;
         }
@@ -1206,8 +1215,25 @@ function Mouser(canvas, startDrag, continueDrag, endDrag, mouseMoveOnCanvasOnly)
             dragging = false;
             (mouseMoveOnCanvasOnly? canvas : document).removeEventListener("mousemove",doMouseMove,false);
             document.removeEventListener("mouseup",doMouseUp,false);
-            endDrag(evt);
+            if (dragbox == null) {
+            //     if (! cancelSingleClick) {
+            //         singleClickTimeout = setTimeout(() => {
+            //             singleClickTimeout = null;
+            //             if (fullScreenCanvas) {
+            //                 fromFullScreenCanvas();
+            //             } else if (fullWindowCanvas) {
+            //                 fromFullWindowCanvas();
+            //             } else {
+            //                 toFullWindowCanvas();
+            //             }
+            //         }, 350);
+            //     }
+            } else {
+                endDrag(evt);
+                cancelDoubleClick = true;
+            }
         }
+        // cancelSingleClick = false;
     }
     function doTouchStart(evt){
         if (evt.touches.length != 1) {
@@ -3288,7 +3314,6 @@ function initTouch() {
                 this.data.canvas.width = canvas.width;
                 this.data.canvas.height = canvas.height;
                 // get latest OSC
-                // stopJob();
                 this.data.ctx.drawImage(OSC, 0, 0);
             },
             onDragMove: function(startX, startY, endX, endY) {
