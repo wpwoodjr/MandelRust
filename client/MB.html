@@ -3140,7 +3140,7 @@ function doPanZoomKey(name, x, y, w, h) {
                 [ZOOMINRECT, panKeyOldValue[0], panKeyOldValue[1], w, h]);
             panZoomKeyTimeout = null;
         }, 500);
-    // } else {
+    // } else {///??? finish for zoom
     //     addUndoItem("Move",
     //         [ZOOMOUTRECT, panKeyOldValue[0], panKeyOldValue[1], w, h],
     //         [ZOOMINRECT, panKeyOldValue[0], panKeyOldValue[1], w, h]);
@@ -3281,12 +3281,12 @@ function initTouch() {
                 ctx: null,
             },
             onTouchStart: function() {
+                this.startJob = running;
                 stopJob();
             },
             onTouchEnd: function() {
                 if (this.startJob) {
                     startJob(true);
-                    this.startJob = false;
                 }
             },
             onInit: function() {
