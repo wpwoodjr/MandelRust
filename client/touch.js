@@ -1,7 +1,16 @@
 /*
   Class to create a touch interface
-  Bill Wood (with a little assist from ChatGPT), March 2023
+  Bill Wood (with a small assist from ChatGPT), March 2023
 */
+
+const TOUCH_NONE = 0;       // no touches active => TOUCHING
+const TOUCH_TOUCHING = 1;   // interim state => TAP, DRAG, or PINCH
+const TOUCH_TAP = 2;        // single tapping => DOUBLE_TAP or ERROR
+const TOUCH_DOUBLE_TAP = 3; // double tapping => DRAG, PINCH, or NONE
+const TOUCH_DRAG = 4;       // dragging => NONE
+const TOUCH_PINCH = 5;      // pinching => END_PINCH or NONE
+const TOUCH_END_PINCH = 6;  // pinch finished => NONE, DRAG, or PINCH
+const TOUCH_ERROR = 7;       // error occurred, onTouchEnd was called and waiting for all touches to end => NONE
 
 class Touch {
     constructor(id, options) {
@@ -27,139 +36,114 @@ class Touch {
         this.startTouches = [];
         this.endTouches = [];
         this.singleTapTimeout = null;
+        this.state = TOUCH_NONE;
         this.element.addEventListener("touchstart", (event) => this.handleTouchStart(event), {passive: false});
         this.element.addEventListener("touchmove", (event) => this.handleTouchMove(event), {passive: false});
         this.element.addEventListener("touchend", (event) => this.handleTouchEnd(event), {passive: false});
         this.element.addEventListener("touchcancel", (event) => this.handleTouchCancel(event), {passive: false});
-        this.NONE = 0;
-        this.DRAG = 1;
-        this.TAP = 2;
-        this.DOUBLE_TAP = 3;
-        this.PINCH = 4;
-        this.END_PINCH = 5;
-        this.TOUCHING = 6;
-        this.state = this.NONE;
     }
 
     handleTouchStart(event) {
-        console.log("touch start:", event.targetTouches.length);
 
         if (this.onInit) {
             this.onInit();
             this.onInit = null;
         }
 
+        if (this.state === TOUCH_ERROR) {
+            return;
+        // bail out if there are touches outside of element or too many touches in element
+        } else if (event.targetTouches.length !== event.touches.length || event.targetTouches.length > 2) {
+            console.log("touchStart bail out!");
+            this.handleTouchCancel();
+            return;
+        }
+
+        console.log("touchStart:", this.state, event.targetTouches.length);
+        // don't preventDefault b/c double-tap and two finger right-click depend on it
+        // event.preventDefault();
+        this.startTouches = this.copyTouches(event.targetTouches);
         switch (this.state) {
-            case this.NONE:
+            case TOUCH_NONE:
+                console.log("onTouchStart():", event.targetTouches.length);
                 if (this.onTouchStart) {
                     this.onTouchStart();
                 }
-                this.state = this.TOUCHING;
+                this.state = TOUCH_TOUCHING;
                 break;
 
-            case this.DRAG:
-                this.dragEnd(event.targetTouches);
-                this.state = this.TOUCHING;
+            case TOUCH_TOUCHING:
                 break;
 
-            case this.TAP:
-                this.tapEnd();
-                this.state = this.DOUBLE_TAP;
+            case TOUCH_TAP:
+                if (this.onDoubleTap) {
+                    this.tapEnd();
+                    this.state = TOUCH_DOUBLE_TAP;
+                } else {
+                    // not an error but need to cancel b/c ios will always respond to double tap even if it turns into a drag
+                    this.handleTouchCancel();
+                }
                 break;
 
-            case this.DOUBLE_TAP:
+            case TOUCH_DOUBLE_TAP:
                 break;
 
-            case this.PINCH:
-                this.pinchEnd();
-                this.state = this.TOUCHING;
+            case TOUCH_DRAG:
+                this.dragEnd();
+                this.state = TOUCH_TOUCHING;
                 break;
 
-            case this.END_PINCH:
+            case TOUCH_PINCH:
+                console.warn("touch start event and state === PINCH");
                 break;
 
-            case this.TOUCHING:
+            case TOUCH_END_PINCH:
+                break;
+
+            case TOUCH_ERROR:
                 break;
         }
-
-        this.startTouches = this.copyTouches(event.targetTouches);
     }
 
     // Handle touch move event
     handleTouchMove(event) {
 
+        if (this.state === TOUCH_ERROR) {
+            return;
+        // bail out if there are touches outside of element
+        } else if (event.targetTouches.length !== event.touches.length) {
+            console.log("touchMove bail out!");
+            this.handleTouchCancel();
+            return;
+        }
+
+        event.preventDefault();
         switch (this.state) {
-            case this.NONE:
+            case TOUCH_NONE:
                 console.warn("touch move event and state === NONE");
                 break;
 
-            case this.DRAG:
-                if (event.touches.length !== event.targetTouches.length) {
-                    this.dragEnd(event.targetTouches);
-                } else if (this.onDragMove) {
-                    const elapsed = Date.now() - this.startTime;
-                    if (elapsed >= 1000/this.FPS) {
-                        this.startTime = Date.now();
-                        const id = this.startTouches[0].identifier;
-                        for (const e of event.changedTouches) {
-                            if (e.identifier === id) {
-                                this.onDragMove(this.startTouches[0].clientX, this.startTouches[0].clientY, e.clientX, e.clientY);
-                                break;
-                            }
-                        }
-                    }
-                }
-                break;
-
-            case this.TAP:
-                console.warn("touch move event and state === TAP");
-                break;
-
-            case this.DOUBLE_TAP:
-                console.warn("touch move event and state === DOUBLE_TAP");
-                break;
-
-            case this.PINCH:
-                if (event.touches.length !== event.targetTouches.length) {
-                    this.pinchEnd();
-                // check length because Firefox doesn't always call handleTouchEnd before here
-                } else if (event.targetTouches.length === 2) {
-                    this.endTouches = this.copyTouches(event.targetTouches);
-                    if (this.onPinchMove) {
-                        const elapsed = Date.now() - this.startTime;
-                        if (elapsed >= 1000/this.FPS) {
-                            this.startTime = Date.now();
-                            this.onPinchMove(
-                                [this.startTouches[0].clientX, this.startTouches[0].clientY,
-                                    this.startTouches[1].clientX, this.startTouches[1].clientY],
-                                [event.targetTouches[0].clientX, event.targetTouches[0].clientY,
-                                    event.targetTouches[1].clientX, event.targetTouches[1].clientY]);
-                        }
-                    }
-                }
-                break;
-
-            case this.END_PINCH:
-                // break;
-
-            case this.TOUCHING:
+            case TOUCH_DOUBLE_TAP:   // waiting for second tap touch end, but move happened instead
+            case TOUCH_END_PINCH:    // pinch ended with one touch left, now dragging or pinching again
+            case TOUCH_TOUCHING:     // one or two touches detected, now dragging or pinching
                 // check for start of one touch drag
                 if (event.targetTouches.length === 1) {
                     console.log("start drag");
-                    this.state = this.DRAG;
+                    this.state = TOUCH_DRAG;
                     if (this.onDragStart) {
                         this.onDragStart();
                     }
+                    this.endTouches = this.copyTouches(event.targetTouches);
                     this.startTime = Date.now();
                     if (this.onDragMove) {
                         this.onDragMove(this.startTouches[0].clientX, this.startTouches[0].clientY,
-                            event.targetTouches[0].clientX, event.targetTouches[0].clientY);
+                            this.endTouches[0].clientX, this.endTouches[0].clientY);
                     }
 
                 // check if there are two touches for pinch gesture
                 } else if (event.targetTouches.length === 2) {
                     console.log("start pinch");
-                    this.state = this.PINCH;
+                    this.state = TOUCH_PINCH;
                     if (this.onPinchStart) {
                         this.onPinchStart();
                     };
@@ -169,118 +153,164 @@ class Touch {
                         this.onPinchMove(
                             [this.startTouches[0].clientX, this.startTouches[0].clientY,
                                 this.startTouches[1].clientX, this.startTouches[1].clientY],
-                            [event.targetTouches[0].clientX, event.targetTouches[0].clientY,
-                                event.targetTouches[1].clientX, event.targetTouches[1].clientY]);
+                            [this.endTouches[0].clientX, this.endTouches[0].clientY,
+                                this.endTouches[1].clientX, this.endTouches[1].clientY]);
                     }
                 }
-            break;
-        }
+                break;
 
-        if (this.state !== this.NONE) {
-            event.preventDefault();
+            case TOUCH_TAP:
+                console.warn("touch move event and state === TAP");///???call tapend?
+                break;
+
+            case TOUCH_DRAG:
+                if (this.onDragMove) {
+                    const elapsed = Date.now() - this.startTime;
+                    if (elapsed >= 1000/this.FPS) {
+                        this.startTime = Date.now();
+                        this.endTouches = this.copyTouches(event.targetTouches);
+                        this.onDragMove(this.startTouches[0].clientX, this.startTouches[0].clientY,
+                            this.endTouches[0].clientX, this.endTouches[0].clientY);
+                    }
+                }
+                break;
+
+            case TOUCH_PINCH:
+                // check length because Firefox doesn't always call handleTouchEnd before here
+                if (event.targetTouches.length === 2 && this.onPinchMove) {
+                    const elapsed = Date.now() - this.startTime;
+                    if (elapsed >= 1000/this.FPS) {
+                        this.startTime = Date.now();
+                        this.endTouches = this.copyTouches(event.targetTouches);
+                        this.onPinchMove(
+                            [this.startTouches[0].clientX, this.startTouches[0].clientY,
+                                this.startTouches[1].clientX, this.startTouches[1].clientY],
+                            [this.endTouches[0].clientX, this.endTouches[0].clientY,
+                                this.endTouches[1].clientX, this.endTouches[1].clientY]);
+                    }
+                }
+                break;
+
+            case TOUCH_ERROR:
+                break;
         }
     }
 
     // Handle touch end event
     handleTouchEnd(event) {
 
+        console.log("touchEnd:", this.state, this.startTouches.length, event.targetTouches.length);
+        let doOnTouchEnd = false;
         switch (this.state) {
-            case this.NONE:
+            case TOUCH_NONE:
                 console.warn("touch end event and state === NONE");
                 break;
 
-            case this.DRAG:
-                this.dragEnd(event.changedTouches);
+            case TOUCH_TOUCHING:
+                // check for multi-touch tap
+                if (this.startTouches.length > 1) {
+                    this.handleTouchCancel();
+                } else {
+                    // Set timeout for a single tap gesture
+                    const clientX = event.changedTouches[0].clientX;
+                    const clientY = event.changedTouches[0].clientY;
+                    this.singleTapTimeout = setTimeout(() => {
+                        this.tapEnd();
+                        if (this.onSingleTap) {
+                            this.onSingleTap(clientX, clientY);
+                        }
+                        if (this.onTouchEnd) {
+                            console.log("onTouchEnd() from single tap");
+                            this.onTouchEnd();
+                        }
+                        this.state = TOUCH_NONE;
+                    }, 350);
+                    this.state = TOUCH_TAP;
+                }
                 break;
 
-            case this.TAP:
-                console.warn("touch end event and state === TAP");
+            case TOUCH_TAP:
+                console.warn("touch end event and state === TAP");///???
                 break;
 
-            case this.DOUBLE_TAP:
-                this.state = this.NONE;
+            case TOUCH_DOUBLE_TAP:
                 if (this.onDoubleTap) {
                     // prevent emulated mouse dblclick (doesn't work in ios)
                     event.preventDefault();
                     this.onDoubleTap(event.changedTouches[0].clientX, event.changedTouches[0].clientY);
                 }
-                this.startTouches = [];
+                doOnTouchEnd = true;
                 break;
 
-            case this.PINCH:
+            case TOUCH_DRAG:
+                this.dragEnd();
+                doOnTouchEnd = true;
+                break;
+
+            case TOUCH_PINCH:
                 this.pinchEnd();
                 // still dragging?
                 if (event.targetTouches.length === 1) {
                     // console.log("start drag from pinch");
-                    this.state = this.END_PINCH;
                     this.startTouches = this.copyTouches(event.targetTouches);
+                    this.endTouches = this.copyTouches(event.targetTouches);
+                    this.state = TOUCH_END_PINCH;
+                } else {
+                    doOnTouchEnd = true;
                 }
                 break;
 
-            case this.END_PINCH:
-                this.state = this.NONE;
-                this.startTouches = [];
+            case TOUCH_END_PINCH:
+                doOnTouchEnd = true;
                 break;
 
-            case this.TOUCHING:
-                // Set timeout for a single tap gesture
-                this.state = this.TAP;
-                const clientX = event.changedTouches[0].clientX;
-                const clientY = event.changedTouches[0].clientY;
-                this.singleTapTimeout = setTimeout(() => {
-                    this.tapEnd();
-                    if (this.onSingleTap) {
-                        this.onSingleTap(clientX, clientY);
-                    }
-                    if (this.onTouchEnd) {
-                        console.log("touchEnd");
-                        this.onTouchEnd();
-                    }
-                }, 350);
+            case TOUCH_ERROR:
+                if (event.targetTouches.length === 0) {
+                    this.state = TOUCH_NONE;
+                }
                 break;
         }
 
-        if (this.state === this.NONE && this.onTouchEnd) {
-            console.log("touchEnd");
+        if (doOnTouchEnd && this.onTouchEnd) {
+            console.log("onTouchEnd() from handleTouchEnd");
             this.onTouchEnd();
+            this.state = TOUCH_NONE;
         }
     }
  
     // Handle touch cancel event
     handleTouchCancel(event) {
-        // console.log("touch canceled");
-        if (this.state === this.DRAG) {
-            this.dragEnd(event.changedTouches);
-        } else if (this.state === this.PINCH) {
+        console.log("touch canceled from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
+        if (this.state === TOUCH_DRAG) {
+            this.dragEnd();
+        } else if (this.state === TOUCH_PINCH) {
             this.pinchEnd();
-        } else if (this.state === this.TAP) {
+        } else if (this.state === TOUCH_TAP) {
             this.tapEnd();
-        } else if (this.state === this.DOUBLE_TAP || this.state === this.END_PINCH || this.state === this.TOUCHING) {
-            this.state = this.NONE;
-            this.startTouches = [];
         }
-        if (this.onTouchEnd) {
-            console.log("touchEnd from touchCancel");
+
+        if (this.onTouchEnd && this.state !== TOUCH_NONE && this.state !== TOUCH_ERROR) {
+            console.log("onTouchEnd() from handleTouchCancel");
             this.onTouchEnd();
+        }
+
+        // if event is present then handleTouchCancel was called from the browser
+        if (event && event.targetTouches.length === 0) {
+            this.state = TOUCH_NONE;
+        } else {
+            // wait for touches to end
+            this.state = TOUCH_ERROR;
         }
     }
 
-    dragEnd(touches) {
-        const id = this.startTouches[0].identifier;
-        for (const t of touches) {
-            if (t.identifier === id) {
-                this.state = this.NONE;///??? only end if find id?
-                if (this.onDragEnd) {
-                    this.onDragEnd(this.startTouches[0].clientX, this.startTouches[0].clientY, t.clientX, t.clientY);
-                }
-                this.startTouches = [];
-                return;
-            }
+    dragEnd() {
+        if (this.onDragEnd) {
+            this.onDragEnd(this.startTouches[0].clientX, this.startTouches[0].clientY,
+                this.endTouches[0].clientX, this.endTouches[0].clientY);
         }
     }
 
     pinchEnd() {
-        this.state = this.NONE;
         if (this.onPinchEnd) {
             this.onPinchEnd(
                 [this.startTouches[0].clientX, this.startTouches[0].clientY,
@@ -288,28 +318,24 @@ class Touch {
                 [this.endTouches[0].clientX, this.endTouches[0].clientY,
                 this.endTouches[1].clientX, this.endTouches[1].clientY]);
         }
-        this.startTouches = [];
-        this.endTouches = [];
     }
 
     tapEnd() {
-        this.state = this.NONE;
         if (this.singleTapTimeout) {
             clearTimeout(this.singleTapTimeout);
             this.singleTapTimeout = null;
         }
-        this.startTouches = [];
     }
 
     // Firefox requires that we copy what we need
     copyTouches(touches) {
         let r = [];
-        for (let i = 0; i < touches.length; i++) {
-            r[i] = {
-                identifier: touches[i].identifier,
-                clientX: touches[i].clientX,
-                clientY: touches[i].clientY
-            };
+        for (let t of touches) {
+            r.push({
+                identifier: t.identifier,
+                clientX: t.clientX,
+                clientY: t.clientY
+            });
         }
         return r;
     }
