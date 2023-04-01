@@ -1164,6 +1164,7 @@ function setUpDragging() {  // for image canvas
         if (cancelDoubleClick || dragbox || evt.button != 0) {
             return;
         }
+        touch.handleTouchCancel();  // ios won't register the second touch, leading to confusion
         const r = canvas.getBoundingClientRect();
         // account for canvas border margin
         const x = evt.clientX - (r.left + r.right - canvas.width)/2;

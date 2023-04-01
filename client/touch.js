@@ -61,7 +61,7 @@ class Touch {
 
         console.log("touchStart:", this.state, event.targetTouches.length);
         // don't preventDefault b/c double-tap and two finger right-click depend on it
-        // event.preventDefault();
+        // event.preventDefault();///??? maybe prevent default will work in ios too
         this.startTouches = this.copyTouches(event.targetTouches);
         switch (this.state) {
             case TOUCH_NONE:
@@ -234,11 +234,10 @@ class Touch {
                 break;
 
             case TOUCH_DOUBLE_TAP:
-                if (this.onDoubleTap) {
-                    // prevent emulated mouse dblclick (doesn't work in ios)
-                    event.preventDefault();
-                    this.onDoubleTap(event.changedTouches[0].clientX, event.changedTouches[0].clientY);
-                }
+                // only gets here if onDoubleTap exists
+                // prevent emulated mouse dblclick (doesn't work in ios)
+                event.preventDefault();
+                this.onDoubleTap(event.changedTouches[0].clientX, event.changedTouches[0].clientY);
                 doOnTouchEnd = true;
                 break;
 
@@ -280,7 +279,7 @@ class Touch {
  
     // Handle touch cancel event
     handleTouchCancel(event) {
-        console.log("touch canceled from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
+        console.log("touch canceled from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], this.state);
         if (this.state === TOUCH_DRAG) {
             this.dragEnd();
         } else if (this.state === TOUCH_PINCH) {
@@ -297,7 +296,7 @@ class Touch {
         // if event is present then handleTouchCancel was called from the browser
         if (event && event.targetTouches.length === 0) {
             this.state = TOUCH_NONE;
-        } else {
+        } else if (this.state !== TOUCH_NONE) {
             // wait for touches to end
             this.state = TOUCH_ERROR;
         }
