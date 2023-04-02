@@ -60,7 +60,6 @@ class Touch {
         }
 
         console.log("touchStart:", this.state, event.targetTouches.length);
-        this.startTouches = this.copyTouches(event.targetTouches);
         switch (this.state) {
             case TOUCH_NONE:
                 console.log("onTouchStart():", event.targetTouches.length);
@@ -79,9 +78,6 @@ class Touch {
                 if (this.onDoubleTap) {
                     // prevent emulated mouse dblclick
                     event.preventDefault();
-                // } else {
-                //     // not an error but need to cancel b/c ios will respond to double tap even if it turns into a drag
-                //     this.handleTouchCancel();
                 }
                 break;
 
@@ -103,6 +99,7 @@ class Touch {
             case TOUCH_ERROR:
                 break;
         }
+        this.startTouches = this.copyTouches(event.targetTouches);
     }
 
     // Handle touch move event
@@ -234,7 +231,6 @@ class Touch {
                 break;
 
             case TOUCH_DOUBLE_TAP:
-                // only gets here if onDoubleTap exists
                 this.onDoubleTap && this.onDoubleTap(event.changedTouches[0].clientX, event.changedTouches[0].clientY);
                 doOnTouchEnd = true;
                 break;
