@@ -64,7 +64,7 @@ class Touch {
             case TOUCH_NONE:
                 console.log("onTouchStart():", event.targetTouches.length);
                 // prevent emulated mouse dblclick (Chrome on ios seems to need this here; also needed just below)
-                this.onDoubleTap && event.preventDefault();
+                // this.onDoubleTap && event.preventDefault();
                 if (this.onTouchStart) {
                     this.onTouchStart();
                 }
