@@ -3304,14 +3304,14 @@ function initTouch() {
                 }
                 this.startJob = false;
             },
-            onDoubleTap: function(x, y) {
-                const r = canvas.getBoundingClientRect();
-                // account for canvas border margin
-                x -= (r.left + r.right - canvas.width)/2;
-                y -= (r.top + r.bottom - canvas.height)/2;
-                zoom(x, y, 0.5, true, true);
-                this.startJob = false;
-            },
+            // onDoubleTap: function(x, y) {
+            //     const r = canvas.getBoundingClientRect();
+            //     // account for canvas border margin
+            //     x -= (r.left + r.right - canvas.width)/2;
+            //     y -= (r.top + r.bottom - canvas.height)/2;
+            //     zoom(x, y, 0.5, true, true);
+            //     this.startJob = false;
+            // },
             onDragStart: function() {
                 // console.log("onDragStart");
                 this.data.canvas.width = canvas.width;
