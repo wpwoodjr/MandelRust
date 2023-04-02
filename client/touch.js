@@ -78,7 +78,7 @@ class Touch {
                 this.tapEnd();
                 this.state = TOUCH_DOUBLE_TAP;
                 // prevent emulated mouse dblclick
-                this.onDoubleTap && event.preventDefault();
+                // this.onDoubleTap && event.preventDefault();
                 break;
 
             case TOUCH_DOUBLE_TAP:
@@ -208,6 +208,7 @@ class Touch {
                 if (this.startTouches.length > 1) {
                     this.handleTouchCancel();
                 } else {
+                    this.onDoubleTap && event.preventDefault();
                     // Set timeout for a single tap gesture
                     const clientX = event.changedTouches[0].clientX;
                     const clientY = event.changedTouches[0].clientY;
@@ -231,7 +232,10 @@ class Touch {
                 break;
 
             case TOUCH_DOUBLE_TAP:
-                this.onDoubleTap && this.onDoubleTap(event.changedTouches[0].clientX, event.changedTouches[0].clientY);
+                if (this.onDoubleTap) {
+                    event.preventDefault();
+                    this.onDoubleTap(event.changedTouches[0].clientX, event.changedTouches[0].clientY);
+                }
                 doOnTouchEnd = true;
                 break;
 
