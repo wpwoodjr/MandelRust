@@ -76,12 +76,14 @@ class Touch {
                 break;
 
             case TOUCH_TAP:
+                this.tapEnd();
+                this.state = TOUCH_DOUBLE_TAP;
                 if (this.onDoubleTap) {
-                    this.tapEnd();
-                    this.state = TOUCH_DOUBLE_TAP;
-                } else {
-                    // not an error but need to cancel b/c ios will always respond to double tap even if it turns into a drag
-                    this.handleTouchCancel();
+                    // prevent emulated mouse dblclick
+                    event.preventDefault();
+                // } else {
+                //     // not an error but need to cancel b/c ios will respond to double tap even if it turns into a drag
+                //     this.handleTouchCancel();
                 }
                 break;
 
@@ -236,8 +238,8 @@ class Touch {
             case TOUCH_DOUBLE_TAP:
                 // only gets here if onDoubleTap exists
                 // prevent emulated mouse dblclick (doesn't work in ios)
-                event.preventDefault();
-                this.onDoubleTap(event.changedTouches[0].clientX, event.changedTouches[0].clientY);
+                // event.preventDefault();
+                this.onDoubleTap && this.onDoubleTap(event.changedTouches[0].clientX, event.changedTouches[0].clientY);
                 doOnTouchEnd = true;
                 break;
 
