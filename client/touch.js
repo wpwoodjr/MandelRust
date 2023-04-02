@@ -60,8 +60,6 @@ class Touch {
         }
 
         console.log("touchStart:", this.state, event.targetTouches.length);
-        // don't preventDefault b/c double-tap and two finger right-click depend on it
-        // event.preventDefault();///??? maybe prevent default will work in ios too
         this.startTouches = this.copyTouches(event.targetTouches);
         switch (this.state) {
             case TOUCH_NONE:
@@ -237,8 +235,6 @@ class Touch {
 
             case TOUCH_DOUBLE_TAP:
                 // only gets here if onDoubleTap exists
-                // prevent emulated mouse dblclick (doesn't work in ios)
-                // event.preventDefault();
                 this.onDoubleTap && this.onDoubleTap(event.changedTouches[0].clientX, event.changedTouches[0].clientY);
                 doOnTouchEnd = true;
                 break;
