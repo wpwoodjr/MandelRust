@@ -63,6 +63,8 @@ class Touch {
         switch (this.state) {
             case TOUCH_NONE:
                 console.log("onTouchStart():", event.targetTouches.length);
+                // prevent emulated mouse dblclick (Chrome on ios seems to need this here as well as below)
+                event.preventDefault();
                 if (this.onTouchStart) {
                     this.onTouchStart();
                 }
@@ -273,7 +275,8 @@ class Touch {
  
     // Handle touch cancel event
     handleTouchCancel(event) {
-        console.log("touch canceled from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], this.state);
+        // console.log("touch canceled from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], this.state);
+        console.log("touch canceled", this.state);
         if (this.state === TOUCH_DRAG) {
             this.dragEnd();
         } else if (this.state === TOUCH_PINCH) {
