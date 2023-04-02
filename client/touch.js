@@ -77,7 +77,7 @@ class Touch {
                 this.state = TOUCH_DOUBLE_TAP;
                 if (this.onDoubleTap) {
                     // prevent emulated mouse dblclick
-                    event.preventDefault();
+                    // event.preventDefault();
                 }
                 break;
 
