@@ -1,4 +1,4 @@
-Touch need to account for border of canvas?
+Is there a way to use emulated double-click with Chrome on ios, without haveing to call touch.handleTouchCancel()?
 should preventdefault on all touch events?
 Maybe need to kill workers to increase responsiveness to touch on mobile with "default" settings
 When first open site on Pixel, image height is too large; then resizes as soon as you touch anything
@@ -16,6 +16,7 @@ UCArray stuff
 Keep JS worker?
 ///stuff
 
+>Touch need to account for border of canvas?
 >dbl-tap and hold, then move - startouches[0] is undefined in handletouchmove
 >dbl-tap hold then move should move
 >A drag is a pinch with one finger

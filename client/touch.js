@@ -63,8 +63,8 @@ class Touch {
         switch (this.state) {
             case TOUCH_NONE:
                 console.log("onTouchStart():", event.targetTouches.length);
-                // prevent emulated mouse dblclick (Chrome on ios seems to need this here as well as below)
-                event.preventDefault();
+                // prevent emulated mouse dblclick (Chrome on ios seems to need this here; also needed just below)
+                this.onDoubleTap && event.preventDefault();
                 if (this.onTouchStart) {
                     this.onTouchStart();
                 }
@@ -77,10 +77,8 @@ class Touch {
             case TOUCH_TAP:
                 this.tapEnd();
                 this.state = TOUCH_DOUBLE_TAP;
-                if (this.onDoubleTap) {
-                    // prevent emulated mouse dblclick
-                    event.preventDefault();
-                }
+                // prevent emulated mouse dblclick
+                this.onDoubleTap && event.preventDefault();
                 break;
 
             case TOUCH_DOUBLE_TAP:
