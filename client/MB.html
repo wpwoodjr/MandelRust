@@ -3086,6 +3086,11 @@ function createSliders() {
 
 let fullWindowCanvas = false;
 let fullScreenCanvas = false;
+document.fullscreenElement = document.fullscreenElement || document.mozFullscreenElement
+        || document.msFullscreenElement || document.webkitFullscreenDocument;
+document.exitFullscreen = document.exitFullscreen || document.mozExitFullscreen
+        || document.msExitFullscreen || document.webkitExitFullscreen;
+
 function toFullWindowCanvas() {
     canvas.classList.add('fullWindowCanvas');
     // console.log(window.innerWidth, window.innerHeight);
@@ -3099,6 +3104,8 @@ function fromFullWindowCanvas() {
 }
 function toFullScreenCanvas() {
     // console.log("tfsc");
+    canvas.requestFullscreen = canvas.requestFullscreen || canvas.mozRequestFullscreen
+        || canvas.msRequestFullscreen || canvas.webkitRequestFullscreen;
     canvas.classList.add('fullWindowCanvas');
     canvas.requestFullscreen();
     document.addEventListener("fullscreenchange", fullscreenChange);

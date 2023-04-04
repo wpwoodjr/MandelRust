@@ -5,12 +5,12 @@
 
 const TOUCH_NONE = 0;       // no touches active => TOUCHING
 const TOUCH_TOUCHING = 1;   // interim state => TAP, DRAG, or PINCH
-const TOUCH_TAP = 2;        // single tapping => DOUBLE_TAP or ERROR
-const TOUCH_DOUBLE_TAP = 3; // double tapping => DRAG, PINCH, or NONE
-const TOUCH_DRAG = 4;       // dragging => NONE
-const TOUCH_PINCH = 5;      // pinching => END_PINCH or NONE
+const TOUCH_TAP = 2;        // single tapping => NONE or DOUBLE_TAP
+const TOUCH_DOUBLE_TAP = 3; // double tapping => NONE, DRAG, or PINCH
+const TOUCH_DRAG = 4;       // dragging => NONE or TOUCH_TOUCHING
+const TOUCH_PINCH = 5;      // pinching => NONE or END_PINCH
 const TOUCH_END_PINCH = 6;  // pinch finished => NONE, DRAG, or PINCH
-const TOUCH_ERROR = 7;       // error occurred, onTouchEnd was called and waiting for all touches to end => NONE
+const TOUCH_ERROR = 7;      // error occurred, onTouchEnd was called and waiting for all touches to end => NONE
 
 class Touch {
     constructor(id, options) {
@@ -73,11 +73,12 @@ class Touch {
                 break;
 
             case TOUCH_TAP:
-                this.tapEnd();
+                this.tapAbort();
                 this.state = TOUCH_DOUBLE_TAP;
                 break;
 
             case TOUCH_DOUBLE_TAP:
+                console.warn("touch start event and state === DOUBLE_TAP");
                 break;
 
             case TOUCH_DRAG:
@@ -153,7 +154,7 @@ class Touch {
                 break;
 
             case TOUCH_TAP:
-                console.warn("touch move event and state === TAP");///???call tapend?
+                console.warn("touch move event and state === TAP");
                 break;
 
             case TOUCH_DRAG:
@@ -211,7 +212,7 @@ class Touch {
                     const clientX = event.changedTouches[0].clientX;
                     const clientY = event.changedTouches[0].clientY;
                     this.singleTapTimeout = setTimeout(() => {
-                        this.tapEnd();
+                        this.tapAbort();
                         if (this.onSingleTap) {
                             this.onSingleTap(clientX, clientY);
                         }
@@ -226,7 +227,7 @@ class Touch {
                 break;
 
             case TOUCH_TAP:
-                console.warn("touch end event and state === TAP");///???
+                console.warn("touch end event and state === TAP");
                 break;
 
             case TOUCH_DOUBLE_TAP:
@@ -283,7 +284,7 @@ class Touch {
         } else if (this.state === TOUCH_PINCH) {
             this.pinchEnd();
         } else if (this.state === TOUCH_TAP) {
-            this.tapEnd();
+            this.tapAbort();
         }
 
         if (this.onTouchEnd && this.state !== TOUCH_NONE && this.state !== TOUCH_ERROR) {
@@ -317,7 +318,7 @@ class Touch {
         }
     }
 
-    tapEnd() {
+    tapAbort() {
         if (this.singleTapTimeout) {
             clearTimeout(this.singleTapTimeout);
             this.singleTapTimeout = null;
