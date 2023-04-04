@@ -54,17 +54,15 @@ class Touch {
             return;
         // bail out if there are touches outside of element or too many touches in element
         } else if (event.targetTouches.length !== event.touches.length || event.targetTouches.length > 2) {
-            console.log("touchStart bail out!");
+            // console.log("touchStart bail out!");
             this.handleTouchCancel();
             return;
         }
 
-        console.log("touchStart:", this.state, event.targetTouches.length);
+        // console.log("touchStart:", this.state, event.targetTouches.length);
         switch (this.state) {
             case TOUCH_NONE:
-                console.log("onTouchStart():", event.targetTouches.length);
-                // prevent emulated mouse dblclick (Chrome on ios seems to need this here; also needed just below)
-                // this.onDoubleTap && event.preventDefault();
+                // console.log("onTouchStart():", event.targetTouches.length);
                 if (this.onTouchStart) {
                     this.onTouchStart();
                 }
@@ -77,8 +75,6 @@ class Touch {
             case TOUCH_TAP:
                 this.tapEnd();
                 this.state = TOUCH_DOUBLE_TAP;
-                // prevent emulated mouse dblclick
-                // this.onDoubleTap && event.preventDefault();
                 break;
 
             case TOUCH_DOUBLE_TAP:
@@ -109,7 +105,7 @@ class Touch {
             return;
         // bail out if there are touches outside of element
         } else if (event.targetTouches.length !== event.touches.length) {
-            console.log("touchMove bail out!");
+            // console.log("touchMove bail out!");
             this.handleTouchCancel();
             return;
         }
@@ -125,7 +121,7 @@ class Touch {
             case TOUCH_TOUCHING:     // one or two touches detected, now dragging or pinching
                 // check for start of one touch drag
                 if (event.targetTouches.length === 1) {
-                    console.log("start drag");
+                    // console.log("start drag");
                     this.state = TOUCH_DRAG;
                     if (this.onDragStart) {
                         this.onDragStart();
@@ -139,7 +135,7 @@ class Touch {
 
                 // check if there are two touches for pinch gesture
                 } else if (event.targetTouches.length === 2) {
-                    console.log("start pinch");
+                    // console.log("start pinch");
                     this.state = TOUCH_PINCH;
                     if (this.onPinchStart) {
                         this.onPinchStart();
@@ -196,7 +192,7 @@ class Touch {
     // Handle touch end event
     handleTouchEnd(event) {
 
-        console.log("touchEnd:", this.state, this.startTouches.length, event.targetTouches.length);
+        // console.log("touchEnd:", this.state, this.startTouches.length, event.targetTouches.length);
         let doOnTouchEnd = false;
         switch (this.state) {
             case TOUCH_NONE:
@@ -207,9 +203,11 @@ class Touch {
                 // check for multi-touch tap
                 if (this.startTouches.length > 1) {
                     this.handleTouchCancel();
+
+                // Set timeout for a single tap gesture
                 } else {
+                    // prevent emulated mouse dblclick
                     this.onDoubleTap && event.preventDefault();
-                    // Set timeout for a single tap gesture
                     const clientX = event.changedTouches[0].clientX;
                     const clientY = event.changedTouches[0].clientY;
                     this.singleTapTimeout = setTimeout(() => {
@@ -218,7 +216,7 @@ class Touch {
                             this.onSingleTap(clientX, clientY);
                         }
                         if (this.onTouchEnd) {
-                            console.log("onTouchEnd() from single tap");
+                            // console.log("onTouchEnd() from single tap");
                             this.onTouchEnd();
                         }
                         this.state = TOUCH_NONE;
@@ -233,6 +231,7 @@ class Touch {
 
             case TOUCH_DOUBLE_TAP:
                 if (this.onDoubleTap) {
+                    // prevent emulated mouse dblclick (Chrome on ios seems to need this here)
                     event.preventDefault();
                     this.onDoubleTap(event.changedTouches[0].clientX, event.changedTouches[0].clientY);
                 }
@@ -269,7 +268,7 @@ class Touch {
         }
 
         if (doOnTouchEnd && this.onTouchEnd) {
-            console.log("onTouchEnd() from handleTouchEnd");
+            // console.log("onTouchEnd() from handleTouchEnd");
             this.onTouchEnd();
             this.state = TOUCH_NONE;
         }
@@ -278,7 +277,7 @@ class Touch {
     // Handle touch cancel event
     handleTouchCancel(event) {
         // console.log("touch canceled from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], this.state);
-        console.log("touch canceled", this.state);
+        // console.log("touch canceled", this.state);
         if (this.state === TOUCH_DRAG) {
             this.dragEnd();
         } else if (this.state === TOUCH_PINCH) {
@@ -288,11 +287,11 @@ class Touch {
         }
 
         if (this.onTouchEnd && this.state !== TOUCH_NONE && this.state !== TOUCH_ERROR) {
-            console.log("onTouchEnd() from handleTouchCancel");
+            // console.log("onTouchEnd() from handleTouchCancel");
             this.onTouchEnd();
         }
 
-        // if event is present then handleTouchCancel was called from the browser
+        // if event is present then handleTouchCancel was called by the browser
         if (event && event.targetTouches.length === 0) {
             this.state = TOUCH_NONE;
         } else if (this.state !== TOUCH_NONE) {
