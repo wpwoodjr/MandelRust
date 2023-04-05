@@ -3104,6 +3104,8 @@ function toFullScreenCanvas() {
         document.addEventListener("fullscreenchange", fullscreenChange);
         fullScreenCanvas = true;
         canvas.requestFullscreen();
+    } else {
+        document.getElementById("status").innerHTML = "Fullscreen mode not available";
     }
 }
 function fromFullScreenCanvas() {
