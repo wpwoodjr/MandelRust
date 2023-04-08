@@ -141,7 +141,7 @@
    }
    #xmlimport, #paletteEditor {
        position: absolute;
-       left: 70px;
+       left: 35px;
        top: 100px;
        z-index:20;
        padding: 10px;
@@ -232,7 +232,7 @@
         border-spacing: 0; /* Recommended for border-radius */
         background-color: rgba(255, 255, 255, 0.5);
         border-radius: 8px;
-        z-index: 5;
+        z-index: 7;
         width: 100%;
         font-size: 20px;
         table-layout: fixed;
@@ -290,7 +290,7 @@
 "use strict";
 
 (function() {
-    // load Google analytics, but only if web host is my domain; don't do analytics for other hosts
+    // load Google analytics, but only if web host is wpwoodjr domain; don't do analytics for other hosts
     if (window.location.hostname === "wpwoodjr.github.io") {
         // console.log("loading Google tag for domain", window.location.hostname);
         // <!-- Google tag (gtag.js) -->
@@ -3413,7 +3413,7 @@ function initTouch() {
 
     CanvasRenderingContext2D.prototype.drawImage = function(canvas, left, top, ...args) {
         if (args.length === 6) {
-            // console.log(left, top);
+            // console.log(left, top, ...args);
             let canvasLeft = 0;
             // assumes that args[2] and args[3] === 0
             if (left < 0) {
