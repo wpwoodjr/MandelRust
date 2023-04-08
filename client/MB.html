@@ -88,6 +88,9 @@
         height: 100%;
         border: 0px;
     }
+    .fullWindowCanvasFront {
+        z-index: 8;
+    }
 
     /* main UI grid */
     .mainUI {
@@ -1414,13 +1417,16 @@ function doCustomSize() {
 }
 function setCanvasToWindow() {
     currentImageSize = [0, 0];
-    canvas.classList.add("fitWindowCanvas");
+    // canvas.classList.add("fitWindowCanvas");
+    canvas.classList.add('fullWindowCanvas');
     setTooltipSize();
     let w, h;
-    const ratio = window.innerHeight/window.innerWidth;
-    w = canvas.parentElement.clientWidth;
-    w = Math.max(64, w);
-    h = Math.max(64, Math.round(w*ratio));
+    // const ratio = window.innerHeight/window.innerWidth;
+    // w = canvas.parentElement.clientWidth;
+    // w = Math.max(64, w);
+    // h = Math.max(64, Math.round(w*ratio));
+    w = window.innerWidth;
+    h = window.innerHeight;
 
     canvas.width = w;
     canvas.height = h;
@@ -1458,13 +1464,16 @@ function setImageSize(w, h, undo, doDraw) {
     const oldImageSize = currentImageSize;
     currentImageSize = [w, h];
     if (w === 0 && h === 0) {
-        canvas.classList.add("fitWindowCanvas");
-        const ratio = window.innerHeight/window.innerWidth;
-        w = canvas.parentElement.clientWidth;
-        w = Math.max(64, w);
-        h = Math.max(64, Math.round(w*ratio));
+        // canvas.classList.add("fitWindowCanvas");
+        canvas.classList.add('fullWindowCanvas');
+        // const ratio = window.innerHeight/window.innerWidth;
+        // w = canvas.parentElement.clientWidth;
+        // w = Math.max(64, w);
+        // h = Math.max(64, Math.round(w*ratio));
+        w = window.innerWidth;
+        h = window.innerHeight;
     } else {
-        canvas.classList.remove("fitWindowCanvas");
+        canvas.classList.remove("fullWindowCanvas");
     }
     setImageSizeToFixed(w, h, undo ? oldImageSize : false, doDraw);
 }
@@ -3092,11 +3101,13 @@ let fullWindowCanvas = false;
 let fullScreenCanvas = false;
 function toFullWindowCanvas() {
     canvas.classList.add('fullWindowCanvas');
+    canvas.classList.add('fullWindowCanvasFront');
     // console.log(window.innerWidth, window.innerHeight);
     setImageSizeToFixed(window.innerWidth, window.innerHeight);
     fullWindowCanvas = true;
 }
 function fromFullWindowCanvas() {
+    canvas.classList.remove('fullWindowCanvasFront');
     canvas.classList.remove('fullWindowCanvas');
     setImageSize(currentImageSize[0], currentImageSize[1], false);
     fullWindowCanvas = false;
@@ -3605,7 +3616,7 @@ function initTouch() {
    </div>
 </div>
 <div class="col2">
-  <canvas id="canvas" class="fixedCanvas fitWindowCanvas"></canvas>
+  <canvas id="canvas" class="fixedCanvas fullWindowCanvas"></canvas>
   <div id="status">Idle</div>
 </div>
 </div>
