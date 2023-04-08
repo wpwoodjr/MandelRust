@@ -107,10 +107,11 @@
 
    #controls {
        display: inline-block;
-       background-color:white;
-       border: 2px solid black;
+       background-color: rgba(255, 255, 255, 0.5);
+       /* border: 2px solid black; */
        padding: 0;
        border-radius: 8px;
+       z-index: 5;
    }
    #controls p {
        margin: 12px 0;
@@ -166,13 +167,12 @@
     .tooltip .helptext {
         visibility: hidden;
         width: 800px;
-        background-color: #fff;
+        background-color: rgba(255, 255, 255, 1);
         color: #000;
         text-align: left;
         border-radius: 8px;
         padding: 10px;
         position: absolute;
-        z-index: 1;
         font-size: 16px;
         font-weight: normal;
         top: 100%;
@@ -198,13 +198,12 @@
     .tooltip .exampletext {
         visibility: hidden;
         width: 800px;
-        background-color: #fff;
+        background-color: rgba(255, 255, 255, 1);
         color: #000;
         text-align: left;
         border-radius: 8px;
         padding: 10px;
         position: absolute;
-        z-index: 1;
         font-size: 16px;
         font-weight: normal;
         top: 100%;
@@ -228,7 +227,12 @@
     }
 
     #header-table {
-        border-collapse: collapse;
+        position: relative; /* Required for z-index */
+        border-collapse: separate; /* Recommended for border-radius */
+        border-spacing: 0; /* Recommended for border-radius */
+        background-color: rgba(255, 255, 255, 0.5);
+        border-radius: 8px;
+        z-index: 5;
         width: 100%;
         font-size: 20px;
         table-layout: fixed;

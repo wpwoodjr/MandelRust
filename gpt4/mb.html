@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandelbrot Set Viewer</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        #mandelbrotCanvas {
+            display: block;
+        }
+
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background-color: rgba(255, 255, 255, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="mandelbrotCanvas"></canvas>
+    <div id="controls">
+        <input type="range" id="maxIterations" min="50" max="2000" value="1000">
+        <select id="colorPalette">
+            <option value="palette1">Palette 1</option>
+            <option value="palette2">Palette 2</option>
+            <option value="blackAndWhite">Black and White</option>
+            <option value="blackRedGold">Black, Red, Gold</option>
+        </select>
+    </div>
+    <script>
+        const canvas = document.getElementById('mandelbrotCanvas');
+        const ctx = canvas.getContext('2d');
+        const maxIterationsInput = document.getElementById('maxIterations');
+        const colorPaletteSelect = document.getElementById('colorPalette');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let centerX = canvas.width / 2;
+        let centerY = canvas.height / 2;
+        let scale = 300;
+        let maxIterations = 1000;
+        let colorPalette = 'palette1';
+
+        // Add your color palettes here
+        function lerpColor(color1, color2, ratio) {
+            const r = Math.round(color1[0] + (color2[0] - color1[0]) * ratio);
+            const g = Math.round(color1[1] + (color2[1] - color1[1]) * ratio);
+            const b = Math.round(color1[2] + (color2[2] - color1[2]) * ratio);
+            return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+        }
+
+        function generateColorPalette(colors, length) {
+            const palette = [];
+            const sectionLength = length / (colors.length - 1);
+            for (let i = 0; i < colors.length - 1; i++) {
+                for (let j = 0; j < sectionLength; j++) {
+                    const ratio = j / sectionLength;
+                    palette.push(lerpColor(colors[i], colors[i + 1], ratio));
+                }
+            }
+            palette.push(colors[colors.length - 1]);
+            return palette;
+        }
+
+        const blackRedGoldColors = [
+            [0, 0, 0], // Black
+            [255, 0, 0], // Red
+            [255, 215, 0], // Gold
+        ];
+
+        const colorPalettes = {
+            palette1: [
+                '#000000',
+                '#0000ff',
+                '#00ff00',
+                '#00ffff',
+                '#ff0000',
+                '#ff00ff',
+                '#ffff00',
+                '#ffffff',
+            ],
+            palette2: [
+                '#000000',
+                '#ff0000',
+                '#ffff00',
+                '#00ff00',
+                '#00ffff',
+                '#0000ff',
+                '#ff00ff',
+                '#ffffff',
+            ],
+            blackAndWhite: Array.from({ length: 256 }, (_, i) => {
+                const gray = i.toString(16).padStart(2, '0');
+                return `#${gray}${gray}${gray}`;
+            }),
+            blackRedGold: generateColorPalette(blackRedGoldColors, 256),
+        };
+
+        function pan(dx, dy) {
+            centerX += dx;
+            centerY += dy;
+            drawMandelbrot();
+        }
+
+        function zoom(factor) {
+            scale *= factor;
+            drawMandelbrot();
+        }
+
+        // Add touch event listeners for panning and zooming
+        canvas.addEventListener('touchstart', handleTouchStart, false);
+        canvas.addEventListener('touchmove', handleTouchMove, false);
+        canvas.addEventListener('touchend', handleTouchEnd, false);
+
+        // Implement touch event handlers here
+
+        maxIterationsInput.addEventListener('input', (event) => {
+            maxIterations = parseInt(event.target.value);
+            drawMandelbrot();
+        });
+
+        colorPaletteSelect.addEventListener('change', (event) => {
+            colorPalette = event.target.value;
+            drawMandelbrot();
+        });
+
+        drawMandelbrot();
+
+        function mandelbrot(c_re, c_im, maxIter) {
+            let z_re = c_re;
+            let z_im = c_im;
+            let n = 0;
+            for (; n < maxIter; ++n) {
+                let z_re2 = z_re * z_re;
+                let z_im2 = z_im * z_im;
+                if (z_re2 + z_im2 > 4.0) break;
+                let new_re = z_re2 - z_im2;
+                let new_im = 2 * z_re * z_im;
+                z_re = c_re + new_re;
+                z_im = c_im + new_im;
+            }
+            return n;
+        }
+
+        function drawMandelbrot() {
+            const imageData = ctx.createImageData(canvas.width, canvas.height);
+            const data = imageData.data;
+
+            for (let y = 0; y < canvas.height; ++y) {
+                for (let x = 0; x < canvas.width; ++x) {
+                    const c_re = (x - centerX) / scale;
+                    const c_im = (y - centerY) / scale;
+                    const n = mandelbrot(c_re, c_im, maxIterations);
+
+                    const color = colorPalettes[colorPalette][n % colorPalettes[colorPalette].length];
+                    const index = (x + y * canvas.width) * 4;
+
+                    if (n === maxIterations) {
+                        data[index] = data[index + 1] = data[index + 2] = 0;
+                    } else {
+                        const rgb = parseInt(color.slice(1), 16);
+                        data[index] = (rgb >> 16) & 255;
+                        data[index + 1] = (rgb >> 8) & 255;
+                        data[index + 2] = rgb & 255;
+                    }
+                    data[index + 3] = 255;
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        let touchStartDist = null;
+        let touchStartMidpoint = null;
+        let touchStartCenter = null;
+
+        function handleTouchStart(event) {
+            event.preventDefault();
+            if (event.touches.length === 1) {
+                touchStartMidpoint = { x: event.touches[0].pageX, y: event.touches[0].pageY };
+            } else if (event.touches.length === 2) {
+                touchStartMidpoint = {
+                    x: (event.touches[0].pageX + event.touches[1].pageX) / 2,
+                    y: (event.touches[0].pageY + event.touches[1].pageY) / 2,
+                };
+                touchStartDist = Math.hypot(
+                    event.touches[0].pageX - event.touches[1].pageX,
+                    event.touches[0].pageY - event.touches[1].pageY
+                );
+                touchStartCenter = { x: centerX, y: centerY };
+            }
+        }
+
+        function handleTouchMove(event) {
+            event.preventDefault();
+            if (event.touches.length === 1 && touchStartMidpoint) {
+                const dx = event.touches[0].pageX - touchStartMidpoint.x;
+                const dy = event.touches[0].pageY - touchStartMidpoint.y;
+                pan(dx, dy);
+            } else if (event.touches.length === 2 && touchStartDist && touchStartCenter) {
+                const newDist = Math.hypot(
+                    event.touches[0].pageX - event.touches[1].pageX,
+                    event.touches[0].pageY - event.touches[1].pageY
+                );
+                const newMidpoint = {
+                    x: (event.touches[0].pageX + event.touches[1].pageX) / 2,
+                    y: (event.touches[0].pageY + event.touches[1].pageY) / 2,
+                };
+                const zoomFactor = newDist / touchStartDist;
+
+                centerX = touchStartCenter.x - (newMidpoint.x - touchStartMidpoint.x);
+                centerY = touchStartCenter.y - (newMidpoint.y - touchStartMidpoint.y);
+
+                zoom(zoomFactor);
+            }
+        }
+
+        function handleTouchEnd(event) {
+            event.preventDefault();
+            touchStartDist = null;
+            touchStartMidpoint = null;
+            touchStartCenter = null;
+        }
+
+    </script>
+</body>
+</html>
