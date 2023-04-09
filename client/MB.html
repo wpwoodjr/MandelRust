@@ -3304,7 +3304,7 @@ function initTouch() {
                 stopJob();
             },
             onTouchEnd: function() {
-                if (this.startJob) {
+                if (this.startJob && ! running) {
                     startJob(true);
                 }
             },
@@ -3320,7 +3320,6 @@ function initTouch() {
                 } else {
                     toFullWindowCanvas();
                 }
-                this.startJob = false;
             },
             // Chrome on ios won't register the second touch event if emulating double tap via mouse dblclick
             //   this leads to a single tap being detected instead of a double tap
