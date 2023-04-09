@@ -110,7 +110,7 @@
 
    #controls {
        display: inline-block;
-       background-color: rgba(255, 255, 255, 0.5);
+       background-color: rgba(255, 255, 255, 0.6);
        /* border: 2px solid black; */
        padding: 0;
        border-radius: 8px;
@@ -233,7 +233,7 @@
         position: relative; /* Required for z-index */
         border-collapse: separate; /* Recommended for border-radius */
         border-spacing: 0; /* Recommended for border-radius */
-        background-color: rgba(255, 255, 255, 0.5);
+        background-color: rgba(255, 255, 255, 0.6);
         border-radius: 8px;
         z-index: 7;
         width: 100%;
@@ -3301,7 +3301,6 @@ function initTouch() {
             },
             onTouchStart: function() {
                 this.startJob = running;
-                stopJob();
             },
             onTouchEnd: function() {
                 if (this.startJob && ! running) {
@@ -3334,6 +3333,7 @@ function initTouch() {
             },
             onDragStart: function() {
                 // console.log("onDragStart");
+                stopJob();
                 this.data.canvas.width = canvas.width;
                 this.data.canvas.height = canvas.height;
                 // get latest OSC
