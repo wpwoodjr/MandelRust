@@ -3324,6 +3324,9 @@ function initTouch() {
             //   this leads to a single tap being detected instead of a double tap
             //   easiest approach is just to register here for onDoubleTap
             onDoubleTap: function(x, y) {
+                if (! fullScreenCanvas && ! fullWindowCanvas) {
+                    toFullWindowCanvas();
+                }
                 const r = canvas.getBoundingClientRect();
                 // account for canvas border margin
                 x -= (r.left + r.right - canvas.width)/2;
