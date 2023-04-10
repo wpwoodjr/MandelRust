@@ -50,13 +50,10 @@ class Touch {
             this.onInit = null;
         }
 
-        if (this.state === TOUCH_ERROR) {
-            return;
         // bail out if there are touches outside of element or too many touches in element
-        } else if (event.targetTouches.length !== event.touches.length || event.targetTouches.length > 2) {
+        if (event.targetTouches.length !== event.touches.length || event.targetTouches.length > 2) {
             // console.log("touchStart bail out!");
             this.handleTouchCancel();
-            return;
         }
 
         // console.log("touchStart:", this.state, event.targetTouches.length);
@@ -78,7 +75,8 @@ class Touch {
                 break;
 
             case TOUCH_DOUBLE_TAP:
-                console.warn("touch start event and state === DOUBLE_TAP");
+                // this can happen if single-tap with one touch then quickly tap with two touches
+                this.handleTouchCancel();
                 break;
 
             case TOUCH_DRAG:
@@ -102,19 +100,16 @@ class Touch {
     // Handle touch move event
     handleTouchMove(event) {
 
-        if (this.state === TOUCH_ERROR) {
-            return;
         // bail out if there are touches outside of element
-        } else if (event.targetTouches.length !== event.touches.length) {
+        if (event.targetTouches.length !== event.touches.length) {
             // console.log("touchMove bail out!");
             this.handleTouchCancel();
-            return;
         }
 
-        event.preventDefault();
         switch (this.state) {
             case TOUCH_NONE:
-                console.warn("touch move event and state === NONE");
+                // this can happen when touch is initiated outside the element
+                // console.warn("touch move event and state === NONE");
                 break;
 
             case TOUCH_DOUBLE_TAP:   // waiting for second tap touch end, but move happened instead
@@ -130,6 +125,7 @@ class Touch {
                     this.endTouches = this.copyTouches(event.targetTouches);
                     this.startTime = Date.now();
                     if (this.onDragMove) {
+                        event.preventDefault();
                         this.onDragMove(this.startTouches[0].clientX, this.startTouches[0].clientY,
                             this.endTouches[0].clientX, this.endTouches[0].clientY);
                     }
@@ -144,6 +140,7 @@ class Touch {
                     this.endTouches = this.copyTouches(event.targetTouches);
                     this.startTime = Date.now();
                     if (this.onPinchMove) {
+                        event.preventDefault();
                         this.onPinchMove(
                             [this.startTouches[0].clientX, this.startTouches[0].clientY,
                                 this.startTouches[1].clientX, this.startTouches[1].clientY],
@@ -159,6 +156,7 @@ class Touch {
 
             case TOUCH_DRAG:
                 if (this.onDragMove) {
+                    event.preventDefault();
                     const elapsed = Date.now() - this.startTime;
                     if (elapsed >= 1000/this.FPS) {
                         this.startTime = Date.now();
@@ -170,17 +168,20 @@ class Touch {
                 break;
 
             case TOUCH_PINCH:
-                // check length because Firefox doesn't always call handleTouchEnd before here
-                if (event.targetTouches.length === 2 && this.onPinchMove) {
-                    const elapsed = Date.now() - this.startTime;
-                    if (elapsed >= 1000/this.FPS) {
-                        this.startTime = Date.now();
-                        this.endTouches = this.copyTouches(event.targetTouches);
-                        this.onPinchMove(
-                            [this.startTouches[0].clientX, this.startTouches[0].clientY,
-                                this.startTouches[1].clientX, this.startTouches[1].clientY],
-                            [this.endTouches[0].clientX, this.endTouches[0].clientY,
-                                this.endTouches[1].clientX, this.endTouches[1].clientY]);
+                if (this.onPinchMove) {
+                    event.preventDefault();
+                    // check length because Firefox doesn't always call handleTouchEnd before here
+                    if (event.targetTouches.length === 2) {
+                        const elapsed = Date.now() - this.startTime;
+                        if (elapsed >= 1000/this.FPS) {
+                            this.startTime = Date.now();
+                            this.endTouches = this.copyTouches(event.targetTouches);
+                            this.onPinchMove(
+                                [this.startTouches[0].clientX, this.startTouches[0].clientY,
+                                    this.startTouches[1].clientX, this.startTouches[1].clientY],
+                                [this.endTouches[0].clientX, this.endTouches[0].clientY,
+                                    this.endTouches[1].clientX, this.endTouches[1].clientY]);
+                        }
                     }
                 }
                 break;
@@ -197,7 +198,8 @@ class Touch {
         let doOnTouchEnd = false;
         switch (this.state) {
             case TOUCH_NONE:
-                console.warn("touch end event and state === NONE");
+                // this can happen when touch is initiated outside the element
+                // console.warn("touch end event and state === NONE");
                 break;
 
             case TOUCH_TOUCHING:
@@ -231,12 +233,18 @@ class Touch {
                 break;
 
             case TOUCH_DOUBLE_TAP:
-                if (this.onDoubleTap) {
-                    // prevent emulated mouse dblclick (Chrome on ios seems to need this here)
-                    event.preventDefault();
-                    this.onDoubleTap(event.changedTouches[0].clientX, event.changedTouches[0].clientY);
+                // check for multi-touch tap
+                if (this.startTouches.length > 1) {
+                    this.handleTouchCancel();
+
+                } else {
+                    if (this.onDoubleTap) {
+                        // prevent emulated mouse dblclick (Chrome on ios seems to need this here)
+                        event.preventDefault();
+                        this.onDoubleTap(event.changedTouches[0].clientX, event.changedTouches[0].clientY);
+                    }
+                    doOnTouchEnd = true;
                 }
-                doOnTouchEnd = true;
                 break;
 
             case TOUCH_DRAG:

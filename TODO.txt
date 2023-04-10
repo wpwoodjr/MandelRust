@@ -15,6 +15,8 @@ Fix up dependencies in Cargo.toml, and check .gitignore
 UCArray stuff
 Keep JS worker?
 ///stuff
+Update help
+Save pref for image size and second pass, interlaced
 
 >Touch need to account for border of canvas?
 >dbl-tap and hold, then move - startouches[0] is undefined in handletouchmove
