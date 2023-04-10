@@ -3298,12 +3298,18 @@ function initTouch() {
                 startJob: false,
                 canvas: null,
                 ctx: null,
+                toFullWindowCanvas: function () {
+                    if (! fullScreenCanvas && ! fullWindowCanvas
+                            && currentImageSize[0] === 0 && currentImageSize[1] === 0) {
+                        toFullWindowCanvas();
+                    }
+                }
             },
             onTouchStart: function() {
-                this.startJob = running;
+                this.data.startJob = running;
             },
             onTouchEnd: function() {
-                if (this.startJob && ! running) {
+                if (this.data.startJob && ! running) {
                     startJob(true);
                 }
             },
@@ -3324,22 +3330,18 @@ function initTouch() {
             //   this leads to a single tap being detected instead of a double tap
             //   easiest approach is just to register here for onDoubleTap
             onDoubleTap: function(x, y) {
-                if (! fullScreenCanvas && ! fullWindowCanvas) {
-                    toFullWindowCanvas();
-                }
+                this.data.toFullWindowCanvas();
                 const r = canvas.getBoundingClientRect();
                 // account for canvas border margin
                 x -= (r.left + r.right - canvas.width)/2;
                 y -= (r.top + r.bottom - canvas.height)/2;
                 zoom(x, y, 0.5, true, true);
-                this.startJob = false;
+                this.data.startJob = false;
             },
             onDragStart: function() {
                 // console.log("onDragStart");
                 stopJob();
-                if (! fullScreenCanvas && ! fullWindowCanvas) {
-                    toFullWindowCanvas();
-                }
+                this.data.toFullWindowCanvas();
                 this.data.canvas.width = canvas.width;
                 this.data.canvas.height = canvas.height;
                 // get latest OSC
@@ -3360,7 +3362,7 @@ function initTouch() {
                 const shiftY = startY - endY;
 
                 doZoomInOnRect(shiftX, shiftY, canvas.width, canvas.height, true, "Move", true);
-                this.startJob = true;
+                this.data.startJob = true;
             },
             onPinchStart: function() {
                 this.onDragStart();
@@ -3417,7 +3419,7 @@ function initTouch() {
                 const top = centerYLast*(1 - zoomFactor) + shiftY;
 
                 doZoomInOnRect(left, top, width, height, true, undoText, true);
-                this.startJob = true;
+                this.data.startJob = true;
             }
         });
     }
