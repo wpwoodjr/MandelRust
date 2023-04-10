@@ -3462,8 +3462,9 @@ function initTouch() {
     <span class="tooltip">Help
         <span class="helptext selectable">
             <h3>Basic Help</h3>
-                Double-click the image to zoom in, or click and drag on it to zoom in to a rectangle.
-                On the left is a selection of settings for the color palette, image size, etc.  Hover over a
+                With a mouse, double-click or click and drag on the image to zoom in.
+                On a touch screen, drag or pinch to zoom; tap to show controls.
+                On the left are controls for the color palette, image size, etc.  Hover over a
                 setting to see what it does.
             <h3>Special keys</h3>
                 <table>
@@ -3473,7 +3474,7 @@ function initTouch() {
                     <tr><td>Down Arrow:</td><td>Scroll down</td></tr>
                     <tr><td>Page Up:</td><td>Zoom out on image</td></tr>
                     <tr><td>Page Down:</td><td>Zoom in on image</td></tr>
-                    <tr><td>f:</td><td>Fill window with image</td></tr>
+                    <tr><td>f:</td><td>Fill window with image, hide controls</td></tr>
                     <tr><td>F (shift-f):</td><td>Fill screen with image</td></tr>
                     <tr><td>Esc</td><td>Exit fill window or fill screen mode</td></tr>
                     <tr><td>Ctrl-z</td><td>Undo last action</td></tr>
@@ -3482,10 +3483,11 @@ function initTouch() {
                 <br>
                 For a detailed description, instructions, and examples, see <a href='MB-info.html'><b>more help</b></a>.
             <h3>More Info</h3>
-                Increasing the number of "Workers" (in the left pane) brings in more CPU to speed up calculations.
-                To see, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>,
+                The number of "Workers" (in the controls pane) determines how much CPU is used for calculations.  The preset value should work well.
+                To experiment, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>,
                 then vary the number of workers to speed it up or slow it down.
             </p><p>
+            <h3>Background</h3>
                 Based on a browser-only Mandelbrot Set viewer by <a href=https://math.hws.edu/eck/index.html target="_blank">David Eck</a>,
                 this revised version can run calculations in the browser or on a backend web server.  By default it tries to use the web server;
                 if the web server doesn't support calculations it runs them in the browser.
