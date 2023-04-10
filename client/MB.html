@@ -368,7 +368,7 @@ var applyUndoInProgress = false;
 
 var paletteEditInProgress = false;
 
-var interlaced = true;
+var interlaced = getLocalStorageItem("interlaced", true);
 var interlaceOrder = (function() {
       var order = [127];
       for (var i = 64; i >= 1; i /= 2) {
@@ -1375,6 +1375,7 @@ function finishDoPaletteOffset(newPaletteOffset, oldPaletteState) {
 
 function changeInterlaced() {
    var checked = document.getElementById("interlaced").checked;
+   setLocalStorageItem("interlaced", checked);
    if (checked == interlaced) {
        return;
    }
@@ -1515,6 +1516,7 @@ function doApplyStandardPalette(newPaletteNum, newPalette) {
 
 function changeSecondPass() {
     var checked = document.getElementById("secondpass").checked;
+    setLocalStorageItem("secondpass", checked);
     if (checked && !running && state == DONE_FIRST_PASS) {
         // hack to improve accuracy of rowsPerSecond and jobsPerSecond when a second pass is run sometime after first pass
         const elapsedSecs = rowsCompleted/rowsPerSecond;
@@ -2865,7 +2867,7 @@ function init() {
     document.getElementById("threadCountSelect").onchange = changeWorkerCount;
 
     document.getElementById("showpaletteedit").onclick=showPaletteEditor;
-    document.getElementById("secondpass").checked = true;
+    document.getElementById("secondpass").checked = getLocalStorageItem("secondpass", true);
     document.getElementById("secondpass").onchange = changeSecondPass;
     document.getElementById("highPrecision").checked = false;
     document.getElementById("highPrecision").onchange = changeHighPrecision;
@@ -2892,8 +2894,8 @@ function init() {
 function getLocalStorageItem(item, defaultVal) {
     try {
         let value = localStorage.getItem(item);
-        // console.log(item, value, defaultVal, typeof defaultVal);
-        if (value == null) {
+        // console.log(item, value, typeof value, defaultVal, typeof defaultVal);
+        if (value === null) {
             return defaultVal;
         } else if (typeof defaultVal === "number" ) {
             value = parseFloat(value);
@@ -2902,6 +2904,8 @@ function getLocalStorageItem(item, defaultVal) {
             } else {
                 return defaultVal;
             }
+        } else if (typeof defaultVal === "boolean" ) {
+            return value === "true" ? true : false;
         } else {
             return value;
         }

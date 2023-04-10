@@ -9,15 +9,16 @@ Pinch zoom check id's what happens when lift a finger, etc
 Why is status ''
 Undo zoom is wrong if change window size between zoom and undo zoom
 re-eval 2nd pass not drawing until complete.  less clear than orig?
+Save pref for image size
 
 Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore
 UCArray stuff
 Keep JS worker?
 ///stuff
-Update help
-Save pref for image size and second pass, interlaced
 
+>Update help
+>Save pref for second pass, interlaced
 >Touch need to account for border of canvas?
 >dbl-tap and hold, then move - startouches[0] is undefined in handletouchmove
 >dbl-tap hold then move should move
