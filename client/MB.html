@@ -131,11 +131,6 @@
         font-weight: normal;
         color: #AA0000;
     }
-    #status-header {
-        font-size: 16px;
-        font-weight: normal;
-        color: #AA0000;
-    }
    #xmlimportbg {
        position: fixed;
        z-index: 10;
@@ -293,6 +288,7 @@
 <script src="BigDecimal-all-last.min.js"></script>
 <script src="slider.js"></script>
 <script src="touch.js"></script>
+<script src="percentage-complete.js"></script>
 <script>
 
 "use strict";
@@ -353,6 +349,7 @@ var dragbox = null;
 let maxIterSlider, mainPaletteOffsetSlider, mainPaletteLengthSlider, paletteSelectSlider;
 let zoomInSlider, zoomOutSlider;
 let touch;
+let percentageComplete;
 
 let currentImageSize;
 var palette;
@@ -522,11 +519,12 @@ function repaint(dontUpdateStatusToIdle) {
         document.getElementById("status").innerHTML =
                     pass + prec +
                     "... completed " + rc + " of " + ch + " rows at " + rpsText;
-        document.getElementById("status-header").innerHTML = pass + prec + " " + (rc/ch*100).toFixed(0) + "%";
+        percentageComplete.setPercentage(rc/ch, pass + prec);    // + " " + (rc/ch*100).toFixed(0) + "%");
     }
     else if (dontUpdateStatusToIdle !== true) {
         document.getElementById("status").innerHTML = "Idle (" + rpsText + ")";
-        document.getElementById("status-header").innerHTML = "Idle (" + rpsText + ")";
+        percentageComplete.updateText("Idle (" + rpsText + ")");
+        percentageComplete.hideProgressBar();
     }
 }
 
@@ -1498,6 +1496,7 @@ function resizeWindow() {
         setTooltipSize();
         setImageSize(currentImageSize[0], currentImageSize[1], false);
     }
+    percentageComplete.updateWidth();
 }
 function setTooltipSize() {
     const mainUIRect = document.getElementById("mainUI").getBoundingClientRect();
@@ -2890,6 +2889,8 @@ function init() {
     changeWorkerCount(); // has to be done before setDefaults
     createSliders();
     initTouch();
+    // percentageComplete = new PercentageComplete("status-header2", "#2196f3", 50);
+    percentageComplete = new ProgressBar("status-header", "Idle", "#2196f3", "#eee");
     window.addEventListener('resize', resizeWindow);
     setDefaults();
     checkForExample();
@@ -3553,7 +3554,7 @@ function initTouch() {
         </span>
     </span>
 </td>
-<td id="status-header">Idle</td>
+<td id="status-header"></td>
 </tr>
 </table>
 
