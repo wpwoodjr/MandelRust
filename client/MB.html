@@ -3334,6 +3334,7 @@ function initTouch() {
             onDragStart: function() {
                 // console.log("onDragStart");
                 stopJob();
+                toFullWindowCanvas();
                 this.data.canvas.width = canvas.width;
                 this.data.canvas.height = canvas.height;
                 // get latest OSC
