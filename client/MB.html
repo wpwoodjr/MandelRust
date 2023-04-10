@@ -131,6 +131,11 @@
         font-weight: normal;
         color: #AA0000;
     }
+    #status-header {
+        font-size: 16px;
+        font-weight: normal;
+        color: #AA0000;
+    }
    #xmlimportbg {
        position: fixed;
        z-index: 10;
@@ -517,9 +522,11 @@ function repaint(dontUpdateStatusToIdle) {
         document.getElementById("status").innerHTML =
                     pass + prec +
                     "... completed " + rc + " of " + ch + " rows at " + rpsText;
+        document.getElementById("status-header").innerHTML = pass + prec + " " + (rc/ch*100).toFixed(0) + "%";
     }
     else if (dontUpdateStatusToIdle !== true) {
         document.getElementById("status").innerHTML = "Idle (" + rpsText + ")";
+        document.getElementById("status-header").innerHTML = "Idle (" + rpsText + ")";
     }
 }
 
@@ -3546,6 +3553,7 @@ function initTouch() {
         </span>
     </span>
 </td>
+<td id="status-header">Idle</td>
 </tr>
 </table>
 

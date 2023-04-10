@@ -1,7 +1,6 @@
 Is there a way to use emulated double-click with Chrome on ios, without haveing to call touch.handleTouchCancel()?
 should preventdefault on all touch events?
 Maybe need to kill workers to increase responsiveness to touch on mobile with "default" settings
-When first open site on Pixel, image height is too large; then resizes as soon as you touch anything
 Safari doesn't handle negative numbers properly in drawImage
 Polyfill for drawImage generalized to handle non-0 target left and top?
 Safari 15 on macOS doesn't show zoom animation when shft-double-clicking
@@ -10,6 +9,7 @@ Why is status ''
 Undo zoom is wrong if change window size between zoom and undo zoom
 re-eval 2nd pass not drawing until complete.  less clear than orig?
 Save pref for image size
+Add draw status in upper right
 
 Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore
@@ -17,6 +17,7 @@ UCArray stuff
 Keep JS worker?
 ///stuff
 
+XWhen first open site on Pixel, image height is too large; then resizes as soon as you touch anything
 >Update help
 >Save pref for second pass, interlaced
 >Touch need to account for border of canvas?
