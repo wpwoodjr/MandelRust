@@ -1,4 +1,4 @@
-class PercentageComplete extends HTMLElement {
+class ProgressCircle extends HTMLElement {
     constructor(id, color, radius) {
         super();
         this.color = color;
@@ -79,7 +79,7 @@ class PercentageComplete extends HTMLElement {
     }
 }
   
-customElements.define("percentage-complete", PercentageComplete);
+customElements.define("progress-circle", ProgressCircle);
 
 class ProgressBar extends HTMLElement {
     constructor(id, initialText, barColor, backgroundColor) {
@@ -88,7 +88,7 @@ class ProgressBar extends HTMLElement {
         this.initialText = initialText;
         this.barColor = barColor;
         this.backgroundColor = backgroundColor;
-        this.length = 0.95*parentElement.offsetWidth;
+        this.length = 0.9*parentElement.offsetWidth;
         this.attachShadow({ mode: "open" });
         this.render();
         parentElement.appendChild(this);
@@ -124,7 +124,7 @@ class ProgressBar extends HTMLElement {
     }
 
     updateWidth() {
-        this.length = 0.95*this.parentElement.offsetWidth;
+        this.length = 0.9*this.parentElement.offsetWidth;
         const progressContainer = this.shadowRoot.querySelector(".progress-container");
         progressContainer.style.width = `${this.length}px`;
     }

@@ -244,7 +244,7 @@
         text-align: Left;
     }
     #header-table > tbody > tr > td:first-child {
-        width: 33%;
+        width: 27%;
     }
     #header-table > tbody > tr > td:nth-child(2) {
         width: 20%;
@@ -349,7 +349,7 @@ var dragbox = null;
 let maxIterSlider, mainPaletteOffsetSlider, mainPaletteLengthSlider, paletteSelectSlider;
 let zoomInSlider, zoomOutSlider;
 let touch;
-let percentageComplete;
+let statusHeader;
 
 let currentImageSize;
 var palette;
@@ -508,23 +508,23 @@ function repaint(dontUpdateStatusToIdle) {
     if (running) {
         repaintTimeout = setTimeout(repaint, repaintTimer);
         let rc = rowsCompleted;
-        let pass = "First pass, ";
+        let pass = "Pass 1, ";
         let ch = canvas.height;
         if (state == COMPUTING_SECOND_PASS) {
             rc -= ch;
             ch += 1;
-            pass = "Second pass, ";
+            pass = "Pass 2, ";
         }
-        let prec = highPrecision ? "high precision, " + digits + " digits" : "normal precision";
+        let prec = highPrecision ? digits + " digits precision" : "normal precision";
         document.getElementById("status").innerHTML =
                     pass + prec +
                     "... completed " + rc + " of " + ch + " rows at " + rpsText;
-        percentageComplete.setPercentage(rc/ch, pass + prec);    // + " " + (rc/ch*100).toFixed(0) + "%");
+        statusHeader.setPercentage(rc/ch, pass + prec);    // + " " + (rc/ch*100).toFixed(0) + "%");
     }
     else if (dontUpdateStatusToIdle !== true) {
         document.getElementById("status").innerHTML = "Idle (" + rpsText + ")";
-        percentageComplete.updateText("Idle (" + rpsText + ")");
-        percentageComplete.hideProgressBar();
+        statusHeader.updateText("Idle (" + rpsText + ")");
+        statusHeader.hideProgressBar();
     }
 }
 
@@ -1496,7 +1496,7 @@ function resizeWindow() {
         setTooltipSize();
         setImageSize(currentImageSize[0], currentImageSize[1], false);
     }
-    percentageComplete.updateWidth();
+    statusHeader.updateWidth();
 }
 function setTooltipSize() {
     const mainUIRect = document.getElementById("mainUI").getBoundingClientRect();
@@ -2889,8 +2889,7 @@ function init() {
     changeWorkerCount(); // has to be done before setDefaults
     createSliders();
     initTouch();
-    // percentageComplete = new PercentageComplete("status-header2", "#2196f3", 50);
-    percentageComplete = new ProgressBar("status-header", "Idle", "#2196f3", "#eee");
+    statusHeader = new ProgressBar("status-header", "Idle", "#2196f3", "#eee");
     window.addEventListener('resize', resizeWindow);
     setDefaults();
     checkForExample();
