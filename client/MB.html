@@ -1483,20 +1483,29 @@ function setImageSize(w, h, undo, doDraw) {
     }
     setImageSizeToFixed(w, h, undo ? oldImageSize : false, doDraw);
 }
+let resizeWindowTimeout = null;
 function resizeWindow() {
     // console.log("resizeWindow");
-    if (fullWindowCanvas) {
-        // console.log("resize fwc:", window.innerWidth, window.innerHeight);
-        setImageSizeToFixed(window.innerWidth, window.innerHeight);
-    } else if (fullScreenCanvas) {
-        // console.log("resize fsc:", screen.width, screen.height);
-        setImageSizeToFixed(screen.width, screen.height)
-    } else {
-        // console.log("resize:", currentImageSize[0], currentImageSize[1]);
-        setTooltipSize();
-        setImageSize(currentImageSize[0], currentImageSize[1], false);
+    if (resizeWindowTimeout !== null) {
+        clearTimeout(resizeWindowTimeout);
     }
-    statusHeader.updateWidth();
+    // ios was not always reporting correct width and height on orientation change
+    // use timeout to let things settle down
+    resizeWindowTimeout = setTimeout(() => {
+        resizeWindowTimeout = null;
+        setTooltipSize();
+        if (fullWindowCanvas) {
+            // console.log("resize fwc:", window.innerWidth, window.innerHeight);
+            setImageSizeToFixed(window.innerWidth, window.innerHeight);
+        } else if (fullScreenCanvas) {
+            // console.log("resize fsc:", screen.width, screen.height);
+            setImageSizeToFixed(screen.width, screen.height)
+        } else {
+            // console.log("resize:", currentImageSize[0], currentImageSize[1]);
+            setImageSize(currentImageSize[0], currentImageSize[1], false);
+        }
+        statusHeader.updateWidth();
+    }, 125);
 }
 function setTooltipSize() {
     const mainUIRect = document.getElementById("mainUI").getBoundingClientRect();
