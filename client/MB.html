@@ -1418,6 +1418,7 @@ function doCustomSize() {
     }
     setImageSize(width,height,true);
 }
+// outerWidth/height: ios safari not reporting correct size after orientation change
 const windowSize = {
     init: function() {
         // window.visualViewport.addEventListener('resize', resizeWindow);
@@ -1425,11 +1426,11 @@ const windowSize = {
     },
     get width() {
         // return Math.round(window.visualViewport.width*window.visualViewport.scale);
-        return window.outerWidth;
+        return window.innerWidth;
     },
     get height() {
         // return Math.round(window.visualViewport.height*window.visualViewport.scale);
-        return window.outerHeight;
+        return window.innerHeight;
     }
 }
 function setCanvasToWindow() {
@@ -1535,7 +1536,7 @@ function resizeWindow() {
         clearTimeout(resizeWindowTimeout);
     }
     doResizeWindow();
-    // chrome on ios is not always reporting correct width and height on orientation change
+    // ios is not always reporting correct width and height on orientation change
     // use timeout to redo the resize after things have hopefully settled down
     resizeWindowTimeout = setTimeout(() => {
         resizeWindowTimeout = null;
