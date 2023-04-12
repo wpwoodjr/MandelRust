@@ -1419,18 +1419,19 @@ function doCustomSize() {
     setImageSize(width,height,true);
 }
 // outerWidth/height: ios safari not reporting correct size after orientation change
+// innerWidth/height: ios chrome sometimes not reporting correct size after orientation change
 const windowSize = {
     init: function() {
-        // window.visualViewport.addEventListener('resize', resizeWindow);
-        window.addEventListener('resize', resizeWindow);
+        window.visualViewport.addEventListener('resize', resizeWindow);
+        // window.addEventListener('resize', resizeWindow);
     },
     get width() {
-        // return Math.round(window.visualViewport.width*window.visualViewport.scale);
-        return window.innerWidth;
+        return Math.round(window.visualViewport.width*window.visualViewport.scale);
+        // return window.innerWidth;
     },
     get height() {
-        // return Math.round(window.visualViewport.height*window.visualViewport.scale);
-        return window.innerHeight;
+        return Math.round(window.visualViewport.height*window.visualViewport.scale);
+        // return window.innerHeight;
     }
 }
 function setCanvasToWindow() {
