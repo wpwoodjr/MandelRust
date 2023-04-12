@@ -1418,6 +1418,20 @@ function doCustomSize() {
     }
     setImageSize(width,height,true);
 }
+const windowSize = {
+    init: function() {
+        // window.visualViewport.addEventListener('resize', resizeWindow);
+        window.addEventListener('resize', resizeWindow);
+    },
+    get width() {
+        // return Math.round(window.visualViewport.width*window.visualViewport.scale);
+        return window.outerWidth;
+    },
+    get height() {
+        // return Math.round(window.visualViewport.height*window.visualViewport.scale);
+        return window.outerHeight;
+    }
+}
 function setCanvasToWindow() {
     currentImageSize = [0, 0];
     canvas.classList.add('fullWindowCanvas');
@@ -1427,12 +1441,14 @@ function setCanvasToWindow() {
     // w = canvas.parentElement.clientWidth;
     // w = Math.max(64, w);
     // h = Math.max(64, Math.round(w*ratio));
-    w = window.innerWidth;
-    h = window.innerHeight;
-    w = window.outerWidth;
-    h = window.outerHeight;
-    // w = document.documentElement.clientWidth;
-    // h = document.documentElement.clientHeight;
+    // w = window.innerWidth;
+    // h = window.innerHeight;
+    // w = window.outerWidth;
+    // h = window.outerHeight;
+    w = windowSize.width;
+    h = windowSize.height;
+    // w = window.visualViewport.width;
+    // h = window.visualViewport.height;
 
     canvas.width = w;
     canvas.height = h;
@@ -1478,17 +1494,20 @@ function setImageSize(w, h, undo, doDraw) {
         // w = canvas.parentElement.clientWidth;
         // w = Math.max(64, w);
         // h = Math.max(64, Math.round(w*ratio));
-        w = window.innerWidth;
-        console.log(w);
+        console.log(window.innerWidth);
         w = window.visualViewport.width;
         console.log(w, document.documentElement.clientWidth);
         // h = window.visualViewport.height;
         // console.log(Math.round(w), Math.round(h));
-        w = window.outerWidth;
-        console.log(w);
-        h = window.outerHeight;
+        // w = window.innerWidth;
+        // w = window.outerWidth;
+        // console.log(w);
+        // h = window.innerHeight;
+        // h = window.outerHeight;
         // w = document.documentElement.clientWidth;
-        // h = document.documentElement.clientHeight;
+        // h = document.documentElement.clientHeight + 10;
+        w = windowSize.width;
+        h = windowSize.height;
         // console.log(w,h);
     } else {
         canvas.classList.remove("fullWindowCanvas");
@@ -1499,8 +1518,8 @@ let resizeWindowTimeout = null;
 function doResizeWindow() {
     setTooltipSize();
     if (fullWindowCanvas) {
-        // console.log("resize fwc:", window.innerWidth, window.innerHeight);
-        setImageSizeToFixed(window.innerWidth, window.innerHeight);
+        // console.log("resize fwc:", windowSize.width, windowSize.height);
+        setImageSizeToFixed(windowSize.width, windowSize.height);
     } else if (fullScreenCanvas) {
         // console.log("resize fsc:", screen.width, screen.height);
         setImageSizeToFixed(screen.width, screen.height)
@@ -1527,7 +1546,7 @@ function resizeWindow() {
 function setTooltipSize() {
     const mainUIRect = document.getElementById("mainUI").getBoundingClientRect();
     const w = mainUIRect.right;
-    // console.log("setToolTipSize:", w.toFixed(0));
+    console.log("setToolTipSize:", w.toFixed(0));
     let tooltip = document.querySelector('.tooltip .helptext');
     tooltip.style.width = Math.min(800, w*0.7) + "px";
 
@@ -2916,7 +2935,7 @@ function init() {
     createSliders();
     initTouch();
     statusHeader = new ProgressBar("status-header", "Idle", "#2196f3", "#eee");
-    window.addEventListener('resize', resizeWindow);
+    windowSize.init();
     setDefaults();
     checkForExample();
     undoList = [];
@@ -3139,8 +3158,8 @@ let fullScreenCanvas = false;
 function toFullWindowCanvas() {
     canvas.classList.add('fullWindowCanvas');
     canvas.classList.add('fullWindowCanvasFront');
-    // console.log(window.innerWidth, window.innerHeight);
-    setImageSizeToFixed(window.innerWidth, window.innerHeight);
+    // console.log("toFullWindowCanvas", windowSize.width, windowSize.height);
+    setImageSizeToFixed(windowSize.width, windowSize.height);
     fullWindowCanvas = true;
 }
 function fromFullWindowCanvas() {
