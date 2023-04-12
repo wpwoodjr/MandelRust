@@ -53,9 +53,9 @@
 -->
 <html>
 <head>
-<!-- <meta name='viewport' content='width=device-width, height=device-height, user-scalable=no, initial-scale=1, minimum-scale=1, maximum-scale=1'/> -->
+<meta name='viewport' content='width=device-width, height=device-height, user-scalable=no, initial-scale=1, minimum-scale=1, maximum-scale=1'/>
 <!-- <meta name='viewport' content='width=device-width, height=device-height'/> -->
-<meta name="viewport" content="width=device-width, initial-scale=1,interactive-widget=resizes-content" />
+<!-- <meta name="viewport" content="width=device-width, initial-scale=1,interactive-widget=resizes-content" /> -->
 <meta charset="UTF-8">
 <title>Mandelbrot Viewer</title>
 <!--
@@ -1429,6 +1429,8 @@ function setCanvasToWindow() {
     // h = Math.max(64, Math.round(w*ratio));
     w = window.innerWidth;
     h = window.innerHeight;
+    w = window.outerWidth;
+    h = window.outerHeight;
     // w = document.documentElement.clientWidth;
     // h = document.documentElement.clientHeight;
 
@@ -1482,9 +1484,9 @@ function setImageSize(w, h, undo, doDraw) {
         console.log(w, document.documentElement.clientWidth);
         // h = window.visualViewport.height;
         // console.log(Math.round(w), Math.round(h));
-        w = window.innerWidth;
+        w = window.outerWidth;
         console.log(w);
-        h = window.innerHeight;
+        h = window.outerHeight;
         // w = document.documentElement.clientWidth;
         // h = document.documentElement.clientHeight;
         // console.log(w,h);
