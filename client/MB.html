@@ -1426,8 +1426,8 @@ function setCanvasToWindow() {
     // h = Math.max(64, Math.round(w*ratio));
     w = window.innerWidth;
     h = window.innerHeight;
-    w = document.documentElement.clientWidth;
-    h = document.documentElement.clientHeight;
+    // w = document.documentElement.clientWidth;
+    // h = document.documentElement.clientHeight;
 
     canvas.width = w;
     canvas.height = h;
@@ -1480,8 +1480,8 @@ function setImageSize(w, h, undo, doDraw) {
         w = window.innerWidth;
         console.log(w);
         h = window.innerHeight;
-        w = document.documentElement.clientWidth;
-        h = document.documentElement.clientHeight;
+        // w = document.documentElement.clientWidth;
+        // h = document.documentElement.clientHeight;
         // console.log(w,h);
     } else {
         canvas.classList.remove("fullWindowCanvas");
@@ -1509,7 +1509,7 @@ function resizeWindow() {
         clearTimeout(resizeWindowTimeout);
     }
     doResizeWindow();
-    // ios is not always reporting correct width and height on orientation change
+    // chrome on ios is not always reporting correct width and height on orientation change
     // use timeout to redo the resize after things have hopefully settled down
     resizeWindowTimeout = setTimeout(() => {
         resizeWindowTimeout = null;
