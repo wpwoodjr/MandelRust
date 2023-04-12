@@ -10,6 +10,7 @@ Undo zoom is wrong if change window size between zoom and undo zoom
 re-eval 2nd pass not drawing until complete.  less clear than orig?
 Save pref for image size
 Add draw status in upper right
+When tap to hide controls, if text editing, cursor remains in the control
 
 Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore

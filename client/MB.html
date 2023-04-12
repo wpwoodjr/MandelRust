@@ -53,7 +53,7 @@
 -->
 <html>
 <head>
-<meta name='viewport' content='width=device-width, user-scalable=no'/>
+<meta name='viewport' content='width=device-width, height=device-height, user-scalable=no, initial-scale=1, minimum-scale=1, maximum-scale=1'/>
 <meta charset="UTF-8">
 <title>Mandelbrot Viewer</title>
 <!--
@@ -517,7 +517,8 @@ function repaint(dontUpdateStatusToIdle) {
     }
     else if (dontUpdateStatusToIdle !== true) {
         document.getElementById("status").innerHTML = "Idle (" + rpsText + ")";
-        statusHeader.updateText("Idle (" + rpsText + ")");
+        // statusHeader.updateText("Idle (" + rpsText + ")");
+        statusHeader.updateText("Idle (" + rpsText + " " + canvas.width + "X" + canvas.height + ")");
         statusHeader.hideProgressBar();
     }
 }
@@ -1437,6 +1438,7 @@ function setCanvasToWindow() {
 }
 function setImageSizeToFixed(w, h, oldImageSize, doDraw) {
     // console.log("setImageSizeToFixed from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], w, h, doDraw);
+    console.log("setImageSizeToFixed", w, h, doDraw);
     if (!doDraw && w === canvas.width && h === canvas.height) {
         return;
     }
@@ -1463,6 +1465,7 @@ function setImageSizeToFixed(w, h, oldImageSize, doDraw) {
 }
 function setImageSize(w, h, undo, doDraw) {
     // console.log("setImageSize from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], w, h);
+    console.log("setImageSize", w, h);
     const oldImageSize = currentImageSize;
     currentImageSize = [w, h];
     if (w === 0 && h === 0) {
