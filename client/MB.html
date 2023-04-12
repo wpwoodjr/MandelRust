@@ -53,7 +53,7 @@
 -->
 <html>
 <head>
-<meta name='viewport' content='width=device-width', initial-scale=1, maximum-scale=3, minimum-scale=1/>
+<meta name='viewport' content='width=device-width, user-scalable=no'/>
 <meta charset="UTF-8">
 <title>Mandelbrot Viewer</title>
 <!--
@@ -121,11 +121,11 @@
        white-space: nowrap;
    }
    div.group {
-       padding: 0 8px;
-       border-bottom: 1px solid black;
+       padding: 0px 6px;
+       border-bottom: 1px solid rgba(0, 0, 0, 0.6);
    }
    div.grouplast {
-       padding: 0 8px;
+       padding: 0px 6px;
    }
     #status {
         font-weight: normal;
@@ -1441,10 +1441,11 @@ function setCanvasToWindow() {
     checkAspect();
 }
 function setImageSizeToFixed(w, h, oldImageSize, doDraw) {
-    // console.log("setImageSizeToFixed", w, h);
+    // console.log("setImageSizeToFixed from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], w, h, doDraw);
     if (!doDraw && w === canvas.width && h === canvas.height) {
         return;
     }
+    console.log("here");
     const dontClear = !doDraw && Math.abs(w/h - canvas.width/canvas.height) < 0.01;
     stopJob();
     OSC.width = w;
@@ -1477,40 +1478,53 @@ function setImageSize(w, h, undo, doDraw) {
         // w = Math.max(64, w);
         // h = Math.max(64, Math.round(w*ratio));
         w = window.innerWidth;
+        console.log(w);
+        w = window.visualViewport.width;
+        console.log(w, document.documentElement.clientWidth);
+        // h = window.visualViewport.height;
+        // console.log(Math.round(w), Math.round(h));
+        w = window.innerWidth;
+        console.log(w);
         h = window.innerHeight;
+        // console.log(w,h);
     } else {
         canvas.classList.remove("fullWindowCanvas");
     }
     setImageSizeToFixed(w, h, undo ? oldImageSize : false, doDraw);
 }
 let resizeWindowTimeout = null;
+function doResizeWindow() {
+    setTooltipSize();
+    if (fullWindowCanvas) {
+        // console.log("resize fwc:", window.innerWidth, window.innerHeight);
+        setImageSizeToFixed(window.innerWidth, window.innerHeight);
+    } else if (fullScreenCanvas) {
+        // console.log("resize fsc:", screen.width, screen.height);
+        setImageSizeToFixed(screen.width, screen.height)
+    } else {
+        // console.log("resize:", currentImageSize[0], currentImageSize[1]);
+        setImageSize(currentImageSize[0], currentImageSize[1], false);
+    }
+    statusHeader.updateWidth();
+}
 function resizeWindow() {
-    // console.log("resizeWindow");
+    // console.log("resizeWindow", resizeWindowTimeout);
     if (resizeWindowTimeout !== null) {
         clearTimeout(resizeWindowTimeout);
     }
-    // ios was not always reporting correct width and height on orientation change
-    // use timeout to let things settle down
+    doResizeWindow();
+    // ios is not always reporting correct width and height on orientation change
+    // use timeout to redo the resize after things have hopefully settled down
     resizeWindowTimeout = setTimeout(() => {
         resizeWindowTimeout = null;
-        setTooltipSize();
-        if (fullWindowCanvas) {
-            // console.log("resize fwc:", window.innerWidth, window.innerHeight);
-            setImageSizeToFixed(window.innerWidth, window.innerHeight);
-        } else if (fullScreenCanvas) {
-            // console.log("resize fsc:", screen.width, screen.height);
-            setImageSizeToFixed(screen.width, screen.height)
-        } else {
-            // console.log("resize:", currentImageSize[0], currentImageSize[1]);
-            setImageSize(currentImageSize[0], currentImageSize[1], false);
-        }
-        statusHeader.updateWidth();
-    }, 125);
+        doResizeWindow();
+    }, 5000);
+
 }
 function setTooltipSize() {
     const mainUIRect = document.getElementById("mainUI").getBoundingClientRect();
     const w = mainUIRect.right;
-    // console.log("setToolTipSize:", w);
+    // console.log("setToolTipSize:", w.toFixed(0));
     let tooltip = document.querySelector('.tooltip .helptext');
     tooltip.style.width = Math.min(800, w*0.7) + "px";
 
