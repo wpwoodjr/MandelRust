@@ -227,7 +227,7 @@ class Touch {
                             this.onTouchEnd();
                         }
                         this.state = TOUCH_NONE;
-                    }, 350);
+                    }, 300);
                     this.state = TOUCH_TAP;
                 }
                 break;
