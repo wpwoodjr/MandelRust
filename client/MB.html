@@ -1421,6 +1421,7 @@ function doCustomSize() {
 // outerWidth/height: ios safari not reporting correct size after orientation change
 // innerWidth/height: ios chrome sometimes not reporting correct size after orientation change
 // window.visualViewport.width/height: ios precision too low, so width/height slightly different when pinch zooming, causing cosntant redraws
+// document.documentElement.clientWidth/height: android height doesn't update in response to url bar hiding
 const windowSize = {
     init: function() {
         // window.visualViewport.addEventListener('resize', resizeWindow);
@@ -1428,11 +1429,11 @@ const windowSize = {
     },
     get width() {
         // return Math.round(window.visualViewport.width*window.visualViewport.scale);
-        return document.documentElement.clientWidth;
+        return window.innerWidth;
     },
     get height() {
         // return Math.round(window.visualViewport.height*window.visualViewport.scale);
-        return document.documentElement.clientHeight;
+        return window.innerHeight;
     }
 }
 function setCanvasToWindow() {
