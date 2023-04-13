@@ -46,4 +46,4 @@ cd MandelRust
 ```
 Once the application is deployed to Kubernetes, browse to `<url>`.
 
-![dancing](dancing.png)
+![diamonds](diamonds.png)
