@@ -80,8 +80,8 @@
     }
     .fullWindowCanvas {
         position: fixed;
-        top: 0;
-        left: 0;
+        top: 0px;
+        left: 0px;
         border: 0px;
     }
     .fullWindowCanvasFront {
@@ -104,6 +104,12 @@
         margin-right: 8px;
     }
 
+    #progressCircle {
+        position: fixed;
+        bottom: 10px;
+        right: 10px;
+        z-index: 8;
+    }
    #controls {
        display: inline-block;
        background-color: rgba(255, 255, 255, 0.6);
@@ -345,7 +351,7 @@ var dragbox = null;
 let maxIterSlider, mainPaletteOffsetSlider, mainPaletteLengthSlider, paletteSelectSlider;
 let zoomInSlider, zoomOutSlider;
 let touch;
-let statusHeader;
+let statusHeader, progressCircle;
 
 let currentImageSize;
 var palette;
@@ -515,13 +521,16 @@ function repaint(dontUpdateStatusToIdle) {
         document.getElementById("status").innerHTML =
                     pass + prec +
                     "... completed " + rc + " of " + ch + " rows at " + rpsText;
-        statusHeader.setPercentage(rc/ch, pass + prec);    // + " " + (rc/ch*100).toFixed(0) + "%");
+        // statusHeader.setPercentage(rc/ch, pass + prec);    // + " " + (rc/ch*100).toFixed(0) + "%");
+        statusHeader.updateText(pass + prec + "...");
+        progressCircle.setPercentage(1 - rc/ch, "");
     }
     else if (dontUpdateStatusToIdle !== true) {
         document.getElementById("status").innerHTML = "Idle (" + rpsText + ")";
         // statusHeader.updateText("Idle (" + rpsText + ")");
         statusHeader.updateText("Idle (" + rpsText + " " + canvas.width + "X" + canvas.height + ")");
-        statusHeader.hideProgressBar();
+        // statusHeader.hideProgressBar();
+        progressCircle.setPercentage(0, "");
     }
 }
 
@@ -1424,16 +1433,18 @@ function doCustomSize() {
 // document.documentElement.clientWidth/height: android height doesn't update in response to url bar hiding
 const windowSize = {
     init: function() {
-        // window.visualViewport.addEventListener('resize', resizeWindow);
-        window.addEventListener('resize', resizeWindow);
+        window.visualViewport.addEventListener('resize', resizeWindow);
+        // window.addEventListener('resize', resizeWindow);
     },
     get width() {
         // return Math.round(window.visualViewport.width*window.visualViewport.scale);
-        return window.innerWidth;
+        return Math.ceil(window.visualViewport.width);
+        // return window.innerWidth;
     },
     get height() {
         // return Math.round(window.visualViewport.height*window.visualViewport.scale);
-        return window.innerHeight;
+        return Math.ceil(window.visualViewport.height);
+        // return window.innerHeight;
     }
 }
 function setCanvasToWindow() {
@@ -2939,6 +2950,9 @@ function init() {
     createSliders();
     initTouch();
     statusHeader = new ProgressBar("status-header", "Idle", "#2196f3", "#eee");
+    statusHeader.hideProgressBar();
+    // progressCircle = new ProgressCircle("progressCircle", "rgba(33, 150, 243, 0.6)", "rgba(255, 255, 255, 0)", 30);
+    progressCircle = new ProgressCircle("progressCircle", "rgba(255, 255, 255, 0.6)", "rgba(255, 255, 255, 0)", 30);
     windowSize.init();
     setDefaults();
     checkForExample();
@@ -3689,6 +3703,7 @@ function initTouch() {
   <div id="status">Idle</div>
 </div>
 </div>
+<div id="progressCircle"</div>
 
 <div id="xmlimportbg">
 </div>

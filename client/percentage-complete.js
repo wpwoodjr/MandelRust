@@ -1,7 +1,8 @@
 class ProgressCircle extends HTMLElement {
-    constructor(id, color, radius) {
+    constructor(id, color, backgroundColor, radius) {
         super();
         this.color = color;
+        this.backgroundColor = backgroundColor;
         this.radius = radius;
         this.attachShadow({ mode: "open" });
         this.render();
@@ -9,12 +10,16 @@ class ProgressCircle extends HTMLElement {
         parentElement.appendChild(this);
     }
   
-    setPercentage(percentage) {
+    setPercentage(percentage, text) {
         const progressValue = this.shadowRoot.querySelector(".progress-value");
-        const circumference = 2 * Math.PI * this.radius;
+        const circumference = 2 * Math.PI * (this.radius - 5);
         const offset = circumference - percentage * circumference;
         progressValue.style.strokeDashoffset = offset;
-        this.updateText((percentage*100).toFixed(0) + "%");
+        if (text !== undefined) {
+            this.updateText(text);
+        } else {
+            this.updateText((percentage*100).toFixed(0) + "%");
+        }
     }
   
     updateText(text) {
@@ -44,13 +49,13 @@ class ProgressCircle extends HTMLElement {
             }
             
             .progress-background {
-                stroke: #eee;
+                stroke: ${this.backgroundColor};
             }
             
             .progress-value {
                 stroke: ${this.color};
-                stroke-dasharray: ${2 * Math.PI * this.radius};
-                stroke-dashoffset: ${2 * Math.PI * this.radius};
+                stroke-dasharray: ${2 * Math.PI * (this.radius - 5)};
+                stroke-dashoffset: ${2 * Math.PI * (this.radius - 5)};
             }
             .progress-text {
                 position: absolute;
@@ -71,7 +76,7 @@ class ProgressCircle extends HTMLElement {
                 <circle class="progress-background" cx="${this.radius}" cy="${this.radius}" r="${this.radius - 5}" />
                 <circle class="progress-value" cx="${this.radius}" cy="${this.radius}" r="${this.radius - 5}" />
                 <foreignObject width="100%" height="100%">
-                  <div class="progress-text" xmlns="http://www.w3.org/1999/xhtml">0%</div>
+                  <div class="progress-text" xmlns="http://www.w3.org/1999/xhtml"></div>
                 </foreignObject>
               </svg>
             </div>
