@@ -1,21 +1,30 @@
 class ProgressCircle extends HTMLElement {
-    constructor(id, color, backgroundColor, radius) {
+    constructor(id, color, backgroundColor, radius, counterClockwise = false) {
         super();
         this.color = color;
-        this.backgroundColor = backgroundColor;
         this.radius = radius;
+        this.counterClockwise = counterClockwise;
+        this.progressValueClass = this.counterClockwise
+            ? 'progress-value reverse'
+            : 'progress-value';
+        this.rotation = this.counterClockwise ? 90 : -90;
+        this.strokeWidth = 10;
+        this.innerRadius = this.radius - this.strokeWidth/2;
+        this.circumference = 2*Math.PI*(this.innerRadius);
         this.attachShadow({ mode: "open" });
         this.render();
         let parentElement = document.getElementById(id);
         parentElement.appendChild(this);
+        this.progressValue = this.shadowRoot.querySelector(".progress-value");
+        this.progressBackground = this.shadowRoot.querySelector(".progress-background");
+        this.setForegroundColor(color);
+        this.setBackgroundColor(backgroundColor);
     }
   
-    setPercentage(percentage, text) {
-        const progressValue = this.shadowRoot.querySelector(".progress-value");
-        const circumference = 2 * Math.PI * (this.radius - 5);
-        const offset = circumference - percentage * circumference;
-        progressValue.style.strokeDashoffset = offset;
-        if (text !== undefined) {
+    setPercentage(percentage, text = null) {
+        const offset = this.circumference*(1 - percentage);
+        this.progressValue.style.strokeDashoffset = offset;
+        if (text !== null) {
             this.updateText(text);
         } else {
             this.updateText((percentage*100).toFixed(0) + "%");
@@ -27,54 +36,69 @@ class ProgressCircle extends HTMLElement {
         progressText.textContent = text;
     }
 
+    setForegroundColor(color) {
+        this.progressValue.style.stroke = color;
+    }
+
+    setBackgroundColor(color) {
+        this.progressBackground.style.stroke = color;
+    }
+
     render() {
         this.shadowRoot.innerHTML = `
             <style>
-            .progress-container {
-                width: ${this.radius * 2}px;
-                height: ${this.radius * 2}px;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-            }
-            
-            .progress {
-                transform: rotate(-90deg);
-            }
-            
-            .progress-background,
-            .progress-value {
-                fill: none;
-                stroke-width: 10;
-            }
-            
-            .progress-background {
-                stroke: ${this.backgroundColor};
-            }
-            
-            .progress-value {
-                stroke: ${this.color};
-                stroke-dasharray: ${2 * Math.PI * (this.radius - 5)};
-                stroke-dashoffset: ${2 * Math.PI * (this.radius - 5)};
-            }
-            .progress-text {
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                font-size: ${this.radius / 3}px;
-                font-family: Arial, sans-serif;
-                transform: rotate(90deg); /* Counter-rotate the text */
-              }
+                .progress-container {
+                    width: ${this.radius * 2}px;
+                    height: ${this.radius * 2}px;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                }
+                
+                .progress {
+                    transform: rotate(${this.rotation}deg);
+                }
+                
+                .progress-background,
+                .progress-value {
+                    fill: none;
+                    stroke-width: ${this.strokeWidth};
+                }
+                
+                .progress-background {
+                    stroke: #eee;
+                }
+                
+                .progress-value {
+                    stroke: #fff;
+                    stroke-dasharray: ${this.circumference};
+                    stroke-dashoffset: ${this.circumference};
+                    transform-origin: center;
+                }
+
+                .progress-value.reverse {
+                    transform: scaleX(-1);
+                }
+
+                .progress-text {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    font-size: ${this.radius/2.5}px;
+                    font-family: Arial, sans-serif;
+                    font-weight: bold;
+                    transform: rotate(${-this.rotation}deg); /* Counter-rotate the text */
+                }
             </style>
             <div class="progress-container" style="position: relative;">
               <svg class="progress" width="${this.radius * 2}" height="${this.radius * 2}">
-                <circle class="progress-background" cx="${this.radius}" cy="${this.radius}" r="${this.radius - 5}" />
-                <circle class="progress-value" cx="${this.radius}" cy="${this.radius}" r="${this.radius - 5}" />
+                <circle class="progress-background" cx="${this.radius}" cy="${this.radius}" r="${this.innerRadius}" />
+                <circle class="${this.progressValueClass}" cx="${this.radius}" cy="${this.radius}" r="${this.innerRadius}" />
                 <foreignObject width="100%" height="100%">
                   <div class="progress-text" xmlns="http://www.w3.org/1999/xhtml"></div>
                 </foreignObject>

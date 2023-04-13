@@ -104,11 +104,14 @@
         margin-right: 8px;
     }
 
-    #progressCircle {
+    .progressCircle {
         position: fixed;
         bottom: 10px;
         right: 10px;
         z-index: 8;
+    }
+    .displayNone {
+        display: none;
     }
    #controls {
        display: inline-block;
@@ -351,7 +354,51 @@ var dragbox = null;
 let maxIterSlider, mainPaletteOffsetSlider, mainPaletteLengthSlider, paletteSelectSlider;
 let zoomInSlider, zoomOutSlider;
 let touch;
-let statusHeader, progressCircle;
+let statusHeader
+const progressCircle = {
+    init: function(doSecondPass) {
+        this.firstPassColor = "rgba(33, 150, 243, 0.6)";
+        this.firstPassColorNoSecondPass = "rgba(38, 174, 255, 0.75)";
+        this.secondPassColor = "rgba(255, 255, 255, 0.6)";
+        this.transparentColor = "rgba(33, 150, 243, 0)";
+        this.pass1 = new ProgressCircle("progressCircle1", this.firstPassColor, this.secondPassColor, 30, true);
+        this.element1 = document.getElementById("progressCircle1");
+        this.pass2 = new ProgressCircle("progressCircle2", this.secondPassColor, this.transparentColor, 30, true);
+        this.element2 = document.getElementById("progressCircle2");
+        this.setPass(1);
+        this.setSecondPassColor(doSecondPass);
+    },
+    setPercentage: function(p) {
+        if (this.pass === 1) {
+            this.pass1.setPercentage(1 - p, "");
+        } else {
+            this.pass2.setPercentage(1 - p, "");
+        }
+    },
+    setPass: function(pass) {
+        if (pass === 1) {
+            this.pass = 1;
+            this.element2.classList.add("displayNone");
+            this.element1.classList.remove("displayNone");
+        } else {
+            this.pass = 2;
+            this.element1.classList.add("displayNone");
+            this.element2.classList.remove("displayNone");
+        }
+        this.setPercentage(0);
+    },
+    setSecondPassColor: function(doSecondPass) {
+        this.pass1.setForegroundColor(doSecondPass ? this.firstPassColor : this.firstPassColorNoSecondPass);
+        this.pass1.setBackgroundColor(doSecondPass ? this.secondPassColor : this.transparentColor);
+    },
+    hide: function() {
+        if (this.pass === 1) {
+            this.element1.classList.add("displayNone");
+        } else {
+            this.element2.classList.add("displayNone");
+        }
+    }
+}
 
 let currentImageSize;
 var palette;
@@ -523,14 +570,16 @@ function repaint(dontUpdateStatusToIdle) {
                     "... completed " + rc + " of " + ch + " rows at " + rpsText;
         // statusHeader.setPercentage(rc/ch, pass + prec);    // + " " + (rc/ch*100).toFixed(0) + "%");
         statusHeader.updateText(pass + prec + "...");
-        progressCircle.setPercentage(1 - rc/ch, "");
+        progressCircle.setPercentage(rc/ch);
     }
-    else if (dontUpdateStatusToIdle !== true) {
+    else if (dontUpdateStatusToIdle === true) {
+        progressCircle.setPercentage(1);
+    } else {
         document.getElementById("status").innerHTML = "Idle (" + rpsText + ")";
         // statusHeader.updateText("Idle (" + rpsText + ")");
         statusHeader.updateText("Idle (" + rpsText + " " + canvas.width + "X" + canvas.height + ")");
         // statusHeader.hideProgressBar();
-        progressCircle.setPercentage(0, "");
+        progressCircle.hide();
     }
 }
 
@@ -686,6 +735,7 @@ function startJob(dontClear) {
         repaintTimeout = setTimeout(repaint, repaintInitialTimer);
     }
     state = COMPUTING_FIRST_PASS;
+    progressCircle.setPass(1);
     currentXML = currentExampletoXML();
 }
 
@@ -820,6 +870,7 @@ function startSecondPass() {
     document.getElementById("stop").disabled = false;
     repaintTimeout = setTimeout(repaint, repaintInitialTimer);
     state = COMPUTING_SECOND_PASS;
+    progressCircle.setPass(2);
 }
 
 function putRow(row) {
@@ -1430,21 +1481,22 @@ function doCustomSize() {
 // outerWidth/height: ios safari not reporting correct size after orientation change
 // innerWidth/height: ios chrome sometimes not reporting correct size after orientation change
 // window.visualViewport.width/height: ios precision too low, so width/height slightly different when pinch zooming, causing cosntant redraws
+//   also when touch zooming, image doesn't cover whole screen
 // document.documentElement.clientWidth/height: android height doesn't update in response to url bar hiding
 const windowSize = {
     init: function() {
-        window.visualViewport.addEventListener('resize', resizeWindow);
-        // window.addEventListener('resize', resizeWindow);
+        // window.visualViewport.addEventListener('resize', resizeWindow);
+        window.addEventListener('resize', resizeWindow);
     },
     get width() {
         // return Math.round(window.visualViewport.width*window.visualViewport.scale);
-        return Math.ceil(window.visualViewport.width);
-        // return window.innerWidth;
+        // return Math.ceil(window.visualViewport.width);
+        return window.innerWidth;
     },
     get height() {
         // return Math.round(window.visualViewport.height*window.visualViewport.scale);
-        return Math.ceil(window.visualViewport.height);
-        // return window.innerHeight;
+        // return Math.ceil(window.visualViewport.height);
+        return window.innerHeight;
     }
 }
 function setCanvasToWindow() {
@@ -1555,7 +1607,7 @@ function resizeWindow() {
     resizeWindowTimeout = setTimeout(() => {
         resizeWindowTimeout = null;
         doResizeWindow();
-    }, 5000);
+    }, 500);
 
 }
 function setTooltipSize() {
@@ -1581,8 +1633,9 @@ function doApplyStandardPalette(newPaletteNum, newPalette) {
 }
 
 function changeSecondPass() {
-    var checked = document.getElementById("secondpass").checked;
+    const checked = document.getElementById("secondpass").checked;
     setLocalStorageItem("secondpass", checked);
+    progressCircle.setSecondPassColor(checked);
     if (checked && !running && state == DONE_FIRST_PASS) {
         // hack to improve accuracy of rowsPerSecond and jobsPerSecond when a second pass is run sometime after first pass
         const elapsedSecs = rowsCompleted/rowsPerSecond;
@@ -2933,7 +2986,8 @@ function init() {
     document.getElementById("threadCountSelect").onchange = changeWorkerCount;
 
     document.getElementById("showpaletteedit").onclick=showPaletteEditor;
-    document.getElementById("secondpass").checked = getLocalStorageItem("secondpass", true);
+    const doSecondPass = getLocalStorageItem("secondpass", true);
+    document.getElementById("secondpass").checked = doSecondPass;
     document.getElementById("secondpass").onchange = changeSecondPass;
     document.getElementById("highPrecision").checked = false;
     document.getElementById("highPrecision").onchange = changeHighPrecision;
@@ -2951,8 +3005,7 @@ function init() {
     initTouch();
     statusHeader = new ProgressBar("status-header", "Idle", "#2196f3", "#eee");
     statusHeader.hideProgressBar();
-    // progressCircle = new ProgressCircle("progressCircle", "rgba(33, 150, 243, 0.6)", "rgba(255, 255, 255, 0)", 30);
-    progressCircle = new ProgressCircle("progressCircle", "rgba(255, 255, 255, 0.6)", "rgba(255, 255, 255, 0)", 30);
+    progressCircle.init(doSecondPass);
     windowSize.init();
     setDefaults();
     checkForExample();
@@ -3703,7 +3756,8 @@ function initTouch() {
   <div id="status">Idle</div>
 </div>
 </div>
-<div id="progressCircle"</div>
+<div id="progressCircle1" class="progressCircle displayNone"></div>
+<div id="progressCircle2" class="progressCircle displayNone"></div>
 
 <div id="xmlimportbg">
 </div>
