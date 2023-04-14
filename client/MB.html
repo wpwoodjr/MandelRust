@@ -1618,10 +1618,14 @@ function setTooltipSize() {
     console.log("setToolTipSize:", w.toFixed(0));
     let tooltip = document.querySelector('.tooltip .helptext');
     tooltip.style.width = Math.min(800, w*0.7) + "px";
+    const helpHeight = tooltip.getBoundingClientRect().bottom;
 
     tooltip = document.querySelector('.tooltip .exampletext');
     tooltip.style.width = Math.min(800, w*0.7) + "px";
-    document.body.style.minHeight = document.documentElement.scrollHeight + "px";
+    const exampleHeight = tooltip.getBoundingClientRect().bottom;
+
+    const minHeight = Math.max(helpHeight, exampleHeight) + window.scrollY;
+    document.body.style.minHeight = minHeight + "px";
     console.log(document.body.style.minHeight);
 }
 
