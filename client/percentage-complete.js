@@ -17,6 +17,7 @@ class ProgressCircle extends HTMLElement {
         parentElement.appendChild(this);
         this.progressValue = this.shadowRoot.querySelector(".progress-value");
         this.progressBackground = this.shadowRoot.querySelector(".progress-background");
+        this.progressText = this.shadowRoot.querySelector(".progress-text");
         this.setForegroundColor(color);
         this.setBackgroundColor(backgroundColor);
     }
@@ -32,12 +33,12 @@ class ProgressCircle extends HTMLElement {
     }
   
     updateText(text) {
-        const progressText = this.shadowRoot.querySelector(".progress-text");
-        progressText.textContent = text;
+        this.progressText.textContent = text;
     }
 
     setForegroundColor(color) {
         this.progressValue.style.stroke = color;
+        this.progressText.style.color = color;
     }
 
     setBackgroundColor(color) {
@@ -81,6 +82,7 @@ class ProgressCircle extends HTMLElement {
                 }
 
                 .progress-text {
+                    color: #fff;
                     position: absolute;
                     top: 0;
                     left: 0;
@@ -89,7 +91,7 @@ class ProgressCircle extends HTMLElement {
                     display: flex;
                     justify-content: center;
                     align-items: center;
-                    font-size: ${this.radius/2.5}px;
+                    font-size: ${this.radius/2.4}px;
                     font-family: Arial, sans-serif;
                     font-weight: bold;
                     transform: rotate(${-this.rotation}deg); /* Counter-rotate the text */

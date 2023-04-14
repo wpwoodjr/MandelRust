@@ -366,17 +366,18 @@ const progressCircle = {
         this.element1 = document.getElementById("progressCircle1");
         this.pass2 = new ProgressCircle("progressCircle2", this.secondPassColor, this.transparentColor, 30, true);
         this.element2 = document.getElementById("progressCircle2");
-        this.setPass(1);
+        this.setPass(1, "");
         this.setSecondPassColor(doSecondPass);
     },
-    setPercentage: function(p) {
+    setPercentage: function(percentage, highPrecision) {
+        const text = highPrecision ? "HP" : "";
         if (this.pass === 1) {
-            this.pass1.setPercentage(1 - p, "");
+            this.pass1.setPercentage(1 - percentage, text);
         } else {
-            this.pass2.setPercentage(1 - p, "");
+            this.pass2.setPercentage(1 - percentage, text);
         }
     },
-    setPass: function(pass) {
+    setPass: function(pass, highPrecision) {
         if (pass === 1) {
             this.pass = 1;
             this.element2.classList.add("displayNone");
@@ -386,7 +387,7 @@ const progressCircle = {
             this.element1.classList.add("displayNone");
             this.element2.classList.remove("displayNone");
         }
-        this.setPercentage(0);
+        this.setPercentage(0, highPrecision);
     },
     setSecondPassColor: function(doSecondPass) {
         this.pass1.setForegroundColor(doSecondPass ? this.firstPassColor : this.firstPassColorNoSecondPass);
@@ -571,10 +572,10 @@ function repaint(dontUpdateStatusToIdle) {
                     "... completed " + rc + " of " + ch + " rows at " + rpsText;
         // statusHeader.setPercentage(rc/ch, pass + prec);    // + " " + (rc/ch*100).toFixed(0) + "%");
         statusHeader.updateText(pass + prec + "...");
-        progressCircle.setPercentage(rc/ch);
+        progressCircle.setPercentage(rc/ch, highPrecision);
     }
     else if (dontUpdateStatusToIdle === true) {
-        progressCircle.setPercentage(1);
+        progressCircle.setPercentage(1, highPrecision);
     } else {
         document.getElementById("status").innerHTML = "Idle (" + rpsText + ")";
         // statusHeader.updateText("Idle (" + rpsText + ")");
@@ -736,7 +737,7 @@ function startJob(dontClear) {
         repaintTimeout = setTimeout(repaint, repaintInitialTimer);
     }
     state = COMPUTING_FIRST_PASS;
-    progressCircle.setPass(1);
+    progressCircle.setPass(1, highPrecision);
     currentXML = currentExampletoXML();
 }
 
@@ -871,7 +872,7 @@ function startSecondPass() {
     document.getElementById("stop").disabled = false;
     repaintTimeout = setTimeout(repaint, repaintInitialTimer);
     state = COMPUTING_SECOND_PASS;
-    progressCircle.setPass(2);
+    progressCircle.setPass(2, highPrecision);
 }
 
 function putRow(row) {
