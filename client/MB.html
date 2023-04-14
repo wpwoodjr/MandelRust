@@ -72,9 +72,8 @@
    body {
        background-color: #e8ecf3;
        font-family: Arial, sans-serif;
-        /* disable pinch zoom; will set min-height later so pinch zoom is disabled over the whole viewable area */
+        /* disable pinch zoom in body */
        touch-action: pan-x pan-y;
-       min-height: 0;
    }
    canvas {
        display: block;
@@ -118,6 +117,7 @@
     .displayNone {
         display: none;
     }
+
    #controls {
        display: inline-block;
        background-color: rgba(255, 255, 255, 0.6);
@@ -1618,15 +1618,9 @@ function setTooltipSize() {
     console.log("setToolTipSize:", w.toFixed(0));
     let tooltip = document.querySelector('.tooltip .helptext');
     tooltip.style.width = Math.min(800, w*0.7) + "px";
-    const helpHeight = tooltip.getBoundingClientRect().bottom;
 
     tooltip = document.querySelector('.tooltip .exampletext');
     tooltip.style.width = Math.min(800, w*0.7) + "px";
-    const exampleHeight = tooltip.getBoundingClientRect().bottom;
-
-    const minHeight = Math.max(helpHeight, exampleHeight) + window.scrollY;
-    document.body.style.minHeight = minHeight + "px";
-    console.log(document.body.style.minHeight);
 }
 
 function doApplyStandardPalette(newPaletteNum, newPalette) {
