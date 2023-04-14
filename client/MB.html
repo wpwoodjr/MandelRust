@@ -773,8 +773,8 @@ function jobFinished(msg) {
                 stopJob(true);
                 startSecondPass();
             } else {
-                progressCircle.hide();
                 stopJob();
+                progressCircle.hide();
             }
         }
     } else {
@@ -785,8 +785,8 @@ function jobFinished(msg) {
                 putRow(row);
             }
             state = IDLE;
-            progressCircle.hide();
             stopJob();
+            progressCircle.hide();
         }
     }
 }
