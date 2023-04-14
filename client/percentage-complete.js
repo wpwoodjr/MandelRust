@@ -1,6 +1,9 @@
 class ProgressCircle extends HTMLElement {
     constructor(id, color, backgroundColor, radius, counterClockwise = false) {
         super();
+        let parentElement = typeof id === "string"
+            ? document.getElementById(id)
+            : id;
         this.color = color;
         this.radius = radius;
         this.counterClockwise = counterClockwise;
@@ -13,7 +16,6 @@ class ProgressCircle extends HTMLElement {
         this.circumference = 2*Math.PI*(this.innerRadius);
         this.attachShadow({ mode: "open" });
         this.render();
-        let parentElement = document.getElementById(id);
         parentElement.appendChild(this);
         this.progressValue = this.shadowRoot.querySelector(".progress-value");
         this.progressBackground = this.shadowRoot.querySelector(".progress-background");
@@ -22,14 +24,9 @@ class ProgressCircle extends HTMLElement {
         this.setBackgroundColor(backgroundColor);
     }
   
-    setPercentage(percentage, text = null) {
+    setPercentage(percentage) {
         const offset = this.circumference*(1 - percentage);
         this.progressValue.style.strokeDashoffset = offset;
-        if (text !== null) {
-            this.updateText(text);
-        } else {
-            this.updateText((percentage*100).toFixed(0) + "%");
-        }
     }
   
     updateText(text) {
@@ -115,7 +112,9 @@ customElements.define("progress-circle", ProgressCircle);
 class ProgressBar extends HTMLElement {
     constructor(id, initialText, barColor, backgroundColor) {
         super();
-        let parentElement = document.getElementById(id);
+        let parentElement = typeof id === "string"
+            ? document.getElementById(id)
+            : id;
         this.initialText = initialText;
         this.barColor = barColor;
         this.backgroundColor = backgroundColor;

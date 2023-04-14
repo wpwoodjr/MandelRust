@@ -14,12 +14,9 @@ const TOUCH_ERROR = 7;      // error occurred, onTouchEnd was called and waiting
 
 class Touch {
     constructor(id, options) {
-        if (typeof id === "string") {
-            this.id = id;
-            this.element = document.getElementById(id);
-        } else {
-            this.element = id;
-        }
+        this.element = typeof id === "string"
+            ? document.getElementById(id)
+            : id;
         options = options || {};
         this.FPS = options.FPS || 60;
         this.onInit = options.onInit || null;
