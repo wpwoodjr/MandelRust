@@ -69,12 +69,12 @@
 <meta property="og:description" content="This Mandelbrot viewer, originally by David Eck, has been rewritten with a Rust backend, considerably speeding it up."/>
 <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
 <style type="text/css">
-    html {
-        touch-action: pan-x pan-y;
-    }
    body {
        background-color: #e8ecf3;
        font-family: Arial, sans-serif;
+        /* disable pinch zoom; will set min-height later so pinch zoom is disabled over the whole viewable area */
+       touch-action: pan-x pan-y;
+       min-height: 0;
    }
    canvas {
        display: block;
@@ -1561,9 +1561,11 @@ function setImageSize(w, h, undo, doDraw) {
         // w = canvas.parentElement.clientWidth;
         // w = Math.max(64, w);
         // h = Math.max(64, Math.round(w*ratio));
-        console.log(window.innerWidth);
-        w = window.visualViewport.width;
-        console.log(w, document.documentElement.clientWidth);
+        console.log(window.innerWidth, window.innerHeight);
+        console.log(document.documentElement.scrollWidth, document.documentElement.scrollHeight);
+        console.log(document.body.scrollWidth, document.body.scrollHeight);
+        // w = window.visualViewport.width;
+        // console.log(w, document.documentElement.clientWidth);
         // h = window.visualViewport.height;
         // console.log(Math.round(w), Math.round(h));
         // w = window.innerWidth;
@@ -1619,6 +1621,8 @@ function setTooltipSize() {
 
     tooltip = document.querySelector('.tooltip .exampletext');
     tooltip.style.width = Math.min(800, w*0.7) + "px";
+    document.body.style.minHeight = document.documentElement.scrollHeight + "px";
+    console.log(document.body.style.minHeight);
 }
 
 function doApplyStandardPalette(newPaletteNum, newPalette) {
