@@ -374,11 +374,11 @@ const progressCircle = {
         this.pass = pass;
         if (pass === 1) {
             this.setFirstPassColors(this.doSecondPass);
-            this.element.classList.remove("displayNone");
         } else {
             this.circle.setForegroundColor(this.secondPassColor);
             this.circle.setBackgroundColor(this.transparentColor);
         }
+        this.element.classList.remove("displayNone");
         const text = highPrecision ? "HP" : "";
         this.circle.updateText(text);
         this.setPercentage(0);
