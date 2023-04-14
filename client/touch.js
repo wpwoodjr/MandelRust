@@ -62,7 +62,10 @@ class Touch {
             case TOUCH_NONE:
                 // console.log("onTouchStart():", event.targetTouches.length);
                 if (this.onTouchStart) {
-                    this.onTouchStart();
+                    if (this.onTouchStart() === "false") {
+                        this.state = TOUCH_ERROR;
+                        return;
+                    };
                 }
                 this.state = TOUCH_TOUCHING;
                 break;

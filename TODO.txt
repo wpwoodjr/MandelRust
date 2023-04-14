@@ -14,6 +14,7 @@ When tap to hide controls, if text editing, cursor remains in the control
 Check touch warn events
 Use statusHeader progress bar?
 Have 3 statuses now
+Landscape to portrait and back changes size in weird way
 
 Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore

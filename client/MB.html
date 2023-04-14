@@ -357,7 +357,7 @@ var dragbox = null;
 let maxIterSlider, mainPaletteOffsetSlider, mainPaletteLengthSlider, paletteSelectSlider;
 let zoomInSlider, zoomOutSlider;
 let touch;
-let statusHeader
+let statusHeader;
 const progressCircle = {
     init: function(doSecondPass) {
         this.firstPassColor = "rgba(33, 150, 243, 0.6)";
@@ -3403,6 +3403,7 @@ function initTouch() {
             },
             onTouchStart: function() {
                 this.data.startJob = running;
+                // return ! paletteEditInProgress;
             },
             onTouchEnd: function() {
                 if (this.data.startJob && ! running) {
