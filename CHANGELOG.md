@@ -14,8 +14,8 @@
 * Added "High Precision" toggle
 * Added rows/second display
 
-### Jan/Feb 2023
-* Rewrote JavaScript server in Rust to get 10 times speedup in high precision computations
+### Jan-Apr 2023
+* Rewrote JavaScript server in Rust to get 10-15 times speedup in high precision computations
 * When zooming, the zoomed area is displayed using image interpolation while calculations are done
 * Left, right, up, and down arrow key bindings shift the image appropriately; page down and page up zoom in and out
 * Max image width/height is now 7680 (8K)
@@ -23,4 +23,16 @@
 * Added option to run calculations locally on the browser in JavaScript, or on the backend Rust server
 * Added undo (ctrl-z) and redo (ctrl-shift-z and ctrl-y) key bindings
 * Fixed small bug where dx value was being used to increment yval instead of dy value in HP calculations
-* Rewrote Javascript code for browser calculations in Rust, compiled to WASM, for 7X speedup
+* Rewrote browser-side computations from JavaScript to Rust WASM for 5-7 times speedup in high precision computations
+* Added interactive sliders for control of max iterations, zoom level, palette offset, etc.
+* Added undo/redo with image interpolation for zoom.
+* Added full window mode, activated with "f" and deactivated with "f" or escape.
+* Added full screen mode, activated with "F" and deactivated with "F", "f", or escape.
+* Added default "Fit Window" image size in place of old default 800x600 image size
+* Streamlined UI with Help and Examples at top
+* Optimized for mobile devices
+* Added touch controls for pan
+* Added touch controls for pinch to zoom out and spread to zoom in
+* Don't clear canvas every time image size changes
+* "Fit Window" now covers the whole window, controls are laid on top with transparency
+* Added progress circle in lower right
