@@ -1504,18 +1504,8 @@ function setCanvasToWindow() {
     canvas.classList.add('fullWindowCanvas');
     setTooltipSize();
     let w, h;
-    // const ratio = window.innerHeight/window.innerWidth;
-    // w = canvas.parentElement.clientWidth;
-    // w = Math.max(64, w);
-    // h = Math.max(64, Math.round(w*ratio));
-    // w = window.innerWidth;
-    // h = window.innerHeight;
-    // w = window.outerWidth;
-    // h = window.outerHeight;
     w = windowSize.width;
     h = windowSize.height;
-    // w = window.visualViewport.width;
-    // h = window.visualViewport.height;
 
     canvas.width = w;
     canvas.height = h;
@@ -1525,11 +1515,10 @@ function setCanvasToWindow() {
 }
 function setImageSizeToFixed(w, h, oldImageSize, doDraw) {
     // console.log("setImageSizeToFixed from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], w, h, doDraw);
-    console.log("setImageSizeToFixed", w, h, doDraw);
+    // console.log("setImageSizeToFixed", w, h, doDraw);
     if (!doDraw && w === canvas.width && h === canvas.height) {
         return;
     }
-    console.log("here");
     const dontClear = !doDraw && Math.abs(w/h - canvas.width/canvas.height) < 0.01;
     stopJob();
     OSC.width = w;
@@ -1552,32 +1541,13 @@ function setImageSizeToFixed(w, h, oldImageSize, doDraw) {
 }
 function setImageSize(w, h, undo, doDraw) {
     // console.log("setImageSize from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], w, h);
-    console.log("setImageSize", w, h);
+    // console.log("setImageSize", w, h);
     const oldImageSize = currentImageSize;
     currentImageSize = [w, h];
     if (w === 0 && h === 0) {
         canvas.classList.add('fullWindowCanvas');
-        // const ratio = window.innerHeight/window.innerWidth;
-        // w = canvas.parentElement.clientWidth;
-        // w = Math.max(64, w);
-        // h = Math.max(64, Math.round(w*ratio));
-        console.log(window.innerWidth, window.innerHeight);
-        console.log(document.documentElement.scrollWidth, document.documentElement.scrollHeight);
-        console.log(document.body.scrollWidth, document.body.scrollHeight);
-        // w = window.visualViewport.width;
-        // console.log(w, document.documentElement.clientWidth);
-        // h = window.visualViewport.height;
-        // console.log(Math.round(w), Math.round(h));
-        // w = window.innerWidth;
-        // w = window.outerWidth;
-        // console.log(w);
-        // h = window.innerHeight;
-        // h = window.outerHeight;
-        // w = document.documentElement.clientWidth;
-        // h = document.documentElement.clientHeight + 10;
         w = windowSize.width;
         h = windowSize.height;
-        // console.log(w,h);
     } else {
         canvas.classList.remove("fullWindowCanvas");
     }
@@ -1610,12 +1580,11 @@ function resizeWindow() {
         resizeWindowTimeout = null;
         doResizeWindow();
     }, 500);
-
 }
 function setTooltipSize() {
     const mainUIRect = document.getElementById("mainUI").getBoundingClientRect();
     const w = mainUIRect.right;
-    console.log("setToolTipSize:", w.toFixed(0));
+    // console.log("setToolTipSize:", w.toFixed(0));
     let tooltip = document.querySelector('.tooltip .helptext');
     tooltip.style.width = Math.min(800, w*0.7) + "px";
 
