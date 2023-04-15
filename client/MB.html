@@ -3403,7 +3403,7 @@ function initTouch() {
             },
             onTouchStart: function() {
                 this.data.startJob = running;
-                // return ! paletteEditInProgress;
+                return true;
             },
             onTouchEnd: function() {
                 if (this.data.startJob && ! running) {
