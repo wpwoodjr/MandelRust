@@ -52,6 +52,7 @@
                   Don't clear canvas every time image size changes
                   "Fit Window" now covers the whole window, controls are laid on top with transparency
                   Added progress circle in lower right
+                  Remember current image settings across browser sessions
 -->
 <html>
 <head>
@@ -938,9 +939,17 @@ function setDefaults() {
     document.getElementById("imagesize").value = "0 0";
     setCanvasToWindow();
     if (undoList) {
+        // save old URL
+        const location = window.location;
+        const oldURL = location.href;
+
+        // restore default URL
+        const urlWithoutQuery = `${location.protocol}//${location.host}${location.pathname}`;
+        window.history.replaceState(null, "", urlWithoutQuery);
+
         startJob();
-        addUndoItem("Restore Defaults", [oldXML, oldPaletteSelectSliderState],
-            [currentXML, paletteSelectSlider.getPaletteSelectSliderState()]);
+        addUndoItem("Restore Defaults", [oldXML, oldPaletteSelectSliderState, oldURL],
+            [currentXML, paletteSelectSlider.getPaletteSelectSliderState(), urlWithoutQuery]);
     }
 }
 
@@ -1676,6 +1685,8 @@ function applyUndoItem(name, value) {
     applyUndoInProgress = true;
     switch (name) {
       case "Restore Defaults":
+          // restore other URL
+          window.history.replaceState(null, "", value[2]);
       case "Import Example":
           installExampleFromXML(value[0],false,true);
           paletteSelectSlider.setPaletteSelectSliderState(value[1]);
@@ -2755,7 +2766,7 @@ function currentExampletoXML() {
             "<palette_mapping length='" + paletteLength + "' offset='" + offset + "'/>\n" +
             "<max_iterations value='" + maxIterSlider.value + "'/>\n" +
             "</mandelbrot_settings_2>\n";
-    setLocalStorageItem("XML", xml);
+    setLocalStorageItem("XML" + window.location.search, xml);
     return xml;
 }
 
@@ -2916,26 +2927,23 @@ function importXML() {
 function checkForExample() {
     const navEntries = performance.getEntriesByType("navigation");
     const navLast = navEntries[navEntries.length - 1];
-    // console.log(navLast.type);
-        // // Get the current URL
-        // const currentUrl = new URL(window.location.href);
-
-        // // Remove the query string parameter you want to remove
-        // currentUrl.searchParams.delete('ex');
-
-        // // Use pushState() to update the URL without reloading the page
-        // window.history.replaceState(window.location.href, '', currentUrl);
-    const ex = window.location.search.match("^\\?ex=([a-zA-Z0-9/.%_+-]+)");
+    const wls = window.location.search;
+    const ex = wls.match("^\\?ex=([a-zA-Z0-9/.%_+-]+)");
+    // install ex if navigating to page
     if (ex && navLast.type === "navigate") {
         installExampleWithAjax(decodeURIComponent(ex[1]), false);
+    // otherwise recall image settings for this URL from local storage
     } else {
-        let xml = getLocalStorageItem("XML", "");
+        let xml = getLocalStorageItem("XML" + wls, "");
         if (xml !== "") {
             installExampleFromXML(xml, false, true, true);
         } else {
             startJob();
         }
     }
+
+    // if leaving page, update session storage before leaving in case another window/tab was messing with it
+    addEventListener("beforeunload", currentExampletoXML);
 }
 
 function init() {

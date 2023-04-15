@@ -36,3 +36,4 @@
 * Don't clear canvas every time image size changes
 * "Fit Window" now covers the whole window, controls are laid on top with transparency
 * Added progress circle in lower right
+* Remember current image settings across browser sessions
