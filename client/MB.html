@@ -937,8 +937,8 @@ function setDefaults() {
     document.getElementById("customsize").style.display = "none";
     document.getElementById("imagesize").value = "0 0";
     setCanvasToWindow();
-    startJob();
     if (undoList) {
+        startJob();
         addUndoItem("Restore Defaults", [oldXML, oldPaletteSelectSliderState],
             [currentXML, paletteSelectSlider.getPaletteSelectSliderState()]);
     }
@@ -1510,6 +1510,7 @@ function setCanvasToWindow() {
     OSC.width = w;
     OSC.height = h;
     checkAspect();
+    canvas.classList.remove("displayNone");
 }
 function setImageSizeToFixed(w, h, oldImageSize, doDraw) {
     // console.log("setImageSizeToFixed from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], w, h, doDraw);
@@ -2742,8 +2743,9 @@ SliderAndInput.prototype.draw = function() {
 //-------------------------------------------------------------------------------------------
 
 function currentExampletoXML() {
-    var offset = Math.round(mainPaletteOffsetSlider.value/100 * paletteLength);
-    return "<?xml version='1.0'?>\n<mandelbrot_settings_2>\n" +
+    const offset = Math.round(mainPaletteOffsetSlider.value/100 * paletteLength);
+    const xml = 
+            "<?xml version='1.0'?>\n<mandelbrot_settings_2>\n" +
             "<image_size width='" + currentImageSize[0] + "' height='" + currentImageSize[1] + "'/>\n" +
             "<limits>\n   <xmin>" + xmin_requested.toString() + "</xmin>\n" +
             "   <xmax>" + xmax_requested.toString() + "</xmax>\n" +
@@ -2753,6 +2755,8 @@ function currentExampletoXML() {
             "<palette_mapping length='" + paletteLength + "' offset='" + offset + "'/>\n" +
             "<max_iterations value='" + maxIterSlider.value + "'/>\n" +
             "</mandelbrot_settings_2>\n";
+    setLocalStorageItem("XML", xml);
+    return xml;
 }
 
 function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError) {
@@ -2910,10 +2914,27 @@ function importXML() {
 }
 
 function checkForExample() {
-    var ex = window.location.search.match("^\\?ex=([a-zA-Z0-9/.%_+-]+)");
-    if (ex) {
-       stopJob();
-       installExampleWithAjax(decodeURIComponent(ex[1]), false);
+    const navEntries = performance.getEntriesByType("navigation");
+    const navLast = navEntries[navEntries.length - 1];
+    // console.log(navLast.type);
+        // // Get the current URL
+        // const currentUrl = new URL(window.location.href);
+
+        // // Remove the query string parameter you want to remove
+        // currentUrl.searchParams.delete('ex');
+
+        // // Use pushState() to update the URL without reloading the page
+        // window.history.replaceState(window.location.href, '', currentUrl);
+    const ex = window.location.search.match("^\\?ex=([a-zA-Z0-9/.%_+-]+)");
+    if (ex && navLast.type === "navigate") {
+        installExampleWithAjax(decodeURIComponent(ex[1]), false);
+    } else {
+        let xml = getLocalStorageItem("XML", "");
+        if (xml !== "") {
+            installExampleFromXML(xml, false, true, true);
+        } else {
+            startJob();
+        }
     }
 }
 
@@ -3723,7 +3744,7 @@ function initTouch() {
    </div>
 </div>
 <div class="col2">
-  <canvas id="canvas" class="fixedCanvas fullWindowCanvas"></canvas>
+  <canvas id="canvas" class="fixedCanvas fullWindowCanvas displayNone"></canvas>
   <div id="status">Idle</div>
 </div>
 </div>
