@@ -2935,8 +2935,8 @@ function checkForExample() {
     if (ex && (navLast.type === "navigate" || xml === "")) {
         installExampleWithAjax(decodeURIComponent(ex[1]));
     // otherwise try to recall image settings for this URL from local storage
-    } else if (xml !== "") {
-        installExampleFromXML(xml, false, true, true);
+    } else if (xml !== "" && installExampleFromXML(xml, false, true, true) === null) {
+    // else fall back to default settings
     } else {
         startJob();
     }
