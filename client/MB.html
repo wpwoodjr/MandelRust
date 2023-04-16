@@ -3065,6 +3065,7 @@ function init() {
     document.getElementById("local").onchange = changeLocalOrRemote;
     document.getElementById("remote").onchange = changeLocalOrRemote;
     document.getElementById("importXML").onclick = importXML;
+    document.getElementById("copyURLFromXML").onclick = copyURLFromXML;
     document.getElementById("undo").onclick = doUndo;
     document.getElementById("undo").disabled = true;
     document.getElementById("redo").onclick = doRedo;
@@ -3623,6 +3624,25 @@ function initTouch() {
     }
 }
 
+// maybe just set URL not copy it///???
+function copyURLFromXML() {
+    const location = window.location;
+    const urlWithoutQuery = `${location.protocol}//${location.host}${location.pathname}`;
+    const url = urlWithoutQuery + "?xml=" + encodeURIComponent(currentXML);
+    window.history.replaceState(null, "", url);
+
+    navigator.clipboard.writeText(url)
+        .then(() => {
+            document.getElementById("copyURLFromXML").textContent = 'URL Copied!';
+            setTimeout(() => {
+                document.getElementById("copyURLFromXML").textContent = 'Copy URL';
+            }, 2000);
+        })
+        .catch((err) => {
+            console.warn('Clipboard API failed:', err);
+        });
+}
+
 // polyfill for Safari drawImage when left and/or top is negative
 (function () {
     const originalDrawImage = CanvasRenderingContext2D.prototype.drawImage;
@@ -3822,6 +3842,7 @@ function initTouch() {
    </div>
    <div class="grouplast">
       <p><button id="importXML" title="Put up an input box into which you can copy-and-paste the XML code for an example, or get the XML for the current example.">Show XML Import/Export</button></p>
+      <p><button id="copyURLFromXML" title="Create an XML URL that will recreate the image and put it in the paste buffer">Copy URL</button></p>
    </div>
 </div>
 <div class="col2">
