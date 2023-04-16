@@ -2910,14 +2910,16 @@ function importXML() {
         if (text == "") {
             dismiss();
         } else {
-            var errorMsg = installExampleFromXML(text,true,false);
+            const location = window.location;
+            const oldURL = location.href;
+            const urlWithoutQuery = `${location.protocol}//${location.host}${location.pathname}`;
+            const url = urlWithoutQuery + "?xml=" + encodeURIComponent(text);
+            window.history.replaceState(null, "", url);
+            const errorMsg = installExampleFromXML(text,true,false);
             if (errorMsg == null) {
-                const location = window.location;
-                const urlWithoutQuery = `${location.protocol}//${location.host}${location.pathname}`;
-                const url = urlWithoutQuery + "?xml=" + encodeURIComponent(text);
-                window.history.replaceState(null, "", url);
                 dismiss();
             } else {
+                window.history.replaceState(null, "", oldURL);
                 alert("Error in input: " + errorMsg);
             }
         }
