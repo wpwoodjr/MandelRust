@@ -2766,7 +2766,17 @@ function currentExampletoXML() {
             "<palette_mapping length='" + paletteLength + "' offset='" + offset + "'/>\n" +
             "<max_iterations value='" + maxIterSlider.value + "'/>\n" +
             "</mandelbrot_settings_2>\n";
-    setLocalStorageItem("XML" + window.location.search, xml);
+
+    const params = new URLSearchParams(window.location.search);
+    const exParam = params.get("ex");
+    const xmlParam = params.get("xml");
+    if (exParam) {
+        setLocalStorageItem("ex/" + exParam, xml);
+    } else if (xmlParam) {
+        setLocalStorageItem("xml/" + murmurHash3(xmlParam).toString(16), xml);
+    } else {
+        setLocalStorageItem("/", xml);
+    }
     return xml;
 }
 
@@ -2924,19 +2934,92 @@ function importXML() {
     }
 }
 
+async function hashUrl(url) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(url);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  const digestArray = new Uint8Array(digest);
+  const hash = Array.from(digestArray).map(b => b.toString(16).padStart(2, '0')).join('');
+  return hash;
+}
+
+// thanks to GPT4 for this hash routine
+function murmurHash3(str, seed = 0) {
+  const c1 = 0xcc9e2d51;
+  const c2 = 0x1b873593;
+  let h1 = seed;
+  let roundedEnd = str.length & ~0x3;
+
+  for (let i = 0; i < roundedEnd; i += 4) {
+    let k1 =
+      (str.charCodeAt(i) & 0xff) |
+      ((str.charCodeAt(i + 1) & 0xff) << 8) |
+      ((str.charCodeAt(i + 2) & 0xff) << 16) |
+      ((str.charCodeAt(i + 3) & 0xff) << 24);
+    k1 = Math.imul(k1, c1);
+    k1 = (k1 << 15) | (k1 >>> 17);
+    k1 = Math.imul(k1, c2);
+
+    h1 ^= k1;
+    h1 = (h1 << 13) | (h1 >>> 19);
+    h1 = Math.imul(h1, 5) + 0xe6546b64;
+  }
+
+  let k1 = 0;
+  const val = str.length & 0x3;
+
+  if (val === 3) {
+    k1 = (str.charCodeAt(roundedEnd + 2) & 0xff) << 16;
+  }
+  if (val >= 2) {
+    k1 |= (str.charCodeAt(roundedEnd + 1) & 0xff) << 8;
+  }
+  if (val >= 1) {
+    k1 |= str.charCodeAt(roundedEnd) & 0xff;
+    k1 = Math.imul(k1, c1);
+    k1 = (k1 << 15) | (k1 >>> 17);
+    k1 = Math.imul(k1, c2);
+    h1 ^= k1;
+  }
+
+  h1 ^= str.length;
+  h1 ^= h1 >>> 16;
+  h1 = Math.imul(h1, 0x85ebca6b);
+  h1 ^= h1 >>> 13;
+  h1 = Math.imul(h1, 0xc2b2ae35);
+  h1 ^= h1 >>> 16;
+
+  return h1 >>> 0;
+}
+
+    // const urlWithoutQuery = `${location.protocol}//${location.host}${location.pathname}`;
+    // const url = urlWithoutQuery + "?xml=" + encodeURIComponent(xml);
+    // window.history.replaceState(null, "", url);
+    // console.log(url.length);
 function checkForExample() {
     const navEntries = performance.getEntriesByType("navigation");
     const navLast = navEntries[navEntries.length - 1];
-    const wls = window.location.search;
-    const params = new URLSearchParams(wls);
-    const ex = params.get("ex");
-    const xml = getLocalStorageItem("XML" + wls, "");
 
-    // install ex if navigating to page
-    if (ex && (navLast.type === "navigate" || xml === "")) {
-        installExampleWithAjax(decodeURIComponent(ex));
-    // otherwise try to recall image settings for this URL from local storage
-    } else if (xml !== "" && installExampleFromXML(xml, false, true, true) === null) {
+    const params = new URLSearchParams(window.location.search);
+    const ex = params.get("ex");
+    const xml = params.get("xml");
+
+    let xmlLocalStorage;
+    if (ex) {
+        xmlLocalStorage = getLocalStorageItem("ex/" + ex, null);
+    } else if (xml) {
+        xmlLocalStorage = getLocalStorageItem("xml/" + murmurHash3(xml).toString(16), null);
+    } else {
+        xmlLocalStorage = getLocalStorageItem("/", null);
+    }
+
+    // if not initial navigation to page, try installing from image settings in local storage
+    if (navLast.type !== "navigate" && xmlLocalStorage && installExampleFromXML(xmlLocalStorage, false, true, true) === null) {
+    // else try installing from file
+    } else if (ex) {
+        installExampleWithAjax(ex);
+    // else try installing from image settings encoded in the url
+    } else if (xml && installExampleFromXML(xml, false, true, true) === null) {
     // else fall back to default settings
     } else {
         startJob();
