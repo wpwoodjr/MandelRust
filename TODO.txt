@@ -15,6 +15,7 @@ Check touch warn events
 Use statusHeader progress bar?
 Have 3 statuses now
 Landscape to portrait and back changes size in weird way
+Should show error msgs in status header; maybe also unfullwindow so can see error
 
 Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore

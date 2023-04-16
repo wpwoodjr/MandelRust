@@ -2929,21 +2929,17 @@ function checkForExample() {
     const navLast = navEntries[navEntries.length - 1];
     const wls = window.location.search;
     const ex = wls.match("^\\?ex=([a-zA-Z0-9/.%_+-]+)");
-    // install ex if navigating to page
-    if (ex && navLast.type === "navigate") {
-        installExampleWithAjax(decodeURIComponent(ex[1]), false);
-    // otherwise recall image settings for this URL from local storage
-    } else {
-        let xml = getLocalStorageItem("XML" + wls, "");
-        if (xml !== "") {
-            installExampleFromXML(xml, false, true, true);
-        } else {
-            startJob();
-        }
-    }
+    const xml = getLocalStorageItem("XML" + wls, "");
 
-    // if leaving page, update session storage before leaving in case another window/tab was messing with it
-    addEventListener("beforeunload", currentExampletoXML);
+    // install ex if navigating to page
+    if (ex && (navLast.type === "navigate" || xml === "")) {
+        installExampleWithAjax(decodeURIComponent(ex[1]));
+    // otherwise try to recall image settings for this URL from local storage
+    } else if (xml !== "") {
+        installExampleFromXML(xml, false, true, true);
+    } else {
+        startJob();
+    }
 }
 
 function init() {
