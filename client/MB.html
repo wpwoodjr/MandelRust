@@ -2909,13 +2909,17 @@ function importXML() {
         var text = document.getElementById("XMLtextinput").value.trim();
         if (text == "") {
             dismiss();
-        }
-        else {
+        } else {
             var errorMsg = installExampleFromXML(text,true,false);
-            if (errorMsg == null)
-               dismiss();
-            else
-               alert("Error in input: " + errorMsg);
+            if (errorMsg == null) {
+                const location = window.location;
+                const urlWithoutQuery = `${location.protocol}//${location.host}${location.pathname}`;
+                const url = urlWithoutQuery + "?xml=" + encodeURIComponent(text);
+                window.history.replaceState(null, "", url);
+                dismiss();
+            } else {
+                alert("Error in input: " + errorMsg);
+            }
         }
     }
     function dismiss() {
@@ -2932,15 +2936,6 @@ function importXML() {
             dismiss();
         }
     }
-}
-
-async function hashUrl(url) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(url);
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  const digestArray = new Uint8Array(digest);
-  const hash = Array.from(digestArray).map(b => b.toString(16).padStart(2, '0')).join('');
-  return hash;
 }
 
 // thanks to GPT4 for this hash routine
@@ -2992,10 +2987,6 @@ function murmurHash3(str, seed = 0) {
   return h1 >>> 0;
 }
 
-    // const urlWithoutQuery = `${location.protocol}//${location.host}${location.pathname}`;
-    // const url = urlWithoutQuery + "?xml=" + encodeURIComponent(xml);
-    // window.history.replaceState(null, "", url);
-    // console.log(url.length);
 function checkForExample() {
     const navEntries = performance.getEntriesByType("navigation");
     const navLast = navEntries[navEntries.length - 1];
