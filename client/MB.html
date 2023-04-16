@@ -2928,12 +2928,13 @@ function checkForExample() {
     const navEntries = performance.getEntriesByType("navigation");
     const navLast = navEntries[navEntries.length - 1];
     const wls = window.location.search;
-    const ex = wls.match("^\\?ex=([a-zA-Z0-9/.%_+-]+)");
+    const params = new URLSearchParams(wls);
+    const ex = params.get("ex");
     const xml = getLocalStorageItem("XML" + wls, "");
 
     // install ex if navigating to page
     if (ex && (navLast.type === "navigate" || xml === "")) {
-        installExampleWithAjax(decodeURIComponent(ex[1]));
+        installExampleWithAjax(decodeURIComponent(ex));
     // otherwise try to recall image settings for this URL from local storage
     } else if (xml !== "" && installExampleFromXML(xml, false, true, true) === null) {
     // else fall back to default settings
