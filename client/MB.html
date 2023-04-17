@@ -53,6 +53,7 @@
                   "Fit Window" now covers the whole window, controls are laid on top with transparency
                   Added progress circle in lower right
                   Remember current image settings across browser sessions
+                  Added button to copy a permalink to the current image settings
 -->
 <html>
 <head>
@@ -3624,18 +3625,17 @@ function initTouch() {
     }
 }
 
-// maybe just set URL not copy it///???
 function copyURLFromXML() {
     const location = window.location;
     const urlWithoutQuery = `${location.protocol}//${location.host}${location.pathname}`;
     const url = urlWithoutQuery + "?xml=" + encodeURIComponent(currentXML);
-    window.history.replaceState(null, "", url);
+    // window.history.replaceState(null, "", url);
 
     navigator.clipboard.writeText(url)
         .then(() => {
-            document.getElementById("copyURLFromXML").textContent = 'URL Copied!';
+            document.getElementById("copyURLFromXML").textContent = 'Permalink Copied!';
             setTimeout(() => {
-                document.getElementById("copyURLFromXML").textContent = 'Copy URL';
+                document.getElementById("copyURLFromXML").textContent = 'Copy Permalink';
             }, 2000);
         })
         .catch((err) => {
@@ -3842,7 +3842,7 @@ function copyURLFromXML() {
    </div>
    <div class="grouplast">
       <p><button id="importXML" title="Put up an input box into which you can copy-and-paste the XML code for an example, or get the XML for the current example.">Show XML Import/Export</button></p>
-      <p><button id="copyURLFromXML" title="Create an XML URL that will recreate the image and put it in the paste buffer">Copy URL</button></p>
+      <p><button id="copyURLFromXML" title="Create a permalink for sharing the current image, and put it in the copy/paste buffer.">Copy Permalink</button></p>
    </div>
 </div>
 <div class="col2">

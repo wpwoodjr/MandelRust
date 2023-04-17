@@ -37,3 +37,4 @@
 * "Fit Window" now covers the whole window, controls are laid on top with transparency
 * Added progress circle in lower right
 * Remember current image settings across browser sessions
+* Added button to copy a permalink to the current image settings
