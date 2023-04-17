@@ -925,8 +925,6 @@ function putRow(row) {
 }
 
 function setDefaults() {
-    let oldXML = currentXML;
-    let oldPaletteSelectSliderState = paletteSelectSlider.getPaletteSelectSliderState();
     stopJob();
     setLimits(new BigDecimal("-2.2"), new BigDecimal("0.8"), new BigDecimal("-1.2"), new BigDecimal("1.2"), false);
     maxIterSlider.setDefault();
@@ -940,17 +938,12 @@ function setDefaults() {
     document.getElementById("imagesize").value = "0 0";
     setCanvasToWindow();
     if (undoList) {
-        // save old URL
-        const location = window.location;
-        const oldURL = location.href;
-
-        // restore default URL
-        const urlWithoutQuery = `${location.protocol}//${location.host}${location.pathname}`;
-        window.history.replaceState(null, "", urlWithoutQuery);
-
+        const oldXML = currentXML;
+        const oldPaletteSelectSliderState = paletteSelectSlider.getPaletteSelectSliderState();
+        const oldURL = persistence.setDefaultURL();
         startJob();
         addUndoItem("Restore Defaults", [oldXML, oldPaletteSelectSliderState, oldURL],
-            [currentXML, paletteSelectSlider.getPaletteSelectSliderState(), urlWithoutQuery]);
+            [currentXML, paletteSelectSlider.getPaletteSelectSliderState(), persistence.url]);
     }
 }
 
@@ -1686,10 +1679,10 @@ function applyUndoItem(name, value) {
     applyUndoInProgress = true;
     switch (name) {
       case "Restore Defaults":
-          // restore other URL
-          window.history.replaceState(null, "", value[2]);
       case "Import Example":
-          installExampleFromXML(value[0],false,true);
+          // restore other URL
+          persistence.setURL(value[2]);
+          installExampleFromXML(value[0], true);
           paletteSelectSlider.setPaletteSelectSliderState(value[1]);
           break;
       case "Change PaletteOffset":
@@ -2768,23 +2761,12 @@ function currentExampletoXML() {
             "<max_iterations value='" + maxIterSlider.value + "'/>\n" +
             "</mandelbrot_settings_2>\n";
 
-    const params = new URLSearchParams(window.location.search);
-    const exParam = params.get("ex");
-    const xmlParam = params.get("xml");
-    if (exParam) {
-        setLocalStorageItem("ex/" + exParam, xml);
-    } else if (xmlParam) {
-        setLocalStorageItem("xml/" + murmurHash3(xmlParam).toString(16), xml);
-    } else {
-        setLocalStorageItem("/", xml);
-    }
+    persistence.persist(xml);
     return xml;
 }
 
-function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError) {
+function installExampleFromXML(xmlString, respectSize, dontShowError) {
     // console.log("installExampleFromXML:", "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], currentXML, xmlString);
-    let oldXML = currentXML;
-    let oldPaletteSelectSliderState = paletteSelectSlider.getPaletteSelectSliderState();
     stopJob();
     try {
       var parser = new DOMParser();
@@ -2858,10 +2840,6 @@ function installExampleFromXML(xmlString, recordUndo, respectSize, dontShowError
       } else {
         startJob();
       }
-      if (recordUndo && undoList) {
-        addUndoItem("Import Example", [oldXML, oldPaletteSelectSliderState],
-            [currentXML, paletteSelectSlider.getPaletteSelectSliderState()]);
-      }
       return null;
     }
     catch (e) {
@@ -2884,7 +2862,7 @@ function installExampleWithAjax(url) {
     });
     ajax.addEventListener("load",function() {
         clearTimeout(ajaxTimeout);
-        installExampleFromXML(ajax.responseText, false, false);
+        installExampleFromXML(ajax.responseText, false);
     });
     ajaxTimeout = setTimeout(function() {
         ajax.abort();
@@ -2906,21 +2884,20 @@ function importXML() {
     document.getElementById("cancelXMLimport").onclick = dismiss;
     document.getElementById("applyXMLimport").onclick = apply;
     document.getElementById("grabcurrent").onclick = grabCurrent;
+    const oldXML = currentXML;
+    const oldPaletteSelectSliderState = paletteSelectSlider.getPaletteSelectSliderState();
     function apply() {
         var text = document.getElementById("XMLtextinput").value.trim();
         if (text == "") {
             dismiss();
         } else {
-            const location = window.location;
-            const oldURL = location.href;
-            const urlWithoutQuery = `${location.protocol}//${location.host}${location.pathname}`;
-            const url = urlWithoutQuery + "?xml=" + encodeURIComponent(text);
-            window.history.replaceState(null, "", url);
-            const errorMsg = installExampleFromXML(text,true,false);
+            const errorMsg = installExampleFromXML(text, false);
             if (errorMsg == null) {
+                const oldURL = persistence.setXMLURL(text);
+                addUndoItem("Import Example", [oldXML, oldPaletteSelectSliderState, oldURL],
+                    [currentXML, paletteSelectSlider.getPaletteSelectSliderState(), persistence.url]);
                 dismiss();
             } else {
-                window.history.replaceState(null, "", oldURL);
                 alert("Error in input: " + errorMsg);
             }
         }
@@ -2941,82 +2918,126 @@ function importXML() {
     }
 }
 
-// thanks to GPT4 for this hash routine
-function murmurHash3(str, seed = 0) {
-  const c1 = 0xcc9e2d51;
-  const c2 = 0x1b873593;
-  let h1 = seed;
-  let roundedEnd = str.length & ~0x3;
+const persistence = {
+    init: function() {
+        const location = window.location;
+        this.urlWithoutQuery = `${location.protocol}//${location.host}${location.pathname}`;
+        this.setURL(location.href);
 
-  for (let i = 0; i < roundedEnd; i += 4) {
-    let k1 =
-      (str.charCodeAt(i) & 0xff) |
-      ((str.charCodeAt(i + 1) & 0xff) << 8) |
-      ((str.charCodeAt(i + 2) & 0xff) << 16) |
-      ((str.charCodeAt(i + 3) & 0xff) << 24);
-    k1 = Math.imul(k1, c1);
-    k1 = (k1 << 15) | (k1 >>> 17);
-    k1 = Math.imul(k1, c2);
+        let xmlLocalStorage;
+        if (this.ex) {
+            xmlLocalStorage = getLocalStorageItem("ex/" + this.ex, null);
+        } else if (this.xml) {
+            xmlLocalStorage = getLocalStorageItem("xml/" + this.xmlHash, null);
+        } else {
+            xmlLocalStorage = getLocalStorageItem("/", null);
+        }
 
-    h1 ^= k1;
-    h1 = (h1 << 13) | (h1 >>> 19);
-    h1 = Math.imul(h1, 5) + 0xe6546b64;
-  }
+        const navEntries = performance.getEntriesByType("navigation");
+        const navLast = navEntries[navEntries.length - 1];
 
-  let k1 = 0;
-  const val = str.length & 0x3;
+        // if not initial navigation to page, try installing from image settings in local storage
+        if (navLast.type !== "navigate" && xmlLocalStorage && installExampleFromXML(xmlLocalStorage, true, true) === null) {
+        // else try installing from file
+        } else if (this.ex) {
+            installExampleWithAjax(this.ex);
+        // else try installing from image settings encoded in the url
+        } else if (this.xml && installExampleFromXML(this.xml, true, true) === null) {
+        // else fall back to default settings
+        } else {
+            startJob();
+        }
 
-  if (val === 3) {
-    k1 = (str.charCodeAt(roundedEnd + 2) & 0xff) << 16;
-  }
-  if (val >= 2) {
-    k1 |= (str.charCodeAt(roundedEnd + 1) & 0xff) << 8;
-  }
-  if (val >= 1) {
-    k1 |= str.charCodeAt(roundedEnd) & 0xff;
-    k1 = Math.imul(k1, c1);
-    k1 = (k1 << 15) | (k1 >>> 17);
-    k1 = Math.imul(k1, c2);
-    h1 ^= k1;
-  }
+        document.getElementById("copyURLFromXML").onclick = persistence.copyURLFromXML;
+    },
+    setURL: function(url) {
+        // console.log("persistence.setURL:", url);
+        const oldURL = this.url;
+        this.url = url;
+        window.history.replaceState(null, "", url);
 
-  h1 ^= str.length;
-  h1 ^= h1 >>> 16;
-  h1 = Math.imul(h1, 0x85ebca6b);
-  h1 ^= h1 >>> 13;
-  h1 = Math.imul(h1, 0xc2b2ae35);
-  h1 ^= h1 >>> 16;
+        const params = new URLSearchParams(window.location.search);
+        this.ex = params.get("ex");
+        this.xml = params.get("xml");
+        this.xmlHash = this.xml ? this.murmurHash3(this.xml).toString(16) : null;
+        return oldURL;
+    },
+    setDefaultURL: function() {
+        return this.setURL(this.urlWithoutQuery);
+    },
+    setXMLURL: function(xml) {
+        const url = this.urlWithoutQuery + "?xml=" + encodeURIComponent(xml);
+        return this.setURL(url);
+    },
+    persist: function(xml) {
+        if (this.ex) {
+            setLocalStorageItem("ex/" + this.ex, xml);
+        } else if (this.xml) {
+            setLocalStorageItem("xml/" + this.xmlHash, xml);
+        } else {
+            setLocalStorageItem("/", xml);
+        }
+    },
+    copyURLFromXML: function() {
+        const url = persistence.urlWithoutQuery + "?xml=" + encodeURIComponent(currentXML);
+        navigator.clipboard.writeText(url)
+            .then(() => {
+                document.getElementById("copyURLFromXML").textContent = 'Permalink Copied!';
+                setTimeout(() => {
+                    document.getElementById("copyURLFromXML").textContent = 'Copy Permalink';
+                }, 2000);
+            })
+            .catch((err) => {
+                console.warn('Clipboard API failed:', err);
+            });
+    },
+    // thanks to GPT4 for this hash routine
+    murmurHash3: function(str, seed = 0) {
+        const c1 = 0xcc9e2d51;
+        const c2 = 0x1b873593;
+        let h1 = seed;
+        let roundedEnd = str.length & ~0x3;
 
-  return h1 >>> 0;
-}
+        for (let i = 0; i < roundedEnd; i += 4) {
+            let k1 =
+            (str.charCodeAt(i) & 0xff) |
+            ((str.charCodeAt(i + 1) & 0xff) << 8) |
+            ((str.charCodeAt(i + 2) & 0xff) << 16) |
+            ((str.charCodeAt(i + 3) & 0xff) << 24);
+            k1 = Math.imul(k1, c1);
+            k1 = (k1 << 15) | (k1 >>> 17);
+            k1 = Math.imul(k1, c2);
 
-function checkForExample() {
-    const navEntries = performance.getEntriesByType("navigation");
-    const navLast = navEntries[navEntries.length - 1];
+            h1 ^= k1;
+            h1 = (h1 << 13) | (h1 >>> 19);
+            h1 = Math.imul(h1, 5) + 0xe6546b64;
+        }
 
-    const params = new URLSearchParams(window.location.search);
-    const ex = params.get("ex");
-    const xml = params.get("xml");
+        let k1 = 0;
+        const val = str.length & 0x3;
 
-    let xmlLocalStorage;
-    if (ex) {
-        xmlLocalStorage = getLocalStorageItem("ex/" + ex, null);
-    } else if (xml) {
-        xmlLocalStorage = getLocalStorageItem("xml/" + murmurHash3(xml).toString(16), null);
-    } else {
-        xmlLocalStorage = getLocalStorageItem("/", null);
-    }
+        if (val === 3) {
+            k1 = (str.charCodeAt(roundedEnd + 2) & 0xff) << 16;
+        }
+        if (val >= 2) {
+            k1 |= (str.charCodeAt(roundedEnd + 1) & 0xff) << 8;
+        }
+        if (val >= 1) {
+            k1 |= str.charCodeAt(roundedEnd) & 0xff;
+            k1 = Math.imul(k1, c1);
+            k1 = (k1 << 15) | (k1 >>> 17);
+            k1 = Math.imul(k1, c2);
+            h1 ^= k1;
+        }
 
-    // if not initial navigation to page, try installing from image settings in local storage
-    if (navLast.type !== "navigate" && xmlLocalStorage && installExampleFromXML(xmlLocalStorage, false, true, true) === null) {
-    // else try installing from file
-    } else if (ex) {
-        installExampleWithAjax(ex);
-    // else try installing from image settings encoded in the url
-    } else if (xml && installExampleFromXML(xml, false, true, true) === null) {
-    // else fall back to default settings
-    } else {
-        startJob();
+        h1 ^= str.length;
+        h1 ^= h1 >>> 16;
+        h1 = Math.imul(h1, 0x85ebca6b);
+        h1 ^= h1 >>> 13;
+        h1 = Math.imul(h1, 0xc2b2ae35);
+        h1 ^= h1 >>> 16;
+
+        return h1 >>> 0;
     }
 }
 
@@ -3066,7 +3087,6 @@ function init() {
     document.getElementById("local").onchange = changeLocalOrRemote;
     document.getElementById("remote").onchange = changeLocalOrRemote;
     document.getElementById("importXML").onclick = importXML;
-    document.getElementById("copyURLFromXML").onclick = copyURLFromXML;
     document.getElementById("undo").onclick = doUndo;
     document.getElementById("undo").disabled = true;
     document.getElementById("redo").onclick = doRedo;
@@ -3081,7 +3101,7 @@ function init() {
     progressCircle.init(doSecondPass);
     windowSize.init();
     setDefaults();
-    checkForExample();
+    persistence.init();
     undoList = [];
     undoCount = 0;
     checkRemoteCanComputeMB();
@@ -3383,19 +3403,23 @@ function handleCanvasKeys(event) {
         case "ArrowDown":
         case "PageDown":
         case "PageUp":
+            if (event.ctrlKey || event.altKey || event.metaKey) {
+                return;
+            }
             doStartStop = true;
             break;
         case "f":
         case "F":
         case "Escape":
-            if (event.ctrlKey) {
+            if (event.ctrlKey || event.altKey || event.metaKey) {
                 return;
             }
             break;
         case "z":
         case "Z":
         case "y":
-            if (event.ctrlKey) {
+        case "c":
+            if (event.ctrlKey && !(event.altKey || event.metaKey)) {
                 break;
             }
             return;
@@ -3477,6 +3501,10 @@ function handleCanvasKeys(event) {
         case "y":
         case "Z":
             doRedo();
+            break;
+
+        case "c":
+            persistence.copyURLFromXML();
             break;
     }
 
@@ -3623,24 +3651,6 @@ function initTouch() {
             }
         });
     }
-}
-
-function copyURLFromXML() {
-    const location = window.location;
-    const urlWithoutQuery = `${location.protocol}//${location.host}${location.pathname}`;
-    const url = urlWithoutQuery + "?xml=" + encodeURIComponent(currentXML);
-    // window.history.replaceState(null, "", url);
-
-    navigator.clipboard.writeText(url)
-        .then(() => {
-            document.getElementById("copyURLFromXML").textContent = 'Permalink Copied!';
-            setTimeout(() => {
-                document.getElementById("copyURLFromXML").textContent = 'Copy Permalink';
-            }, 2000);
-        })
-        .catch((err) => {
-            console.warn('Clipboard API failed:', err);
-        });
 }
 
 // polyfill for Safari drawImage when left and/or top is negative
