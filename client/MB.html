@@ -2891,13 +2891,14 @@ function importXML() {
         if (text == "") {
             dismiss();
         } else {
+            const oldURL = persistence.setXMLURL(text);
             const errorMsg = installExampleFromXML(text, false);
             if (errorMsg == null) {
-                const oldURL = persistence.setXMLURL(text);
                 addUndoItem("Import Example", [oldXML, oldPaletteSelectSliderState, oldURL],
                     [currentXML, paletteSelectSlider.getPaletteSelectSliderState(), persistence.url]);
                 dismiss();
             } else {
+                persistence.setURL(oldURL);
                 alert("Error in input: " + errorMsg);
             }
         }
