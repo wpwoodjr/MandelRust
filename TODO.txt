@@ -1,15 +1,12 @@
 Is there a way to use emulated double-click with Chrome on ios, without haveing to call touch.handleTouchCancel()?
-should preventdefault on all touch events?
 Maybe need to kill workers to increase responsiveness to touch on mobile with "default" settings
 Safari doesn't handle negative numbers properly in drawImage
 Polyfill for drawImage generalized to handle non-0 target left and top?
 Safari 15 on macOS doesn't show zoom animation when shft-double-clicking
-Pinch zoom check id's what happens when lift a finger, etc
 Why is status ''
 Undo zoom is wrong if change window size between zoom and undo zoom
 re-eval 2nd pass not drawing until complete.  less clear than orig?
 Save pref for image size
-Add draw status in upper right
 When tap to hide controls, if text editing, cursor remains in the control
 Check touch warn events
 Use statusHeader progress bar?
@@ -23,6 +20,9 @@ UCArray stuff
 Keep JS worker?
 ///stuff
 
+XPinch zoom check id's what happens when lift a finger, etc
+>should preventdefault on all touch events?
+>Add draw status in upper right
 XWhen first open site on Pixel, image height is too large; then resizes as soon as you touch anything
 >Update help
 >Save pref for second pass, interlaced
