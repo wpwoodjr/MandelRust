@@ -1,5 +1,5 @@
 let jobNumber, workerNumber;
-const retryLimit = 9;
+const retryLimit = 7;
 
 function doIterationCounts(coords, url, retryCount, thisJobNum) {
     let iterationCounts;
@@ -33,7 +33,7 @@ function doIterationCounts(coords, url, retryCount, thisJobNum) {
             setTimeout(function() {
                     doIterationCounts(coords, url, retryCount, thisJobNum);
                 },
-                retryCount*1000);
+                retryCount*2000);
             return;
         } else {
             console.error("XMLHttpRequest failure, retry limit exceeded!\n" + error);

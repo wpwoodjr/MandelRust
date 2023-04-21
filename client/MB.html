@@ -552,7 +552,7 @@ function doDraw() {
 function repaint(dontUpdateStatusToIdle) {
     // console.log("repaint from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], dontUpdateStatusToIdle);
     doDraw();
-    let rpsText = rowsPerSecond.toPrecision(3) + " rows/second";
+    const rpsText = rowsPerSecond.toPrecision(3) + " rows/second";
     if (running) {
         repaintTimeout = setTimeout(repaint, repaintTimer);
         let rc = rowsCompleted;
@@ -563,7 +563,7 @@ function repaint(dontUpdateStatusToIdle) {
             ch += 1;
             pass = "Pass 2, ";
         }
-        let prec = highPrecision ? digits + " digits precision" : "normal precision";
+        const prec = highPrecision ? digits + " digits precision" : "normal precision";
         document.getElementById("status").innerHTML =
                     pass + prec +
                     "... completed " + rc + " of " + ch + " rows at " + rpsText;
