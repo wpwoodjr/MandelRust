@@ -1,5 +1,5 @@
 let jobNumber, workerNumber;
-const retryLimit = 5;
+const retryLimit = 9;
 
 function doIterationCounts(coords, url, retryCount, thisJobNum) {
     let iterationCounts;
