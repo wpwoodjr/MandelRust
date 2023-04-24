@@ -935,15 +935,17 @@ function setDefaults() {
     paletteSelectSlider.reset();
     palette = new Palette();
     createPaletteColors();
-    document.getElementById("customsize").style.display = "none";
-    document.getElementById("imagesize").value = "0 0";
-    setCanvasToWindow();
     if (undoList) {
         const oldXML = currentXML;
         const oldURL = persistence.setDefaultURL();
         startJob();
         addUndoItem("Restore Defaults", [oldXML, oldPaletteSelectSliderState, oldURL],
             [currentXML, paletteSelectSlider.getPaletteSelectSliderState(), persistence.url]);
+    } else {
+        // first time calling setDefaults
+        document.getElementById("customsize").style.display = "none";
+        document.getElementById("imagesize").value = "0 0";
+        setCanvasToWindow();
     }
 }
 
