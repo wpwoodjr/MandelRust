@@ -190,7 +190,7 @@
         font-weight: normal;
         top: 100%;
         left: 100%;
-        transform: translateX(-40%);
+        transform: translateX(-60%);
         border: 1px solid black;
     }
     /* Show the tooltip text when hovering over the container */
@@ -202,7 +202,7 @@
         content: "";
         position: absolute;
         bottom: 100%;
-        left: 41%;
+        left: 60%;
         border-width: 5px;
         border-style: solid;
         border-color: #555 transparent transparent transparent;
@@ -221,7 +221,7 @@
         font-weight: normal;
         top: 100%;
         left: 100%;
-        transform: translateX(-70%);
+        transform: translateX(-33.5%);
         border: 1px solid black;
     }
     /* Show the tooltip text when hovering over the container */
@@ -233,32 +233,34 @@
         content: "";
         position: absolute;
         bottom: 100%;
-        left: 71%;
+        left: 34.5%;
         border-width: 5px;
         border-style: solid;
         border-color: #555 transparent transparent transparent;
     }
 
+    #home-icon {
+        margin-left: 8px;
+    }
+    .svg-icon {
+        cursor: pointer;
+        transition-duration: 0.2s;
+        color: white;
+        filter: drop-shadow(0px 0px 2px rgba(0, 0, 0, 0.65));
+        width: 34px;
+        margin-top: 4px;
+    }
     #header-table {
         position: relative; /* Required for z-index */
         border-collapse: separate; /* Recommended for border-radius */
         border-spacing: 0; /* Recommended for border-radius */
-        background-color: rgba(255, 255, 255, 0.6);
+        background-color: rgba(255, 255, 255, 0.7);
         border-radius: 8px;
         z-index: 7;
         width: 100%;
         font-size: 20px;
         table-layout: fixed;
-    }
-    #header-table > tbody > tr > td {
-        text-align: Left;
-    }
-    #header-table > tbody > tr > td:first-child {
-        width: 27%;
-    }
-    #header-table > tbody > tr > td:nth-child(2) {
-        width: 20%;
-        text-align: center;
+        text-align: left;
     }
 
     #examples td, #examples tr {
@@ -280,6 +282,7 @@
         height: auto;
         display: block;
     }
+
     .selectable {
         user-select: text;
         -webkit-user-select: text;
@@ -567,13 +570,10 @@ function repaint(dontUpdateStatusToIdle) {
         document.getElementById("status").innerHTML =
                     pass + prec +
                     "... completed " + rc + " of " + ch + " rows at " + rpsText;
-        // statusHeader.setPercentage(rc/ch, pass + prec);    // + " " + (rc/ch*100).toFixed(0) + "%");
         statusHeader.updateText(pass + prec + ", " + (rc/ch*100).toFixed(0) + "%");
     } else if (dontUpdateStatusToIdle !== true) {
         document.getElementById("status").innerHTML = "Idle (" + rpsText + ")";
-        // statusHeader.updateText("Idle (" + rpsText + ")");
         statusHeader.updateText("Idle (" + rpsText + " " + canvas.width + "X" + canvas.height + ")");
-        // statusHeader.hideProgressBar();
     }
 }
 
@@ -1570,7 +1570,6 @@ function doResizeWindow() {
         // console.log("resize:", currentImageSize[0], currentImageSize[1]);
         setImageSize(currentImageSize[0], currentImageSize[1], false);
     }
-    statusHeader.updateWidth();
 }
 function resizeWindow() {
     // console.log("resizeWindow", resizeWindowTimeout);
@@ -1590,10 +1589,10 @@ function setTooltipSize() {
     const w = mainUIRect.right;
     // console.log("setToolTipSize:", w.toFixed(0));
     let tooltip = document.querySelector('.tooltip .helptext');
-    tooltip.style.width = Math.min(800, w*0.7) + "px";
+    tooltip.style.width = Math.min(800, w*0.85) + "px";
 
     tooltip = document.querySelector('.tooltip .exampletext');
-    tooltip.style.width = Math.min(800, w*0.7) + "px";
+    tooltip.style.width = Math.min(800, w*0.85) + "px";
 }
 
 function doApplyStandardPalette(newPaletteNum, newPalette) {
@@ -3113,8 +3112,7 @@ function init() {
     changeWorkerCount(); // has to be done before setDefaults
     createSliders();
     initTouch();
-    statusHeader = new ProgressBar("status-header", "Idle", "#2196f3", "#eee");
-    statusHeader.hideProgressBar();
+    statusHeader = new StatusText("status-header", "Idle", "#008cff");
     progressCircle.init(doSecondPass);
     windowSize.init();
     setDefaults();
@@ -3703,51 +3701,21 @@ function initTouch() {
 <noscript><b>Sorry, this page requires JavaScript.</b></noscript>
 
 <table id="header-table" class="unselectable">
-<tr><td>Explore the <a href=MB.html>Mandelbrot Set</a></td>
+<tr>
+<td><a href=MB.html>
+    <!-- thanks to https://mandelbrot.silversky.dev/ for home icon -->
+    <svg id="home-icon" class="svg-icon" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M6.5 14.5v-3.505c0-.245.25-.495.5-.495h2c.25 0 .5.25.5.5v3.5a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5v-7a.5.5 0 0 0-.146-.354L13 5.793V2.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1.293L8.354 1.146a.5.5 0 0 0-.708 0l-6 6A.5.5 0 0 0 1.5 7.5v7a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5z"></path>
+        <title>Reload Mandelbrot website</title>
+    </svg>
+</a></td>
 <td>
-    <span class="tooltip">Help
-        <span class="helptext selectable">
-            <h3>Basic Help</h3>
-                With a mouse, double-click or click and drag on the image to zoom in.
-                On a touch screen, drag or pinch to zoom; tap to show controls.
-                On the left are controls for the color palette, image size, etc.  Hover over a
-                setting to see what it does.
-            <h3>Special keys</h3>
-                <table>
-                    <tr><td>Left Arrow:</td><td>Scroll left</td></tr>
-                    <tr><td>Right Arrow:</td><td>Scroll right</td></tr>
-                    <tr><td>Up Arrow:</td><td>Scroll up</td></tr>
-                    <tr><td>Down Arrow:</td><td>Scroll down</td></tr>
-                    <tr><td>Page Up:</td><td>Zoom out on image</td></tr>
-                    <tr><td>Page Down:</td><td>Zoom in on image</td></tr>
-                    <tr><td>f:</td><td>Fill window with image, hide controls</td></tr>
-                    <tr><td>F (shift-f):</td><td>Fill screen with image</td></tr>
-                    <tr><td>Esc</td><td>Exit fill window or fill screen mode</td></tr>
-                    <tr><td>Ctrl-z</td><td>Undo last action</td></tr>
-                    <tr><td>Ctrl-y</td><td>Redo last undone action</td></tr>
-                    <tr><td>Ctrl-c</td><td>Copy a "permalink" (for sharing the current image) to the clipboard</tr>
-                </table>
-                <br>
-                For a detailed description, instructions, and examples, see <a href='MB-info.html'><b>more help</b></a>.
-            <h3>More Info</h3>
-                The number of "Workers" (in the controls pane) determines how much CPU is used for calculations.  The preset value should work well.
-                To experiment, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>,
-                then vary the number of workers to speed it up or slow it down.
-            </p><p>
-            <h3>Background</h3>
-                Based on a browser-only Mandelbrot Set viewer by <a href=https://math.hws.edu/eck/index.html target="_blank">David Eck</a>,
-                this revised version can run calculations in the browser or on a backend web server.  By default it tries to use the web server;
-                if the web server doesn't support calculations it runs them in the browser.
-                When the web server is hosted on Kubernetes, increasing the number of workers brings in more pods to speed up the computation.
-                Calculations are done in Rust for increased speed over the original JavaScript version.
-            </p><p>
-                See the <a href="https://github.com/wpwoodjr/MandelRust" target="_blank">GitHub repository</a> for more information.
-            </p>
-        </span>
-    </span>
-</td>
-<td>
-    <span class="tooltip">Examples
+    <span class="tooltip">
+        <!-- thanks to https://mandelbrot.silversky.dev/ for gallery icon -->
+        <svg class="svg-icon" fill="currentColor" viewBox="0 0 16 16" width="34px">
+            <path d="M2.5 3.5a.5.5 0 0 1 0-1h11a.5.5 0 0 1 0 1h-11zm2-2a.5.5 0 0 1 0-1h7a.5.5 0 0 1 0 1h-7zM0 13a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 16 13V6a1.5 1.5 0 0 0-1.5-1.5h-13A1.5 1.5 0 0 0 0 6v7zm1.5.5A.5.5 0 0 1 1 13V6a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-.5.5h-13z"></path>
+            <title>Mandelbrot Gallery</title>
+        </svg>
         <span class="exampletext selectable">
             <h3 id="gallery">Some Loadable Examples</h3>
 
@@ -3787,6 +3755,53 @@ function initTouch() {
                <td><a href="MB.html?ex=examples%2fmitosis.xml"><img src="examples/mitosis.png" width="200" height="150"></a></td>
             </tr>
             </table>
+        </span>
+    </span>
+</td>
+<td>
+    <span class="tooltip">
+        <!-- thanks to https://mandelbrot.silversky.dev/ for help icon -->
+        <svg class="svg-icon" fill="currentColor" viewBox="0 0 16 16">
+            <path fill-rule="evenodd" d="M4.475 5.458c-.284 0-.514-.237-.47-.517C4.28 3.24 5.576 2 7.825 2c2.25 0 3.767 1.36 3.767 3.215 0 1.344-.665 2.288-1.79 2.973-1.1.659-1.414 1.118-1.414 2.01v.03a.5.5 0 0 1-.5.5h-.77a.5.5 0 0 1-.5-.495l-.003-.2c-.043-1.221.477-2.001 1.645-2.712 1.03-.632 1.397-1.135 1.397-2.028 0-.979-.758-1.698-1.926-1.698-1.009 0-1.71.529-1.938 1.402-.066.254-.278.461-.54.461h-.777ZM7.496 14c.622 0 1.095-.474 1.095-1.09 0-.618-.473-1.092-1.095-1.092-.606 0-1.087.474-1.087 1.091S6.89 14 7.496 14Z"></path>
+            <title>Mandelbrot Help</title>
+        </svg>
+        <span class="helptext selectable">
+            <h3>Basic Help</h3>
+                With a mouse, double-click or click and drag on the image to zoom in.
+                On a touch screen, drag or pinch to zoom; tap to show controls.
+                On the left are controls for the color palette, image size, etc.  Hover over a
+                setting to see what it does.
+            <h3>Special keys</h3>
+                <table>
+                    <tr><td>Left Arrow:</td><td>Scroll left</td></tr>
+                    <tr><td>Right Arrow:</td><td>Scroll right</td></tr>
+                    <tr><td>Up Arrow:</td><td>Scroll up</td></tr>
+                    <tr><td>Down Arrow:</td><td>Scroll down</td></tr>
+                    <tr><td>Page Up:</td><td>Zoom out on image</td></tr>
+                    <tr><td>Page Down:</td><td>Zoom in on image</td></tr>
+                    <tr><td>f:</td><td>Fill window with image, hide controls</td></tr>
+                    <tr><td>F (shift-f):</td><td>Fill screen with image</td></tr>
+                    <tr><td>Esc</td><td>Exit fill window or fill screen mode</td></tr>
+                    <tr><td>Ctrl-z</td><td>Undo last action</td></tr>
+                    <tr><td>Ctrl-y</td><td>Redo last undone action</td></tr>
+                    <tr><td>Ctrl-c</td><td>Copy a "permalink" (for sharing the current image) to the clipboard</tr>
+                </table>
+            <h3>More Help</h3>
+                For a detailed description, instructions, and examples, see <a href='MB-info.html'><b>more help</b></a>.
+            <h3>More Info</h3>
+                The number of "Workers" (in the controls pane) determines how much CPU is used for calculations.  The preset value should work well.
+                To experiment, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>,
+                then vary the number of workers to speed it up or slow it down.
+            </p><p>
+            <h3>Background</h3>
+                Based on a browser-only Mandelbrot Set viewer by <a href=https://math.hws.edu/eck/index.html target="_blank">David Eck</a>,
+                this revised version can run calculations in the browser or on a backend web server.  By default it tries to use the web server;
+                if the web server doesn't support calculations it runs them in the browser.
+                When the web server is hosted on Kubernetes, increasing the number of workers brings in more pods to speed up the computation.
+                Calculations are done in Rust for increased speed over the original JavaScript version.
+            </p><p>
+                See the <a href="https://github.com/wpwoodjr/MandelRust" target="_blank">GitHub repository</a> for more information.
+            </p>
         </span>
     </span>
 </td>

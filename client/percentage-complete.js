@@ -23,12 +23,12 @@ class ProgressCircle extends HTMLElement {
         this.setForegroundColor(color);
         this.setBackgroundColor(backgroundColor);
     }
-  
+
     setPercentage(percentage) {
         const offset = this.circumference*(1 - percentage);
         this.progressValue.style.strokeDashoffset = offset;
     }
-  
+
     updateText(text) {
         this.progressText.textContent = text;
     }
@@ -52,21 +52,21 @@ class ProgressCircle extends HTMLElement {
                     justify-content: center;
                     align-items: center;
                 }
-                
+
                 .progress {
                     transform: rotate(${this.rotation}deg);
                 }
-                
+
                 .progress-background,
                 .progress-value {
                     fill: none;
                     stroke-width: ${this.strokeWidth};
                 }
-                
+
                 .progress-background {
                     stroke: #eee;
                 }
-                
+
                 .progress-value {
                     stroke: #fff;
                     stroke-dasharray: ${this.circumference};
@@ -92,6 +92,10 @@ class ProgressCircle extends HTMLElement {
                     font-family: Arial, sans-serif;
                     font-weight: bold;
                     transform: rotate(${-this.rotation}deg); /* Counter-rotate the text */
+                    user-select: none;
+                    -webkit-user-select: none;
+                    -moz-user-select: none;
+                    -ms-user-select: none;
                 }
             </style>
             <div class="progress-container" style="position: relative;">
@@ -106,7 +110,7 @@ class ProgressCircle extends HTMLElement {
         `;
     }
 }
-  
+
 customElements.define("progress-circle", ProgressCircle);
 
 class ProgressBar extends HTMLElement {
@@ -122,41 +126,33 @@ class ProgressBar extends HTMLElement {
         this.attachShadow({ mode: "open" });
         this.render();
         parentElement.appendChild(this);
-        this.visibleProgressBar = true;
+        this.progressText = this.shadowRoot.querySelector(".progress-text");
+        this.progressBar = this.shadowRoot.querySelector(".progress-bar");
+        this.progress = this.shadowRoot.querySelector(".progress");
+        this.progressContainer = this.shadowRoot.querySelector(".progress-container");
     }
-  
+
     setPercentage(percentage, text) {
-        const progressBar = this.shadowRoot.querySelector(".progress-bar");
-        progressBar.style.width = `${percentage*100}%`;
+        this.progressBar.style.width = `${percentage*100}%`;
         this.showProgressBar();
         this.updateText(text);
     }
-  
+
     updateText(text) {
-        const progressText = this.shadowRoot.querySelector(".progress-text");
-        progressText.textContent = text;
+        this.progressText.textContent = text;
     }
 
     hideProgressBar() {
-        if (this.visibleProgressBar) {
-            this.visibleProgressBar = false;
-            const progressBar = this.shadowRoot.querySelector(".progress");
-            progressBar.style.display = "none";
-        }
+        this.progress.style.display = "none";
     }
 
     showProgressBar() {
-        if (! this.visibleProgressBar) {
-            this.visibleProgressBar = true;
-            const progressBar = this.shadowRoot.querySelector(".progress");
-            progressBar.style.display = "block";
-        }
+        this.progress.style.display = "block";
     }
 
     updateWidth() {
         this.length = 0.9*this.parentElement.offsetWidth;
-        const progressContainer = this.shadowRoot.querySelector(".progress-container");
-        progressContainer.style.width = `${this.length}px`;
+        this.progressContainer.style.width = `${this.length}px`;
     }
 
     render() {
@@ -165,22 +161,23 @@ class ProgressBar extends HTMLElement {
             .progress-container {
                 width: ${this.length}px;
             }
-    
+
             .progress-text {
                 font-family: Arial, sans-serif;
                 font-size: 14px;
                 margin-bottom: 2px;
+                color: ${this.barColor};
                 width: 100%; // Limit the text container width to the size of the bar
                 word-wrap: break-word; // Wrap the text according to the container width
             }
-    
+
             .progress {
                 width: 100%;
                 height: 10px;
                 background-color: ${this.backgroundColor};
                 position: relative;
             }
-    
+
             .progress-bar {
                 position: absolute;
                 top: 0;
@@ -199,5 +196,51 @@ class ProgressBar extends HTMLElement {
         `;
     }
 }
-  
+
 customElements.define("progress-bar", ProgressBar);
+
+class StatusText extends HTMLElement {
+    constructor(id, initialText, textColor) {
+        super();
+        let parentElement = typeof id === "string"
+            ? document.getElementById(id)
+            : id;
+        this.initialText = initialText;
+        this.textColor = textColor;
+        this.attachShadow({ mode: "open" });
+        this.render();
+        parentElement.appendChild(this);
+        this.statusText = this.shadowRoot.querySelector(".status-text");
+    }
+
+    updateText(text) {
+        this.statusText.textContent = text;
+    }
+
+    hide() {
+        this.statusText.style.display = "none";
+    }
+
+    show() {
+        this.statusText.style.display = "block";
+    }
+
+    render() {
+        this.shadowRoot.innerHTML = `
+            <style>
+            .status-text {
+                display: block;
+                font-family: Arial, sans-serif;
+                font-size: 14px;
+                color: ${this.textColor};
+                width: 100%;
+                word-wrap: break-word; // Wrap the text according to the container width
+            }
+            </style>
+                <div class="status-text">${this.initialText}</div>
+            </div>
+        `;
+    }
+}
+
+customElements.define("status-text", StatusText);
