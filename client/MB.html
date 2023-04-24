@@ -931,6 +931,7 @@ function setDefaults() {
     mainPaletteLengthSlider.setDefaultsFromMaxIter();
     fixedPaletteLength = mainPaletteLengthSlider.value;
     mainPaletteOffsetSlider.setDefault();
+    const oldPaletteSelectSliderState = paletteSelectSlider.getPaletteSelectSliderState();
     paletteSelectSlider.reset();
     palette = new Palette();
     createPaletteColors();
@@ -939,7 +940,6 @@ function setDefaults() {
     setCanvasToWindow();
     if (undoList) {
         const oldXML = currentXML;
-        const oldPaletteSelectSliderState = paletteSelectSlider.getPaletteSelectSliderState();
         const oldURL = persistence.setDefaultURL();
         startJob();
         addUndoItem("Restore Defaults", [oldXML, oldPaletteSelectSliderState, oldURL],
@@ -2024,9 +2024,9 @@ function showPaletteEditor() {
     document.getElementById("applyPaletteEdit").disabled = true;
     document.getElementById("revertPaletteEdit").disabled = true;
     function applyAndClose() {
-        let oldPaletteSelectSliderState = paletteSelectSlider.getPaletteSelectSliderState();
+        const oldPaletteSelectSliderState = paletteSelectSlider.getPaletteSelectSliderState();
         paletteSelectSlider.setCustomPalette(paletteInEditor);
-        var newval = [paletteInEditor, paletteLengthInEditor, paletteOffsetFractionInEditor,
+        const newval = [paletteInEditor, paletteLengthInEditor, paletteOffsetFractionInEditor,
             paletteSelectSlider.getPaletteSelectSliderState()];
         addUndoItem("Edit Palette",
                 [copyOfCurrentPalette, fixedPaletteLength, mainPaletteOffsetSlider.value/100,
