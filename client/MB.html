@@ -1549,10 +1549,12 @@ function setImageSize(w, h, undo, doDraw) {
     const oldImageSize = currentImageSize;
     currentImageSize = [w, h];
     if (w === 0 && h === 0) {
+        statusHeader.show();
         canvas.classList.add('fullWindowCanvas');
         w = windowSize.width;
         h = windowSize.height;
     } else {
+        statusHeader.hide();
         canvas.classList.remove("fullWindowCanvas");
     }
     setImageSizeToFixed(w, h, undo ? oldImageSize : false, doDraw);
@@ -3787,7 +3789,7 @@ function initTouch() {
                     <tr><td>Ctrl-c</td><td>Copy a "permalink" (for sharing the current image) to the clipboard</tr>
                 </table>
             <h3>More Help</h3>
-                For a detailed description, instructions, and examples, see <a href='MB-info.html'><b>more help</b></a>.
+                For a detailed description, instructions, and examples, see <a href='MB-info.html'>more help</a>.
             <h3>More Info</h3>
                 The number of "Workers" (in the controls pane) determines how much CPU is used for calculations.  The preset value should work well.
                 To experiment, click on <a href="MB.html?ex=java%2FMandelbrotSettings%2FMandelbrotSettings_25_May_2009_3.xml">this link</a>,
