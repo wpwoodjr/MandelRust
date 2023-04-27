@@ -190,7 +190,7 @@
         font-weight: normal;
         top: 100%;
         left: 100%;
-        transform: translateX(-60%);
+        transform: translateX(-51%);
         border: 1px solid black;
     }
     /* Show the tooltip text when hovering over the container */
@@ -202,10 +202,12 @@
         content: "";
         position: absolute;
         bottom: 100%;
-        left: 60%;
-        border-width: 5px;
+        left: 50%;
+        border-width:6px;
         border-style: solid;
-        border-color: #555 transparent transparent transparent;
+        /* border-color: #555 transparent transparent transparent; */
+        border-color: white transparent transparent transparent;
+        filter: drop-shadow(0px 0px 2px rgba(0, 0, 0, 0.65));
     }
     /* Style the tooltip text */
     .tooltip .exampletext {
@@ -221,7 +223,7 @@
         font-weight: normal;
         top: 100%;
         left: 100%;
-        transform: translateX(-33.5%);
+        transform: translateX(-28.5%);
         border: 1px solid black;
     }
     /* Show the tooltip text when hovering over the container */
@@ -233,10 +235,12 @@
         content: "";
         position: absolute;
         bottom: 100%;
-        left: 34.5%;
-        border-width: 5px;
+        left: 29.5%;
+        border-width: 6px;
         border-style: solid;
-        border-color: #555 transparent transparent transparent;
+        /* border-color: #555 transparent transparent transparent; */
+        border-color: white transparent transparent transparent;
+        filter: drop-shadow(0px 0px 2px rgba(0, 0, 0, 0.65));
     }
 
     #home-icon {
@@ -366,7 +370,7 @@ let statusHeader;
 const progressCircle = {
     init: function(doSecondPass) {
         this.firstPassColor = "rgba(33, 150, 243, 0.6)";
-        this.firstPassColorNoSecondPass = "rgba(38, 174, 255, 0.75)";
+        this.firstPassColorNoSecondPass = "rgba(38, 174, 255, 0.8)";
         this.secondPassColor = "rgba(255, 255, 255, 0.6)";
         this.transparentColor = "rgba(255, 255, 255, 0)";
         this.element = document.getElementById("progressCircle");
@@ -555,7 +559,7 @@ function doDraw() {
 function repaint(dontUpdateStatusToIdle) {
     // console.log("repaint from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], dontUpdateStatusToIdle);
     doDraw();
-    const rpsText = rowsPerSecond.toPrecision(3) + " rows/second";
+    const rpsText = rowsPerSecond.toPrecision(3) + " rows/sec";
     if (running) {
         repaintTimeout = setTimeout(repaint, repaintTimer);
         let rc = rowsCompleted;
@@ -3807,7 +3811,7 @@ function initTouch() {
         </span>
     </span>
 </td>
-<td id="status-header"></td>
+<td id="status-header" width="37%"></td>
 </tr>
 </table>
 
