@@ -1,6 +1,6 @@
 # MandelRust
 
-![flaming](flaming.png)
+![flaming](flaming.jpg)
 
 ## Overview
 This full-featured Mandelbrot web app is fast due to its use of Rust for doing the calculations. These can be done in your browser (with Rust WebAssembly), or you can install the backend web server for even more speed.  The web server can run on bare metal (your PC or a server), in Docker, or on Kubernetes, where it can scale to multiple pods.
@@ -12,7 +12,7 @@ Try the browser-only version at https://wpwoodjr.github.io/MandelRust
 The original version by [David Eck](http://math.hws.edu/eck/index.html) runs entirely in the browser, and all calculations are done in Javascript.  This rewritten version calculates in the browser or optionally using a backend server.  The in-browser calculations are implemented in Rust and deployed in the browser via WebAssembly.  For high precision calculations, this is about 5-7 times faster than the Javascript version.  The backend server is implemented entirely in Rust using Actix-web.  It can be up to 15 times faster than the original Javascript version.
 
 ### Getting started
-![Mandala](mandala.png)
+![Mandala](mandala.jpg)
 
 #### Docker
 You can use a pre-built Docker image, or download this repo and build it using Docker.  To use the pre-built image:
@@ -46,11 +46,11 @@ cd MandelRust
 ```
 Once the application is deployed to Kubernetes, browse to `<url>`.
 
-![diamonds](diamonds.png)
+![diamonds](diamonds.jpg)
 
 ### Thanks
 Thanks to:
 * [David Eck](http://math.hws.edu/eck/index.html) for the [original version](https://math.hws.edu/eck/js/mandelbrot/MB.html)
 * https://mandelbrot.silversky.dev/ for the home, help, and gallery icons
 
-![dancing](dancing.png)
+![dancing](dancing.jpg)
