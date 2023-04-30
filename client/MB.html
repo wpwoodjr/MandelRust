@@ -137,10 +137,6 @@
    div.grouplast {
        padding: 0px 6px;
    }
-    #status {
-        font-weight: normal;
-        color: #AA0000;
-    }
    #xmlimportbg {
        position: fixed;
        z-index: 10;
@@ -366,7 +362,18 @@ var dragbox = null;
 let maxIterSlider, mainPaletteOffsetSlider, mainPaletteLengthSlider, paletteSelectSlider;
 let zoomInSlider, zoomOutSlider;
 let touch;
-let statusHeader;
+
+const statusText = {
+    init: function() {
+        this.statusHeader = new StatusText("status-header", "Idle", "#008cff");
+        this.statusMessage = new StatusText("status-message", "Idle", "#AA0000");
+    },
+    updateText: function(text) {
+        this.statusHeader.updateText(text);
+        this.statusMessage.updateText(text);
+    }
+}
+
 const progressCircle = {
     init: function(doSecondPass) {
         this.firstPassColor = "rgba(33, 150, 243, 0.6)";
@@ -571,13 +578,12 @@ function repaint(dontUpdateStatusToIdle) {
             pass = "Pass 2, ";
         }
         const prec = highPrecision ? digits + " digits precision" : "normal precision";
-        document.getElementById("status").innerHTML =
-                    pass + prec +
-                    "... completed " + rc + " of " + ch + " rows at " + rpsText;
-        statusHeader.updateText(pass + prec + ", " + (rc/ch*100).toFixed(0) + "%");
+        statusText.statusMessage.updateText(pass + prec +
+                    "... completed " + rc + " of " + ch + " rows at " + rpsText);
+        statusText.statusHeader.updateText(pass + prec + ", " + (rc/ch*100).toFixed(0) + "%");
     } else if (dontUpdateStatusToIdle !== true) {
-        document.getElementById("status").innerHTML = "Idle (" + rpsText + ")";
-        statusHeader.updateText("Idle (" + rpsText + " " + canvas.width + "X" + canvas.height + ")");
+        statusText.statusMessage.updateText("Idle (" + rpsText + ")");
+        statusText.statusHeader.updateText("Idle (" + rpsText + " " + canvas.width + "X" + canvas.height + ")");
     }
 }
 
@@ -728,7 +734,7 @@ function startJob(dontClear) {
     running = true;
     document.getElementById("stop").disabled = false;
     var prec = highPrecision ? "high precision, " + digits + " digits" : "normal precision";
-    document.getElementById("status").innerHTML = "First pass, " + prec + "...";
+    statusText.updateText("Pass 1, " + prec + "...");
     if (! zoomTimeout) {
         repaintTimeout = setTimeout(repaint, repaintInitialTimer);
     }
@@ -1143,7 +1149,6 @@ function doZoomOutFromRect(x,y,width,height, undo) {
 
 function zoom(x, y, zoomFactor, recenter, undo) {  // (x,y) is center of zoom, in pizels; recenter moves that point to center of image
     // console.log("zoom:", x, y, zoomFactor, recenter);
-    stopJob();
     var zf = new BigDecimal("" + zoomFactor);
     var X = new BigDecimal("" + Math.round(x));
     var Y = new BigDecimal("" + Math.round(y));
@@ -1153,11 +1158,11 @@ function zoom(x, y, zoomFactor, recenter, undo) {  // (x,y) is center of zoom, i
     var oldHeight = ymax.subtract(ymin);
     var newWidth = oldWidth.multiply(zf);
     var newHeight = oldHeight.multiply(zf);
-    if (newWidth.compareTo(new BigDecimal("100")) > 0) {
-        document.getElementById("status").innerHTML =
-            "Zooming out that far would reduce the whole Mandelbrot set to a dot.  Ignored.";
+    if (zoomFactor > 1 && newWidth.compareTo(new BigDecimal("100")) > 0) {
+        statusText.updateText("Zooming out that far would reduce the whole Mandelbrot set to a dot.  Ignored.");
         return;
     }
+    stopJob();
     var pixelWidth = newWidth.divide(ImageWidth,BigDecimal.ROUND_HALF_EVEN);
     var pixelHeight = newHeight.divide(ImageHeight,BigDecimal.ROUND_HALF_EVEN);
     var centerX = xmin.add(X.multiply(oldWidth).divide(ImageWidth,BigDecimal.ROUND_HALF_EVEN));
@@ -1476,11 +1481,11 @@ function doCustomSize() {
     var width = Math.round(Number(document.getElementById("customwidth").value.trim()));
     var height = Math.round(Number(document.getElementById("customheight").value.trim()));
     if (isNaN(width) || width < 64 || width > 7680) {
-        document.getElementById("status").innerHTML = "Illegal value for image width.  Must be an integer in the range 64 to 7680.";
+        statusText.updateText("Illegal value for image width.  Must be an integer in the range 64 to 7680.");
         return;
     }
     if (isNaN(height) || height < 64 || height > 7680) {
-        document.getElementById("status").innerHTML = "Illegal value for image height.  Must be an integer in the range 64 to 7680.";
+        statusText.updateText("Illegal value for image height.  Must be an integer in the range 64 to 7680.");
         return;
     }
     setImageSize(width,height,true);
@@ -1553,12 +1558,12 @@ function setImageSize(w, h, undo, doDraw) {
     const oldImageSize = currentImageSize;
     currentImageSize = [w, h];
     if (w === 0 && h === 0) {
-        statusHeader.show();
+        statusText.statusHeader.show();
         canvas.classList.add('fullWindowCanvas');
         w = windowSize.width;
         h = windowSize.height;
     } else {
-        statusHeader.hide();
+        statusText.statusHeader.hide();
         canvas.classList.remove("fullWindowCanvas");
     }
     setImageSizeToFixed(w, h, undo ? oldImageSize : false, doDraw);
@@ -2850,22 +2855,22 @@ function installExampleFromXML(xmlString, respectSize, dontShowError) {
       return null;
     }
     catch (e) {
-        var error =  "Illegal data in XML example string: " + e;
-        if ( ! dontShowError )
-           document.getElementById("status").innerHTML = error;
+        const error =  "Illegal data in XML example string: " + e;
+        if (! dontShowError)
+            statusText.updateText(error);
         return error;
     }
 }
 
 function installExampleWithAjax(url) {
-    document.getElementById("status").innerHTML = "Fetching " + url;
+    statusText.updateText("Fetching " + url);
     var ajaxTimeout;
     var ajax = new XMLHttpRequest();
     ajax.open("GET",url);
     ajax.overrideMimeType("text/plain");
     ajax.addEventListener("error",function() {
         clearTimeout(ajaxTimeout);
-        document.getElementById("status").innerHTML = "Error: Example could not be loaded from " + url;
+        statusText.updateText("Error: Example could not be loaded from " + url);
     });
     ajax.addEventListener("load",function() {
         clearTimeout(ajaxTimeout);
@@ -2873,13 +2878,13 @@ function installExampleWithAjax(url) {
     });
     ajaxTimeout = setTimeout(function() {
         ajax.abort();
-        document.getElementById("status").innerHTML = "Error: Request timed out while trying to load from " + url;
+        statusText.updateText("Error: Request timed out while trying to load from " + url);
     }, 10000);
     try {
        ajax.send();
     } catch(e) {
         clearTimeout(ajaxTimeout);
-        document.getElementById("status").innerHTML = "Error while trying to send request for example: " + url;
+        statusText.updateText("Error while trying to send request for example: " + url);
     }
 }
 
@@ -3118,7 +3123,7 @@ function init() {
     changeWorkerCount(); // has to be done before setDefaults
     createSliders();
     initTouch();
-    statusHeader = new StatusText("status-header", "Idle", "#008cff");
+    statusText.init();
     progressCircle.init(doSecondPass);
     windowSize.init();
     setDefaults();
@@ -3361,7 +3366,7 @@ function toFullScreenCanvas() {
         fullScreenCanvas = true;
         canvas.requestFullscreen();
     } else {
-        document.getElementById("status").innerHTML = "Fullscreen mode not available";
+        statusText.updateText("Fullscreen mode not available");
     }
 }
 function fromFullScreenCanvas() {
@@ -3896,7 +3901,7 @@ function initTouch() {
 </div>
 <div class="col2">
   <canvas id="canvas" class="fixedCanvas fullWindowCanvas displayNone"></canvas>
-  <div id="status">Idle</div>
+  <div id="status-message"></div>
 </div>
 </div>
 <div id="progressCircle" class="progressCircle displayNone"></div>

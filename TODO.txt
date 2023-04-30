@@ -1,18 +1,10 @@
 Is there a way to use emulated double-click with Chrome on ios, without haveing to call touch.handleTouchCancel()?
 Maybe need to kill workers to increase responsiveness to touch on mobile with "default" settings
-Safari doesn't handle negative numbers properly in drawImage
-Polyfill for drawImage generalized to handle non-0 target left and top?
-Safari 15 on macOS doesn't show zoom animation when shft-double-clicking
-Why is status ''
 Undo zoom is wrong if change window size between zoom and undo zoom
 re-eval 2nd pass not drawing until complete.  less clear than orig?
-Save pref for image size
 When tap to hide controls, if text editing, cursor remains in the control
 Check touch warn events
-Use statusHeader progress bar?
-Have 3 statuses now
 Landscape to portrait and back changes size in weird way
-Should show error msgs in status header; maybe also unfullwindow so can see error
 
 Mul not needing to be a trait bound?
 Fix up dependencies in Cargo.toml, and check .gitignore
@@ -20,6 +12,14 @@ UCArray stuff
 Keep JS worker?
 ///stuff
 
+>Save pref for image size
+>Safari doesn't handle negative numbers properly in drawImage
+XPolyfill for drawImage generalized to handle non-0 target left and top?
+>Safari 15 on macOS doesn't show zoom animation when shft-double-clicking- won't fix
+>Why is status '' - a mystery
+>Use statusHeader progress bar?
+>Have 3 statuses now
+>Should show error msgs in status header; maybe also unfullwindow so can see error
 XPinch zoom check id's what happens when lift a finger, etc
 >should preventdefault on all touch events?
 >Add draw status in upper right
