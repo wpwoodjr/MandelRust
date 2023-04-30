@@ -52,3 +52,5 @@ Once the application is deployed to Kubernetes, browse to `<url>`.
 Thanks to:
 * [David Eck](http://math.hws.edu/eck/index.html) for the [original version](https://math.hws.edu/eck/js/mandelbrot/MB.html)
 * https://mandelbrot.silversky.dev/ for the home, help, and gallery icons
+
+![dancing](dancing.png)
