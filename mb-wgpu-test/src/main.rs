@@ -21,6 +21,14 @@ async fn run(xmin: f32, ymin: f32, xmax: f32, ymax: f32, max_iterations: u32) {
         backends: wgpu::Backends::all(),
         ..Default::default()
     });
+
+    let adapters = instance.enumerate_adapters(wgpu::Backends::all());
+    // Iterate through the adapters and print their info
+    for (i, adapter) in adapters.enumerate() {
+        let adapter_info = adapter.get_info();
+        println!("Adapter {}: {:?}", i, adapter_info);
+    }
+
     let adapter = instance
         .request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
@@ -31,11 +39,7 @@ async fn run(xmin: f32, ymin: f32, xmax: f32, ymax: f32, max_iterations: u32) {
         .unwrap();
 
     // Print information about the graphics device
-    let adapter_info = adapter.get_info();
-    println!("Adapter Name: {}", adapter_info.name);
-    println!("Adapter Vendor: {}", adapter_info.vendor);
-    println!("Adapter Device: {}", adapter_info.device);
-    println!("Adapter Backend: {:?}", adapter_info.backend);
+    println!("Selected adapter: {:?}", adapter.get_info().name);
 
     let (device, queue) = adapter
         .request_device(
