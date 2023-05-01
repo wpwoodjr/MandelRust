@@ -22,8 +22,8 @@ async fn run(xmin: f32, ymin: f32, xmax: f32, ymax: f32, max_iterations: u32) {
         ..Default::default()
     });
 
-    let adapters = instance.enumerate_adapters(wgpu::Backends::all());
     // Iterate through the adapters and print their info
+    let adapters = instance.enumerate_adapters(wgpu::Backends::all());
     for (i, adapter) in adapters.enumerate() {
         let adapter_info = adapter.get_info();
         println!("Adapter {}: {:?}", i, adapter_info);
