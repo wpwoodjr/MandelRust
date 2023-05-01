@@ -172,7 +172,6 @@ async fn run(xmin: f32, ymin: f32, xmax: f32, ymax: f32, max_iterations: u32) {
 }
 
 use clap::{App, Arg};
-// ...
 
 fn main() {
     env_logger::init();
