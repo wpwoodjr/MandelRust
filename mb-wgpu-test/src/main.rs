@@ -30,6 +30,13 @@ async fn run(xmin: f32, ymin: f32, xmax: f32, ymax: f32, max_iterations: u32) {
         .await
         .unwrap();
 
+    // Print information about the graphics device
+    let adapter_info = adapter.get_info();
+    println!("Adapter Name: {}", adapter_info.name);
+    println!("Adapter Vendor: {}", adapter_info.vendor);
+    println!("Adapter Device: {}", adapter_info.device);
+    println!("Adapter Backend: {:?}", adapter_info.backend);
+
     let (device, queue) = adapter
         .request_device(
             &wgpu::DeviceDescriptor {
@@ -151,7 +158,7 @@ async fn run(xmin: f32, ymin: f32, xmax: f32, ymax: f32, max_iterations: u32) {
     // Sets the buffer up for mapping, sending over the result of the mapping back to us when it is finished.
     let (sender, receiver) = channel::shared::oneshot_channel();
     buffer_slice.map_async(wgpu::MapMode::Read, move |v| sender.send(v).unwrap());
-                
+
     device.poll(wgpu::Maintain::Wait);
 
     // Awaits until `buffer_future` can be read from
