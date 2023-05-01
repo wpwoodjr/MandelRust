@@ -1,1 +1,1 @@
-cargo run -- --xmin=-0.190685417 --ymin=1.0055660417 --xmax=-0.120185417 --ymax=1.0584410417 --max_iterations=100000
+cargo run $1 -- --xmin=-0.190685417 --ymin=1.0055660417 --xmax=-0.120185417 --ymax=1.0584410417 --max_iterations=100000
