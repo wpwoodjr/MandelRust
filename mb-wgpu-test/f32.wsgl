@@ -1,0 +1,172 @@
+// Change this value to adjust the precision
+const MAX_NUM_SIZE: u32 = 128;
+
+// use an override-expression?
+alias HPNumber = array<u32, MAX_NUM_SIZE>;
+
+struct HPData {
+    work1: HPNumber,
+    work2: HPNumber,
+    work3: HPNumber,
+    work4: HPNumber,
+    zx: HPNumber,
+    zy: HPNumber,
+};
+
+struct Output {
+    data: array<i32>,
+};
+
+@binding(0) @group(0)
+var<storage, read_write> output: Output;
+
+struct MandelbrotCoordsHP {
+    xmin: HPNumber,
+    dx: HPNumber,
+    ymax: HPNumber,
+    dy: HPNumber,
+    num_size: u32,
+    max_iterations: i32,
+    columns: u32,
+};
+
+@binding(1) @group(0)
+var<storage, read> mandelbrot_coords_hp: MandelbrotCoordsHP;
+
+/// column outside of bounds; don't use MAX_NUM_SIZE; check arith routines
+@compute @workgroup_size(64, 1, 1)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let row = global_id.x;
+    let column = global_id.y;
+
+    var hp_data = HPData();
+
+    // compute x coord
+    hp_data.work1[0] = 0;
+    hp_data.zx = multiply_pos(mandelbrot_coords_hp.dx, hp_data.work1);
+    hp_data.zx = add(hp_data.zx, mandelbrot_coords_hp.xmin);
+
+    // compute y coord
+    hp_data.work1[0] = row;
+    hp_data.zy = multiply_pos(mandelbrot_coords_hp.dy, hp_data.work1);
+    hp_data.zy = add(hp_data.zy, mandelbrot_coords_hp.ymax);
+
+    let iterations: i32 = count_iterations_hp(hp_data, mandelbrot_coords_hp.max_iterations);
+    let index = row + column*mandelbrot_coords_hp.columns;
+    output.data[index] = iterations;
+}
+
+fn count_iterations_hp(hp_data: HPData, max_iterations: i32) -> i32 {
+    var zx: HPNumber = hp_data.zx;
+    var zy: HPNumber = hp_data.zy;
+    var work1: HPNumber = hp_data.work1;
+    var work2: HPNumber = hp_data.work2;
+    var work3: HPNumber = hp_data.work3;
+    var work4: HPNumber = hp_data.work4;
+
+    for (var i = 0u; i < MAX_NUM_SIZE; i++) {
+        work1 = sq(zx);
+        work2 = sq(zy);
+        work3 = multiply(zx, zy);
+        work4 = add(work3, work3);
+
+        zy = work4;
+        zx = add(work1, negate(work2));
+
+        // Check if the escape condition is met
+        work3 = add(work1, work2);
+        if (work3[0] & 0x8000u) != 0 {
+            return i32(i);
+        }
+    }
+
+    return -1;
+}
+
+
+// HP arithmetic functions
+
+fn multiply_pos(x: HPNumber, y: HPNumber) -> HPNumber {
+    var result: HPNumber = array<u32, MAX_NUM_SIZE>();
+    for (var j = 0u; j < MAX_NUM_SIZE; j++) {
+        var carry: u32 = 0;
+        for (var i = MAX_NUM_SIZE - j; i > 0; i--) {
+            var k: u32 = MAX_NUM_SIZE - j - i;
+            result[k] = result[k] + x[i] * y[MAX_NUM_SIZE - j - 1u] + carry;
+            carry = result[k] >> 16;
+            result[k] = result[k] & 0xFFFFu;
+        }
+        var k: u32 = MAX_NUM_SIZE - j - 1u;
+        while carry != 0 {
+            result[k] = result[k] + carry;
+            carry = result[k] >> 16;
+            result[k] = result[k] & 0xFFFFu;
+            if k == 0 {
+                break;
+            }
+            k = k - 1u;
+        }
+    }
+    return result;
+}
+
+fn multiply(x: HPNumber, y: HPNumber) -> HPNumber {
+    let negx = (x[0] & 0x8000u) != 0;
+    let negy = (y[0] & 0x8000u) != 0;
+    var work1: HPNumber;
+    var work2: HPNumber;
+    if (negx != negy) {
+        if (negx) {
+            work1 = negate(x);
+            work2 = multiply_pos(work1, y);
+        } else {
+            work1 = negate(y);
+            work2 = multiply_pos(x, work1);
+        }
+        return negate(work2);
+    } else if (negx && negy) {
+        work1 = negate(x);
+        work2 = negate(y);
+        return multiply_pos(work1, work2);
+    } else {
+        return multiply_pos(x, y);
+    }
+}
+
+fn sq(x: HPNumber) -> HPNumber {
+    let neg = (x[0] & 0x8000u) != 0;
+    var work: HPNumber;
+    if (neg) {
+        work = negate(x);
+        return multiply_pos(work, work);
+    } else {
+        return multiply_pos(x, x);
+    }
+}
+
+fn add(x: HPNumber, y: HPNumber) -> HPNumber {
+    var carry: u32 = 0;
+    var result: HPNumber = array<u32, MAX_NUM_SIZE>(); // Adjust this initializer based on MAX_NUM_SIZE
+    for (var i = MAX_NUM_SIZE - 1; i > 0; i--) {
+        result[i] = x[i] + y[i] + carry;
+        carry = result[i] >> 16;
+        result[i] = result[i] & 0xFFFFu;
+    }
+    return result;
+}
+
+fn negate(x: HPNumber) -> HPNumber {
+    var result: HPNumber = array<u32, MAX_NUM_SIZE>(); // Adjust this initializer based on MAX_NUM_SIZE
+    for (var i = 0u; i < MAX_NUM_SIZE; i++) {
+        result[i] = 0xFFFFu - x[i];
+    }
+    var i: u32 = MAX_NUM_SIZE - 1u;
+    result[i] = result[i] + 1u;
+    while i > 0 && (result[i] & 0x10000u) != 0 {
+        result[i] = result[i] & 0xFFFFu;
+        result[i - 1u] = result[i - 1u] + 1u;
+        i = i - 1u;
+    }
+    result[0] = result[0] & 0xFFFFu;
+    return result;
+}
