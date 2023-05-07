@@ -156,17 +156,16 @@ where T: Zero + BitAnd + Shr<usize, Output = T> + Shl<usize, Output = T> + Copy 
             return count;
         }
 
-        // let new_zx = zx*zx - zy*zy + x;
+        add(&hp_data.zx, &hp_data.zx, &mut hp_data.work4);
+
+        // zx = zx*zx - zy*zy + x;
         negate(&hp_data.work2, &mut hp_data.work3);
         add(&hp_data.work1, &hp_data.work3, &mut hp_data.work2);
-        add(&hp_data.work2, x, &mut hp_data.work1);
+        add(&hp_data.work2, x, &mut hp_data.zx);
 
         // zy = 2.0*zx*zy + y;
-        add(&hp_data.zx, &hp_data.zx, &mut hp_data.work2);
-        // zx = new_zx;
-        hp_data.zx.copy_from_slice(&hp_data.work1);
-        multiply(&hp_data.work2, &hp_data.zy, &mut hp_data.work1, &mut hp_data.work3, &mut hp_data.work4);
-        add(&hp_data.work4, y, &mut hp_data.zy);
+        multiply(&hp_data.work4, &hp_data.zy, &mut hp_data.work1, &mut hp_data.work3, &mut hp_data.work2);
+        add(&hp_data.work2, y, &mut hp_data.zy);
 
         count += 1;
     }
