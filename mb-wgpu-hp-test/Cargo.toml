@@ -1,0 +1,17 @@
+[package]
+name = "mb-wgpu"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.64"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+wgpu = "0.15"
+image = "0.24"
+futures = "0.3"
+env_logger = "0.9"
+futures-intrusive = "^0.5"
+clap = "3.0.0"
+bytemuck = "*"
+bytemuck_derive = "*"
