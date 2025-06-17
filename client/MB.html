@@ -349,7 +349,7 @@ var /* BigDecimal */ dx, dy;
 var /* Uint32Array */ xminArray, yValArray, dxArray;
 
 var jobs;
-var workerCount = window.navigator && window.navigator.hardwareConcurrency ? window.navigator.hardwareConcurrency : 4;
+var workerCount = 1;
 let jobStartTime;
 let rowsCompleted, rowsPerSecond, jobsCompleted, jobsPerSecond;
 var highPrecision;
@@ -3097,6 +3097,7 @@ function init() {
 
     // must run before worker count init
     initLocalOrRemote();
+    workerCount = initThreadCountSelect();
     let wcl = getLocalStorageItem("mandelbrotWorkerCount-local", workerCount);
     setLocalStorageItem("mandelbrotWorkerCount-local", wcl);
     let wcr = getLocalStorageItem("mandelbrotWorkerCount-remote", workerCount);
@@ -3131,6 +3132,44 @@ function init() {
     undoList = [];
     undoCount = 0;
     checkRemoteCanComputeMB();
+}
+
+// Ensure we can select the actual number of processors that this machine has
+// Some CPUs like the Pixel 8 Pro have a weird number of processors (eg 9)
+function initThreadCountSelect() {
+    var processorCount = window.navigator && window.navigator.hardwareConcurrency ? window.navigator.hardwareConcurrency : 4;
+    var threadSelect = document.getElementById("threadCountSelect");
+    var options = Array.from(threadSelect.options);
+    var found = false;
+
+    for (var i = 0; i < options.length; i++) {
+        if (options[i].value == processorCount) {
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        var option = document.createElement("option");
+        option.value = processorCount;
+        option.text = processorCount;
+        options.push(option); // Add new option to the array
+
+        // Sort the options array numerically by value
+        options.sort(function(a, b) {
+            return parseInt(a.value) - parseInt(b.value);
+        });
+
+        // Clear existing options and repopulate with sorted options
+        while (threadSelect.options.length > 0) {
+            threadSelect.remove(0);
+        }
+        options.forEach(function(opt) {
+            threadSelect.add(opt);
+        });
+    }
+
+    return processorCount;
 }
 
 function getLocalStorageItem(item, defaultVal) {
