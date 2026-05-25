@@ -27,17 +27,41 @@ pub fn count_iterations(x: f64, y: f64, max_iterations: i32) -> i32 {
 
 
 // *** high precision *** //
-use std::ops::{ BitAnd, BitXor, BitAndAssign, BitOrAssign, Shl, Shr, AddAssign, Sub, Mul };
+use std::ops::{ BitAnd, BitXor, BitAndAssign, BitOrAssign, Shl, Shr, AddAssign, Sub };
 use num::traits::{ Zero, One, AsPrimitive };
 use core::cmp::PartialEq;
 use core::mem::size_of;
+
+pub trait HpInt:
+    Zero + One
+    + AddAssign + BitAndAssign
+    + BitAnd<Output: PartialEq<Self>>
+    + Sub<Output = Self>
+    + Shr<usize, Output = Self> + Shl<usize, Output = Self>
+    + PartialEq + Copy + 'static
+    + std::fmt::LowerHex
+{
+    fn from_u64(x: u64) -> Self;
+}
+
+impl<T> HpInt for T
+where
+    T: Zero + One + AddAssign + BitAndAssign
+        + BitAnd<Output: PartialEq<T>>
+        + Sub<Output = T>
+        + Shr<usize, Output = T> + Shl<usize, Output = T>
+        + PartialEq + Copy + 'static + std::fmt::LowerHex,
+    u64: AsPrimitive<T>,
+{
+    fn from_u64(x: u64) -> Self { x.as_() }
+}
 
 macro_rules! t_bit_info {
     () => {
         {
             let t_size_bits = size_of::<T>()*8;
             let t_low_bits = u64::MAX >> (64 - t_size_bits/2);
-            (t_size_bits, t_low_bits.as_())
+            (t_size_bits, T::from_u64(t_low_bits))
         }
     };
 }
@@ -70,7 +94,8 @@ pub fn u32_to_t<T>(a: &[u32]) -> Vec<T>
 where T: BitOrAssign + BitXor<Output = T> + Shl<usize, Output = T> + From<u32> + Copy + 'static,
     u64: AsPrimitive<T>
 {
-    let (t_size_bits, t_low_bits) = t_bit_info!();
+    let t_size_bits = size_of::<T>()*8;
+    let t_low_bits: T = (u64::MAX >> (64 - t_size_bits/2)).as_();
     let mut r = vec![];
 
     r.push(a[0].into());
@@ -128,13 +153,7 @@ function arraycopy( sourceArray, sourceStart, destArray, destStart, count ) {
    }
 }
 */
-pub fn count_iterations_hp<T>(hp_data: &mut HPData<T>, x: &[T], y: &[T], max_iterations: i32) -> i32
-where T: Zero + BitAnd + Shr<usize, Output = T> + Shl<usize, Output = T> + Copy + 'static,
-    <T as BitAnd>::Output: PartialEq<T>,
-    u64: AsPrimitive<T>,
-    T: std::fmt::LowerHex,
-    // add, sq, multiply, negate requirements
-    T: One + AddAssign + BitAndAssign + Sub<Output = T> + PartialEq,
+pub fn count_iterations_hp<T: HpInt>(hp_data: &mut HPData<T>, x: &[T], y: &[T], max_iterations: i32) -> i32
 {
     let mut count = 0;
     hp_data.zx.copy_from_slice(x);
@@ -184,10 +203,7 @@ function negate( /* int[] */ x, /* int */ chunks) {
     x[0] &= 0xFFFF;
 }
 */
-pub fn negate<T>(x: &[T], out: &mut[T])
-where T: Zero + One + AddAssign + BitAnd + BitAndAssign + Sub<Output = T> + Copy + 'static,
-    <T as BitAnd>::Output: PartialEq<T>,
-    u64: AsPrimitive<T>
+pub fn negate<T: HpInt>(x: &[T], out: &mut[T])
 {
     let (_, t_low_bits) = t_bit_info!();
     let chunks = out.len();
@@ -224,9 +240,7 @@ function add( /* int[] */ x, /* int[] */ dx, /* int */ count) {
     }
 }
 */
-pub fn incr<T>(x: &mut [T], dx: &[T])
-where T: Zero + AddAssign + Shr<usize, Output = T> + BitAndAssign + Copy + 'static,
-    u64: AsPrimitive<T>
+pub fn incr<T: HpInt>(x: &mut [T], dx: &[T])
 {
     let (t_size_bits, t_low_bits) = t_bit_info!();
     let mut carry = T::zero();
@@ -242,9 +256,7 @@ where T: Zero + AddAssign + Shr<usize, Output = T> + BitAndAssign + Copy + 'stat
     }
 }
 
-pub fn add<T>(x: &[T], y: &[T], out: &mut[T])
-where T: Zero + AddAssign + Shr<usize, Output = T> + BitAndAssign + Copy + 'static,
-    u64: AsPrimitive<T>
+pub fn add<T: HpInt>(x: &[T], y: &[T], out: &mut[T])
 {
     let (t_size_bits, t_low_bits) = t_bit_info!();
     let mut carry = T::zero();
@@ -306,12 +318,7 @@ function multiply( /* int[] */ x, /* int[] */ y, /* int */ count){  // Can't all
         negate(x,count);
 }
 */
-pub fn multiply<T>(x: &[T], y: &[T], work1: &mut [T], work2: &mut [T], out: &mut [T])
-where T: Zero + One + BitAnd + Shr<usize, Output = T> + Copy + 'static,
-    <T as BitAnd>::Output: PartialEq<T>,
-    u64: AsPrimitive<T>,
-    // negate and multiply_pos requirements
-    T: AddAssign + BitAndAssign + Sub<Output = T> + PartialEq,
+pub fn multiply<T: HpInt>(x: &[T], y: &[T], work1: &mut [T], work2: &mut [T], out: &mut [T])
 {
     let (_, t_low_bits) = t_bit_info!();
     let t_neg_test = (t_low_bits + T::one()) >> 1;
@@ -338,9 +345,7 @@ where T: Zero + One + BitAnd + Shr<usize, Output = T> + Copy + 'static,
     }
 }
 
-fn multiply_pos<T>(x: &[T], y: &[T], out: &mut [T])
-where T: Zero + AddAssign + Mul<Output = T> + Shr<usize, Output = T> + BitAndAssign + PartialEq + Copy + 'static,
-    u64: AsPrimitive<T>
+fn multiply_pos<T: HpInt>(x: &[T], y: &[T], out: &mut [T])
 {
     let (t_size_bits, t_low_bits) = t_bit_info!();
     let count = out.len();
@@ -396,12 +401,7 @@ where T: Zero + AddAssign + Mul<Output = T> + Shr<usize, Output = T> + BitAndAss
     }
 }
 
-pub fn sq<T>(x: &[T], work: &mut [T], out: &mut [T])
-where T: Zero + One + BitAnd + Shr<usize, Output = T> + Copy + 'static,
-    <T as BitAnd>::Output: PartialEq<T>,
-    u64: AsPrimitive<T>,
-    // negate and multiply_pos requirements
-    T: AddAssign + BitAndAssign + Sub<Output = T> + PartialEq,
+pub fn sq<T: HpInt>(x: &[T], work: &mut [T], out: &mut [T])
 {
     let (_, t_low_bits) = t_bit_info!();
     let t_neg_test = (t_low_bits + T::one()) >> 1;

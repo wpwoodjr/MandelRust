@@ -228,20 +228,10 @@ async fn compute_mandelbrot_hp(mandelbrot_coords_hp: web::Json<MandelbrotCoordsH
     HttpResponse::Ok().json(iteration_counts)
 }
 
-use std::ops::{ BitAnd, BitAndAssign, Shl, Shr, AddAssign, Sub, Mul };
-use num::traits::{ Zero, One, AsPrimitive };
-use core::cmp::PartialEq;
 use core::mem::size_of;
 use rayon::prelude::*;
 
-pub fn compute_mandelbrot_hp_t<T>(xmin: &[T], dx: &[T], yval: &[T], dy: &[T], rows: usize, columns: usize, max_iter: i32, u32_chunks: usize, num_threads: usize) -> Vec<Vec<i32>>
-where T: Sync + Zero + Copy,
-    // add, sq, multiply, negate, incr, count_iterations requirements
-    T: One + AddAssign + BitAndAssign + Sub<Output = T> + PartialEq +
-        BitAnd + Shr<usize, Output = T> + Shl<usize, Output = T> + Copy + 'static,
-    <T as BitAnd>::Output: PartialEq<T>,
-    u64: AsPrimitive<T>,
-    T: std::fmt::LowerHex,
+pub fn compute_mandelbrot_hp_t<T: HpInt + Sync>(xmin: &[T], dx: &[T], yval: &[T], dy: &[T], rows: usize, columns: usize, max_iter: i32, u32_chunks: usize, num_threads: usize) -> Vec<Vec<i32>>
 {
     // chunks: 1 for the integral part, plus however many T elements are needed for the fractional part
     let chunks = 1 + {
