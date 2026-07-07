@@ -12,7 +12,6 @@ use std::path::PathBuf;
 use std::process::exit;
 
 use std::env;
-static mut IMAGE_QUALITY: usize = 1;
 static mut NUM_THREADS: usize = 2;
 // 0 = full-width u64 limb engine (default); 32/64/128 = legacy half-limb engines
 static mut U_TYPE: usize = 0;
@@ -33,8 +32,6 @@ Options:
   -h, --help     Show this help message and exit
   -r, --rayon    Number of Rayon threads for each Javascript "worker"; only affects high precision images;
                  defaults to 2
-  -q, --quality  Set image quality from 2 (best) to 0 (worst); only affects high precision images;
-                 lower quality may be faster in certain situations; defaults to 1
   --u32          Use legacy 32 bit engine for high precision calculations (slowest)
   --u64          Use legacy 64 bit engine for high precision calculations
   --u128         Use legacy 128 bit engine for high precision calculations
@@ -46,20 +43,6 @@ Options:
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "-q" | "--quality" => {
-                if i + 1 < args.len() {
-                    i += 1;
-                    let quality = args[i].parse::<usize>().unwrap();
-                    if quality > 2 {
-                        println!("quality must be a number between 0 and 2!");
-                        exit(1);
-                    }
-                    unsafe { IMAGE_QUALITY = 2 - quality };
-                } else {
-                    println!("missing value for --quality!");
-                    exit(1);
-                }
-            }
             "-r" | "--rayon" => {
                 if i + 1 < args.len() {
                     i += 1;
@@ -96,9 +79,8 @@ Options:
         i += 1;
     }
 
-    println!("Mandelbrot server running on URL {url} with {} Rayon thread(s), image quality {}, and the {} engine for high precision calculations.",
+    println!("Mandelbrot server running on URL {url} with {} Rayon thread(s), and the {} engine for high precision calculations.",
         unsafe { NUM_THREADS },
-        unsafe { 2 - IMAGE_QUALITY },
         if unsafe { PERTURB } {
             "perturbation (full-width u64 reference)".to_string()
         } else {
@@ -215,8 +197,8 @@ exports.computeMandelbrotHP = function(mandelbrotCoords) {
 */
 async fn compute_mandelbrot_hp(mandelbrot_coords_hp: web::Json<MandelbrotCoordsHP>) -> HttpResponse {
 
-    // ignoring the last u32 chunk seems to be a small speed optimization which reduces precision but doesn't affect image quality
-    let u32_chunks = mandelbrot_coords_hp.xmin.len() - unsafe { IMAGE_QUALITY };
+    // use the full coordinate precision the client sent
+    let u32_chunks = mandelbrot_coords_hp.xmin.len();
 
     if unsafe { PERTURB } {
         let iteration_counts = compute_mandelbrot_perturb64(&mandelbrot_coords_hp, u32_chunks, unsafe { NUM_THREADS });
@@ -344,7 +326,6 @@ where T: Sync + Zero + Copy,
         let t_to_u32_size_ratio = size_of::<T>()/size_of::<u32>();
         (u32_chunks - 1 + t_to_u32_size_ratio - 1)/t_to_u32_size_ratio
     };
-    // println!("{} {} {}", u32_chunks - 1 + unsafe { IMAGE_QUALITY }, u32_chunks - 1, chunks - 1 );
 
     let mut dy_neg = vec![T::zero(); xmin.len()];
     negate(&dy, &mut dy_neg);

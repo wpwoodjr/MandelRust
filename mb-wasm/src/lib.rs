@@ -63,9 +63,8 @@ pub extern "C" fn compute_mandelbrot_hp(xmin: *const u32, len: u32, dx: *const u
     let columns = columns as usize;
     let iteration_counts = unsafe { std::slice::from_raw_parts_mut(iteration_counts, columns) };
 
-    // ignore lowest 16 bits for efficiency during Mandelbrot calculation, has no impact on image quality
-    // use all bits for incrementing x_val though
-    let u32_chunks = len - 1;
+    // use the full coordinate precision the client sent
+    let u32_chunks = len;
     // chunks: 1 for the integral part, plus however many u32 limbs are needed for the fractional part.
     // the u32 limb engine is used because wasm32 has no 64x64 -> 128 bit multiply;
     // 32x32 -> 64 is a single native i64.mul
@@ -101,8 +100,8 @@ pub extern "C" fn compute_mandelbrot_hp_perturb(
     let rows = rows as usize;
     let iteration_counts = unsafe { std::slice::from_raw_parts_mut(iteration_counts, rows*columns) };
 
-    // ignore lowest 16 bits for efficiency, like compute_mandelbrot_hp
-    let u32_chunks = len - 1;
+    // use the full coordinate precision the client sent
+    let u32_chunks = len;
     let chunks = 1 + (u32_chunks - 1 + 1)/2;
 
     let xmin = u32_to_limbs32(xmin);
