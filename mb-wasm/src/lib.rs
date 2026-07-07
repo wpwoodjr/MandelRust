@@ -71,13 +71,8 @@ pub extern "C" fn compute_mandelbrot_hp(xmin: *const u32, len: u32, dx: *const u
     // 32x32 -> 64 is a single native i64.mul
     let chunks = 1 + (u32_chunks - 1 + 1)/2;
 
-    let mut x_val = u32_to_limbs32(xmin);
+    let x_val = u32_to_limbs32(xmin);
     let dx = u32_to_limbs32(dx);
     let y = u32_to_limbs32(y);
-    let mut hp_data = HPData32::new(chunks);
-
-    for i in 0..columns {
-        iteration_counts[i] = count_iterations_hp32(&mut hp_data, &x_val[0..chunks], &y[0..chunks], max_iterations);
-        incr32(&mut x_val, &dx);
-    }
+    mandelbrot_row_hp32(&x_val, &dx, &y, chunks, columns, max_iterations, iteration_counts);
 }

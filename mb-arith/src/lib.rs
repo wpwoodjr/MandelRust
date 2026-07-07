@@ -439,6 +439,7 @@ where T: Zero + One + BitAnd + Shr<usize, Output = T> + Copy + 'static,
 // (enabled by mb-wasm); without it the scalar path below is used. The feature
 // is scoped to these functions via #[target_feature] because enabling simd128
 // crate-wide makes LLVM autovectorize the scalar loops ~18% slower.
+#[cfg(target_arch = "wasm32")]
 pub(crate) mod simd32 {
     // below MIN_LIMBS the columns are too short for SIMD to beat the scalar path
     // (measured crossover in node/v8: scalar wins through 10 limbs)
@@ -561,7 +562,8 @@ macro_rules! fw_engine {
     ($limb:ty, $wide:ty,
      $hpdata:ident, $u32_to_limbs:ident, $negate:ident, $incr:ident, $add:ident, $sub:ident,
      $mul_wide:ident, $multiply_pos:ident, $square_pos:ident, $multiply:ident, $sq:ident,
-     $count_iterations:ident) => {
+     $count_iterations:ident,
+     $hpdata_n:ident, $count_iterations_n:ident, $row_n:ident, $row:ident) => {
 
 pub struct $hpdata {
     work1: Vec<$limb>,
@@ -601,6 +603,7 @@ pub fn $u32_to_limbs(a: &[u32]) -> Vec<$limb> {
     r
 }
 
+#[inline]
 pub fn $negate(x: &[$limb], out: &mut [$limb]) {
     let mut carry = 1 as $limb;
     for i in (0..out.len()).rev() {
@@ -610,6 +613,7 @@ pub fn $negate(x: &[$limb], out: &mut [$limb]) {
     }
 }
 
+#[inline]
 pub fn $incr(x: &mut [$limb], dx: &[$limb]) {
     let mut carry = 0 as $limb;
     for i in (0..x.len()).rev() {
@@ -620,6 +624,7 @@ pub fn $incr(x: &mut [$limb], dx: &[$limb]) {
     }
 }
 
+#[inline]
 pub fn $add(x: &[$limb], y: &[$limb], out: &mut [$limb]) {
     let mut carry = 0 as $limb;
     for i in (0..out.len()).rev() {
@@ -630,6 +635,7 @@ pub fn $add(x: &[$limb], y: &[$limb], out: &mut [$limb]) {
     }
 }
 
+#[inline]
 pub fn $sub(x: &[$limb], y: &[$limb], out: &mut [$limb]) {
     let mut borrow = 0 as $limb;
     for i in (0..out.len()).rev() {
@@ -654,6 +660,7 @@ fn $mul_wide(a: $limb, b: $limb) -> $wide {
 // flag, so there products are accumulated as separate hi/lo halves instead,
 // which cannot overflow for any realistic limb count and needs no flag emulation.
 #[cfg(not(target_arch = "wasm32"))]
+#[inline]
 fn $multiply_pos(x: &[$limb], y: &[$limb], out: &mut [$limb]) {
     const BITS: usize = <$limb>::BITS as usize;
     let n = out.len();
@@ -678,6 +685,7 @@ fn $multiply_pos(x: &[$limb], y: &[$limb], out: &mut [$limb]) {
 }
 
 #[cfg(target_arch = "wasm32")]
+#[inline]
 fn $multiply_pos(x: &[$limb], y: &[$limb], out: &mut [$limb]) {
     const BITS: usize = <$limb>::BITS as usize;
     const LOW: $wide = (1 as $wide << BITS) - 1;
@@ -716,6 +724,7 @@ fn $multiply_pos(x: &[$limb], y: &[$limb], out: &mut [$limb]) {
 // added twice, roughly halving the multiplies vs $multiply_pos(x, x, out).
 // Accumulation strategies per target as in $multiply_pos.
 #[cfg(not(target_arch = "wasm32"))]
+#[inline]
 fn $square_pos(x: &[$limb], out: &mut [$limb]) {
     const BITS: usize = <$limb>::BITS as usize;
     let n = out.len();
@@ -753,6 +762,7 @@ fn $square_pos(x: &[$limb], out: &mut [$limb]) {
 }
 
 #[cfg(target_arch = "wasm32")]
+#[inline]
 fn $square_pos(x: &[$limb], out: &mut [$limb]) {
     const BITS: usize = <$limb>::BITS as usize;
     const LOW: $wide = (1 as $wide << BITS) - 1;
@@ -796,6 +806,7 @@ fn $square_pos(x: &[$limb], out: &mut [$limb]) {
     }
 }
 
+#[inline]
 pub fn $multiply(x: &[$limb], y: &[$limb], work1: &mut [$limb], work2: &mut [$limb], out: &mut [$limb]) {
     const SIGN: usize = <$limb>::BITS as usize - 1;
     let negx = (x[0] >> SIGN) != 0;
@@ -818,6 +829,7 @@ pub fn $multiply(x: &[$limb], y: &[$limb], work1: &mut [$limb], work2: &mut [$li
     }
 }
 
+#[inline]
 pub fn $sq(x: &[$limb], work: &mut [$limb], out: &mut [$limb]) {
     const SIGN: usize = <$limb>::BITS as usize - 1;
     if (x[0] >> SIGN) != 0 {
@@ -857,18 +869,114 @@ pub fn $count_iterations(hp_data: &mut $hpdata, x: &[$limb], y: &[$limb], max_it
     -1
 }
 
+// *** const-generic variants: limb count known at compile time *** //
+//
+// Workspaces are stack arrays; with N constant the compiler fully unrolls the
+// O(N^2) column loops and drops all length bookkeeping. Same arithmetic as the
+// slice path, so results are bit-identical.
+
+pub struct $hpdata_n<const N: usize> {
+    work1: [$limb; N],
+    work2: [$limb; N],
+    work3: [$limb; N],
+    work4: [$limb; N],
+    zx: [$limb; N],
+    zy: [$limb; N],
+}
+
+impl<const N: usize> $hpdata_n<N> {
+    pub fn new() -> $hpdata_n<N> {
+        $hpdata_n {
+            work1: [0; N],
+            work2: [0; N],
+            work3: [0; N],
+            work4: [0; N],
+            zx: [0; N],
+            zy: [0; N],
+        }
+    }
+}
+
+pub fn $count_iterations_n<const N: usize>(hp_data: &mut $hpdata_n<N>, x: &[$limb; N], y: &[$limb; N], max_iterations: i32) -> i32 {
+    let mut count = 0;
+    hp_data.zx = *x;
+    hp_data.zy = *y;
+
+    while count < max_iterations {
+        $sq(&hp_data.zx, &mut hp_data.work3, &mut hp_data.work1);      // work1 = zx*zx
+        $sq(&hp_data.zy, &mut hp_data.work3, &mut hp_data.work2);      // work2 = zy*zy
+        $add(&hp_data.work1, &hp_data.work2, &mut hp_data.work3);      // work3 = zx*zx + zy*zy
+        let test8 = hp_data.work3[0] & !(7 as $limb);
+        if test8 != 0 && test8 != !(15 as $limb) {
+            return count;
+        }
+
+        $add(&hp_data.zx, &hp_data.zx, &mut hp_data.work4);            // work4 = 2*zx
+
+        // zx = zx*zx - zy*zy + x;
+        $sub(&hp_data.work1, &hp_data.work2, &mut hp_data.work3);
+        $add(&hp_data.work3, x, &mut hp_data.zx);
+
+        // zy = 2*zx*zy + y;
+        $multiply(&hp_data.work4, &hp_data.zy, &mut hp_data.work1, &mut hp_data.work3, &mut hp_data.work2);
+        $add(&hp_data.work2, y, &mut hp_data.zy);
+
+        count += 1;
+    }
+    -1
+}
+
+fn $row_n<const N: usize>(x0: &[$limb], dx: &[$limb], y: &[$limb], columns: usize, max_iterations: i32, out: &mut [i32]) {
+    let mut hp_data = $hpdata_n::<N>::new();
+    // x is incremented at full precision; the iteration uses the first N limbs
+    let mut x_val = x0.to_vec();
+    let mut x_arr = [0 as $limb; N];
+    let mut y_arr = [0 as $limb; N];
+    y_arr.copy_from_slice(&y[0..N]);
+    for j in 0..columns {
+        x_arr.copy_from_slice(&x_val[0..N]);
+        out[j] = $count_iterations_n::<N>(&mut hp_data, &x_arr, &y_arr, max_iterations);
+        $incr(&mut x_val, dx);
+    }
+}
+
+// compute one row of pixels: x starts at x0 and advances by dx per column, at
+// constant y. Dispatches to a monomorphized kernel for small limb counts.
+pub fn $row(x0: &[$limb], dx: &[$limb], y: &[$limb], chunks: usize, columns: usize, max_iterations: i32, out: &mut [i32]) {
+    match chunks {
+        1 => $row_n::<1>(x0, dx, y, columns, max_iterations, out),
+        2 => $row_n::<2>(x0, dx, y, columns, max_iterations, out),
+        3 => $row_n::<3>(x0, dx, y, columns, max_iterations, out),
+        4 => $row_n::<4>(x0, dx, y, columns, max_iterations, out),
+        5 => $row_n::<5>(x0, dx, y, columns, max_iterations, out),
+        6 => $row_n::<6>(x0, dx, y, columns, max_iterations, out),
+        7 => $row_n::<7>(x0, dx, y, columns, max_iterations, out),
+        8 => $row_n::<8>(x0, dx, y, columns, max_iterations, out),
+        _ => {
+            let mut hp_data = $hpdata::new(chunks);
+            let mut x_val = x0.to_vec();
+            for j in 0..columns {
+                out[j] = $count_iterations(&mut hp_data, &x_val[0..chunks], &y[0..chunks], max_iterations);
+                $incr(&mut x_val, dx);
+            }
+        }
+    }
+}
+
     };
 }
 
 fw_engine!(u64, u128,
     HPData64, u32_to_limbs64, negate64, incr64, add64, sub64,
     mul_wide64, multiply_pos64, square_pos64, multiply64, sq64,
-    count_iterations_hp64);
+    count_iterations_hp64,
+    HPData64N, count_iterations_hp64_n, row_hp64_n, mandelbrot_row_hp64);
 
 fw_engine!(u32, u64,
     HPData32, u32_to_limbs32, negate32, incr32, add32, sub32,
     mul_wide32, multiply_pos32, square_pos32, multiply32, sq32,
-    count_iterations_hp32);
+    count_iterations_hp32,
+    HPData32N, count_iterations_hp32_n, row_hp32_n, mandelbrot_row_hp32);
 
 
 
@@ -969,6 +1077,47 @@ mod tests {
             }
         }
         assert!(mismatches <= total/1000, "{} of {} points differ", mismatches, total);
+    }
+
+    // row dispatcher (monomorphized kernels for chunks <= 8, dynamic beyond)
+    // must match the per-pixel dynamic engine exactly
+    #[test]
+    fn row_matches_per_pixel() {
+        let mut rng = Lcg(4242);
+        let max_iter = 300;
+        let columns = 12;
+        for n_digits in [2usize, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 33, 41] {
+            let chunks64 = 1 + (n_digits - 1 + 3)/4;
+            let chunks32 = 1 + (n_digits - 1 + 1)/2;
+            let x0d = random_coord(&mut rng, n_digits);
+            let yd = random_coord(&mut rng, n_digits);
+            let mut dxd = vec![0u32; n_digits];
+            dxd[n_digits - 1] = 3; // small positive step
+            let (x0, dx, y) = (u32_to_limbs64(&x0d), u32_to_limbs64(&dxd), u32_to_limbs64(&yd));
+
+            let mut row = vec![0i32; columns];
+            mandelbrot_row_hp64(&x0, &dx, &y, chunks64, columns, max_iter, &mut row);
+
+            let mut hp = HPData64::new(chunks64);
+            let mut x_val = x0.clone();
+            for j in 0..columns {
+                let expect = count_iterations_hp64(&mut hp, &x_val[0..chunks64], &y[0..chunks64], max_iter);
+                assert_eq!(row[j], expect, "u64 n_digits {} col {}", n_digits, j);
+                incr64(&mut x_val, &dx);
+            }
+
+            let (x0, dx, y) = (u32_to_limbs32(&x0d), u32_to_limbs32(&dxd), u32_to_limbs32(&yd));
+            let mut row = vec![0i32; columns];
+            mandelbrot_row_hp32(&x0, &dx, &y, chunks32, columns, max_iter, &mut row);
+
+            let mut hp = HPData32::new(chunks32);
+            let mut x_val = x0.clone();
+            for j in 0..columns {
+                let expect = count_iterations_hp32(&mut hp, &x_val[0..chunks32], &y[0..chunks32], max_iter);
+                assert_eq!(row[j], expect, "u32 n_digits {} col {}", n_digits, j);
+                incr32(&mut x_val, &dx);
+            }
+        }
     }
 
     #[test]

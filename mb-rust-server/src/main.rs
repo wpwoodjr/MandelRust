@@ -268,15 +268,9 @@ fn compute_mandelbrot_hp64(coords: &MandelbrotCoordsHP, u32_chunks: usize, num_t
     y_vals
         .par_chunks(slice_size)
         .map(| y_vals | {
-            let mut x_val = xmin.clone();
-            let mut hp_data = HPData64::new(chunks);
             let mut iteration_counts = vec![vec![0; columns]; y_vals.len()];
             for i in 0..y_vals.len() {
-                for j in 0..columns {
-                    iteration_counts[i][j] = count_iterations_hp64(&mut hp_data, &x_val[0..chunks], &y_vals[i][0..chunks], max_iter);
-                    incr64(&mut x_val, &dx);
-                }
-                x_val.copy_from_slice(&xmin);
+                mandelbrot_row_hp64(&xmin, &dx, &y_vals[i], chunks, columns, max_iter, &mut iteration_counts[i]);
             }
             iteration_counts
         })

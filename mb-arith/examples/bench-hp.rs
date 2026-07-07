@@ -1,6 +1,8 @@
 /*
-    Benchmark: legacy generic HP engine (u128 half-limb, the previous server default)
-    vs the full-width u64 limb engine, on a grid over the full Mandelbrot set.
+    Benchmark of the high-precision engines on a grid over the full Mandelbrot set:
+    legacy generic u128 half-limb (previous server default), the full-width u64
+    limb engine (dynamic limb count), and the row entry point which dispatches to
+    monomorphized kernels for <= 8 limbs.
 
     Run with: cargo run --release --example bench-hp
 */
@@ -24,56 +26,82 @@ fn main() {
     let grid = 48;
     let max_iter = 2000;
 
-    println!("{} points, max_iter {}\n", grid*grid, max_iter);
-    println!("{:>10} {:>6} {:>14} {:>14} {:>9} {:>10}", "frac bits", "limbs", "legacy u128", "new u64", "speedup", "mismatch");
+    println!("{}x{} grid, max_iter {}\n", grid, grid, max_iter);
+    println!("{:>10} {:>6} {:>13} {:>13} {:>13} {:>8} {:>8} {:>9}",
+        "frac bits", "limbs", "legacy u128", "u64 dynamic", "u64 rows", "dyn/leg", "row/leg", "mismatch");
 
     for n_digits in [5usize, 9, 13, 21, 33] {
         let chunks = 1 + (n_digits - 1 + 3)/4;
 
-        let mut coords = vec![];
-        for i in 0..grid {
-            for j in 0..grid {
-                let x = -2.2 + 3.0 * (i as f64 + 0.5) / grid as f64;
-                let y = -1.5 + 3.0 * (j as f64 + 0.5) / grid as f64;
-                coords.push((f64_to_digits(x, n_digits), f64_to_digits(y, n_digits)));
+        let xmin_d = f64_to_digits(-2.2, n_digits);
+        let dx_d = f64_to_digits(3.0/grid as f64, n_digits);
+        let rows_d: Vec<Vec<u32>> = (0..grid)
+            .map(|j| f64_to_digits(-1.5 + 3.0 * (j as f64 + 0.5) / grid as f64, n_digits))
+            .collect();
+
+        // legacy u128 half-limb, per pixel with incr
+        let t = Instant::now();
+        let mut counts_legacy = vec![vec![0i32; grid]; grid];
+        {
+            let xmin = u32_to_t::<u128>(&xmin_d);
+            let dx = u32_to_t::<u128>(&dx_d);
+            let mut hp = HPData::<u128>::new(chunks);
+            for (j, yd) in rows_d.iter().enumerate() {
+                let y = u32_to_t::<u128>(yd);
+                let mut x_val = xmin.clone();
+                for i in 0..grid {
+                    counts_legacy[j][i] = count_iterations_hp(&mut hp, &x_val[0..chunks], &y[0..chunks], max_iter);
+                    incr(&mut x_val, &dx);
+                }
             }
         }
+        let t_legacy = t.elapsed();
 
+        // full-width u64, dynamic limb count, per pixel with incr
         let t = Instant::now();
-        let mut hp = HPData::<u128>::new(chunks);
-        for (x, y) in &coords {
-            let xo = u32_to_t::<u128>(x);
-            let yo = u32_to_t::<u128>(y);
-            count_iterations_hp(&mut hp, &xo[0..chunks], &yo[0..chunks], max_iter);
+        let mut counts_dyn = vec![vec![0i32; grid]; grid];
+        {
+            let xmin = u32_to_limbs64(&xmin_d);
+            let dx = u32_to_limbs64(&dx_d);
+            let mut hp = HPData64::new(chunks);
+            for (j, yd) in rows_d.iter().enumerate() {
+                let y = u32_to_limbs64(yd);
+                let mut x_val = xmin.clone();
+                for i in 0..grid {
+                    counts_dyn[j][i] = count_iterations_hp64(&mut hp, &x_val[0..chunks], &y[0..chunks], max_iter);
+                    incr64(&mut x_val, &dx);
+                }
+            }
         }
-        let t_old = t.elapsed();
+        let t_dyn = t.elapsed();
 
+        // full-width u64 via the row dispatcher (monomorphized for <= 8 limbs)
         let t = Instant::now();
-        let mut hp = HPData64::new(chunks);
-        for (x, y) in &coords {
-            let xn = u32_to_limbs64(x);
-            let yn = u32_to_limbs64(y);
-            count_iterations_hp64(&mut hp, &xn[0..chunks], &yn[0..chunks], max_iter);
+        let mut counts_row = vec![vec![0i32; grid]; grid];
+        {
+            let xmin = u32_to_limbs64(&xmin_d);
+            let dx = u32_to_limbs64(&dx_d);
+            for (j, yd) in rows_d.iter().enumerate() {
+                let y = u32_to_limbs64(yd);
+                mandelbrot_row_hp64(&xmin, &dx, &y, chunks, grid, max_iter, &mut counts_row[j]);
+            }
         }
-        let t_new = t.elapsed();
+        let t_row = t.elapsed();
 
-        // untimed: verify per-pixel counts match the legacy u128 engine exactly
         let mut mismatches = 0;
-        let mut hp_new = HPData64::new(chunks);
-        let mut hp_old = HPData::<u128>::new(chunks);
-        for (x, y) in &coords {
-            let new = count_iterations_hp64(&mut hp_new,
-                &u32_to_limbs64(x)[0..chunks], &u32_to_limbs64(y)[0..chunks], max_iter);
-            let old = count_iterations_hp(&mut hp_old,
-                &u32_to_t::<u128>(x)[0..chunks], &u32_to_t::<u128>(y)[0..chunks], max_iter);
-            if new != old {
-                mismatches += 1;
+        for j in 0..grid {
+            for i in 0..grid {
+                if counts_legacy[j][i] != counts_dyn[j][i] || counts_legacy[j][i] != counts_row[j][i] {
+                    mismatches += 1;
+                }
             }
         }
 
-        println!("{:>10} {:>6} {:>14} {:>14} {:>8.2}x {:>10}",
+        println!("{:>10} {:>6} {:>13} {:>13} {:>13} {:>7.2}x {:>7.2}x {:>9}",
             (n_digits - 1)*16, chunks,
-            format!("{:?}", t_old), format!("{:?}", t_new),
-            t_old.as_secs_f64() / t_new.as_secs_f64(), mismatches);
+            format!("{:.1?}", t_legacy), format!("{:.1?}", t_dyn), format!("{:.1?}", t_row),
+            t_legacy.as_secs_f64() / t_dyn.as_secs_f64(),
+            t_legacy.as_secs_f64() / t_row.as_secs_f64(),
+            mismatches);
     }
 }
