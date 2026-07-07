@@ -53,9 +53,6 @@ pub extern "C" fn compute_mandelbrot(xmin: f64, dx: f64, columns: u32, y: f64, m
 
 
 // *** high precision *** //
-use core::mem::size_of;
-type UInt = u64;
-
 #[no_mangle]
 pub extern "C" fn compute_mandelbrot_hp(xmin: *const u32, len: u32, dx: *const u32, columns: u32, y: *const u32, max_iterations: i32, iteration_counts: *mut i32) {
 
@@ -69,19 +66,18 @@ pub extern "C" fn compute_mandelbrot_hp(xmin: *const u32, len: u32, dx: *const u
     // ignore lowest 16 bits for efficiency during Mandelbrot calculation, has no impact on image quality
     // use all bits for incrementing x_val though
     let u32_chunks = len - 1;
-    // chunks: 1 for the integral part, plus however many T elements are needed for the fractional part
-    let chunks = 1 + {
-        let t_to_u32_size_ratio = size_of::<UInt>()/size_of::<u32>();
-        (u32_chunks - 1 + t_to_u32_size_ratio - 1)/t_to_u32_size_ratio
-    };
+    // chunks: 1 for the integral part, plus however many u32 limbs are needed for the fractional part.
+    // the u32 limb engine is used because wasm32 has no 64x64 -> 128 bit multiply;
+    // 32x32 -> 64 is a single native i64.mul
+    let chunks = 1 + (u32_chunks - 1 + 1)/2;
 
-    let mut x_val = u32_to_t::<UInt>(xmin);
-    let dx = u32_to_t::<UInt>(dx);
-    let y = u32_to_t::<UInt>(y);
-    let mut hp_data = HPData::new(chunks);
+    let mut x_val = u32_to_limbs32(xmin);
+    let dx = u32_to_limbs32(dx);
+    let y = u32_to_limbs32(y);
+    let mut hp_data = HPData32::new(chunks);
 
     for i in 0..columns {
-        iteration_counts[i] = count_iterations_hp(&mut hp_data, &x_val[0..chunks], &y[0..chunks], max_iterations);
-        incr(&mut x_val, &dx);
+        iteration_counts[i] = count_iterations_hp32(&mut hp_data, &x_val[0..chunks], &y[0..chunks], max_iterations);
+        incr32(&mut x_val, &dx);
     }
 }

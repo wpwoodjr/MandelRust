@@ -14,7 +14,8 @@ use std::process::exit;
 use std::env;
 static mut IMAGE_QUALITY: usize = 1;
 static mut NUM_THREADS: usize = 2;
-static mut U_TYPE: usize = 128;
+// 0 = full-width u64 limb engine (default); 32/64/128 = legacy half-limb engines
+static mut U_TYPE: usize = 0;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -32,9 +33,10 @@ Options:
                  defaults to 2
   -q, --quality  Set image quality from 2 (best) to 0 (worst); only affects high precision images;
                  lower quality may be faster in certain situations; defaults to 1
-  --u32          Use 32 bit unsigned integers for high precision calculations (slowest)
-  --u64          Use 64 bit unsigned integers for high precision calculations
-  --u128         Use 128 bit unsigned integers for high precision calculations (default)"#;
+  --u32          Use legacy 32 bit engine for high precision calculations (slowest)
+  --u64          Use legacy 64 bit engine for high precision calculations
+  --u128         Use legacy 128 bit engine for high precision calculations
+                 default is a full-width 64 bit limb engine, faster than all of the above"#;
 
     let mut i = 1;
     while i < args.len() {
@@ -86,10 +88,13 @@ Options:
         i += 1;
     }
 
-    println!("Mandelbrot server running on URL {url} with {} Rayon thread(s), image quality {}, and {} bit unsigned integers for high precision calculations.",
+    println!("Mandelbrot server running on URL {url} with {} Rayon thread(s), image quality {}, and the {} engine for high precision calculations.",
         unsafe { NUM_THREADS },
         unsafe { 2 - IMAGE_QUALITY },
-        unsafe { U_TYPE },
+        match unsafe { U_TYPE } {
+            0 => "full-width u64".to_string(),
+            u => format!("legacy u{u}"),
+        },
     );
     web_server(&url);
 }
@@ -202,6 +207,9 @@ async fn compute_mandelbrot_hp(mandelbrot_coords_hp: web::Json<MandelbrotCoordsH
     let u32_chunks = mandelbrot_coords_hp.xmin.len() - unsafe { IMAGE_QUALITY };
 
     let iteration_counts = match unsafe { U_TYPE } {
+        0 => {
+            compute_mandelbrot_hp64(&mandelbrot_coords_hp, u32_chunks, unsafe { NUM_THREADS })
+        }
         32 => {
             let xmin = u32_to_t::<u32>(&mandelbrot_coords_hp.xmin);
             let dx = u32_to_t::<u32>(&mandelbrot_coords_hp.dx);
@@ -228,11 +236,53 @@ async fn compute_mandelbrot_hp(mandelbrot_coords_hp: web::Json<MandelbrotCoordsH
     HttpResponse::Ok().json(iteration_counts)
 }
 
-use std::ops::{ BitAnd, BitAndAssign, Shl, Shr, AddAssign, Sub, Mul };
+use std::ops::{ BitAnd, BitAndAssign, Shl, Shr, AddAssign, Sub };
 use num::traits::{ Zero, One, AsPrimitive };
 use core::cmp::PartialEq;
 use core::mem::size_of;
 use rayon::prelude::*;
+
+// full-width u64 limb engine (default)
+fn compute_mandelbrot_hp64(coords: &MandelbrotCoordsHP, u32_chunks: usize, num_threads: usize) -> Vec<Vec<i32>> {
+    let xmin = u32_to_limbs64(&coords.xmin);
+    let dx = u32_to_limbs64(&coords.dx);
+    let yval = u32_to_limbs64(&coords.ymax);
+    let dy = u32_to_limbs64(&coords.dy);
+    let rows = coords.rows;
+    let columns = coords.columns;
+    let max_iter = coords.maxIterations;
+
+    // chunks: 1 for the integral part, plus however many u64 limbs are needed for the fractional part
+    let chunks = 1 + (u32_chunks - 1 + 3)/4;
+
+    let mut dy_neg = vec![0u64; dy.len()];
+    negate64(&dy, &mut dy_neg);
+    let mut y = yval;
+    let mut y_vals = Vec::with_capacity(rows);
+    for _ in 0..rows {
+        y_vals.push(y.clone());
+        incr64(&mut y, &dy_neg);
+    }
+
+    let slice_size = core::cmp::max(1, rows/num_threads);
+    y_vals
+        .par_chunks(slice_size)
+        .map(| y_vals | {
+            let mut x_val = xmin.clone();
+            let mut hp_data = HPData64::new(chunks);
+            let mut iteration_counts = vec![vec![0; columns]; y_vals.len()];
+            for i in 0..y_vals.len() {
+                for j in 0..columns {
+                    iteration_counts[i][j] = count_iterations_hp64(&mut hp_data, &x_val[0..chunks], &y_vals[i][0..chunks], max_iter);
+                    incr64(&mut x_val, &dx);
+                }
+                x_val.copy_from_slice(&xmin);
+            }
+            iteration_counts
+        })
+        .flatten()
+        .collect()
+}
 
 pub fn compute_mandelbrot_hp_t<T>(xmin: &[T], dx: &[T], yval: &[T], dy: &[T], rows: usize, columns: usize, max_iter: i32, u32_chunks: usize, num_threads: usize) -> Vec<Vec<i32>>
 where T: Sync + Zero + Copy,
