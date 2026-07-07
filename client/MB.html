@@ -629,6 +629,10 @@ function stopJob(dontUpdateStatusToIdle) {
 }
 
 let maxRowsPerJob = 32;
+// Small HP strips keep the work-stealing queue balanced (short tail) and give
+// responsive progressive updates. Perturbation rebuilds a reference orbit per strip,
+// but that recompute is a small fraction of a strip's work and is outweighed by the
+// balancing/feedback win of small strips.
 let maxRowsPerJobHP = 4;
 
 function startJob(dontClear) {

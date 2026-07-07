@@ -1,16 +1,16 @@
 let /* boolean */ highPrecision;
 let /* int */ maxIterations, jobNumber, workerNumber;
-let compute_mandelbrot = null, compute_mandelbrot_hp = null;
+let compute_mandelbrot = null, compute_mandelbrot_hp = null, compute_mandelbrot_hp_perturb = null;
 let malloc, dalloc;
 
 async function waitForWasm(workerNumber, jobNumber) {
-    if (compute_mandelbrot && compute_mandelbrot_hp) {
+    if (compute_mandelbrot && compute_mandelbrot_hp && compute_mandelbrot_hp_perturb) {
         return;
     } else {
         await new Promise(resolve => {
             // console.log(`worker ${workerNumber} job ${jobNumber} waiting for WASM`);
             const intervalId = setInterval(() => {
-                if (compute_mandelbrot && compute_mandelbrot_hp) {
+                if (compute_mandelbrot && compute_mandelbrot_hp && compute_mandelbrot_hp_perturb) {
                     clearInterval(intervalId);
                     resolve();
                 }
@@ -75,23 +75,33 @@ onmessage = function(msg) {
                 let nrows = data[7];
                 if (highPrecision) {
                     // console.log(jobNumber,workerNumber,xmin,dx,columnCount,ymax,maxIterations,highPrecision);
-                    xmin = wasmMemory.copyFromArrayU32(xmin);
-                    dx = wasmMemory.copyFromArrayU32(dx);
-                    y = wasmMemory.copyFromArrayU32(ymax);
-                    dy_neg = new Uint32Array(dy.length);
-                    dy_neg.set(dy);
-                    negate(dy_neg);
+                    // Perturbation: one full-precision reference orbit for the whole
+                    // strip, then a cheap f64 delta orbit per pixel. The reference
+                    // orbit's Vec inside wasm (up to maxIterations entries) can grow
+                    // wasm memory mid-call, detaching JS views, so we capture pointers
+                    // as numbers up front and rebuild the output view after the call.
+                    let len = xmin.length;
+                    let xminPtr = wasmMemory.copyFromArrayU32(xmin).byteOffset;
+                    let dxPtr = wasmMemory.copyFromArrayU32(dx).byteOffset;
+                    let ymaxPtr = wasmMemory.copyFromArrayU32(ymax).byteOffset;
+                    let dyPtr = wasmMemory.copyFromArrayU32(dy).byteOffset;
+                    let outLen = nrows*columnCount;
+                    let outPtr = wasmMemory.newArrayI32(outLen).byteOffset;
+
+                    compute_mandelbrot_hp_perturb(xminPtr, len, dxPtr, columnCount, ymaxPtr, dyPtr, nrows, maxIterations, outPtr);
+
+                    // fresh view: wasm memory may have grown (and detached old views)
+                    let counts = new Int32Array(wasmMemory.memory.buffer, outPtr, outLen);
                     let returnIterations = new Array(nrows);
-                    let iterationCounts = wasmMemory.newArrayI32(columnCount);
                     for (let i = 0; i < nrows; i++) {
-                        compute_mandelbrot_hp(xmin.byteOffset, xmin.length, dx.byteOffset, columnCount, y.byteOffset, maxIterations, iterationCounts.byteOffset);
-                        returnIterations[i] = Array.from(iterationCounts);
-                        incr(y, dy_neg);
+                        returnIterations[i] = Array.from(counts.subarray(i*columnCount, (i + 1)*columnCount));
                     }
-                    wasmMemory.free(iterationCounts);
-                    wasmMemory.free(y);
-                    wasmMemory.free(dx);
-                    wasmMemory.free(xmin);
+                    let U32 = Uint32Array.BYTES_PER_ELEMENT, I32 = Int32Array.BYTES_PER_ELEMENT;
+                    dalloc(outPtr, outLen*I32);
+                    dalloc(dyPtr, len*U32);
+                    dalloc(ymaxPtr, len*U32);
+                    dalloc(dxPtr, len*U32);
+                    dalloc(xminPtr, len*U32);
                     postMessage([ jobNumber, firstRow, returnIterations, workerNumber, nrows ]);
                 } else {
                     let returnIterations = new Array(nrows);
@@ -115,6 +125,7 @@ onmessage = function(msg) {
                 // Hold onto the module's exports so that we can reuse them
                 compute_mandelbrot = instance.exports.compute_mandelbrot;
                 compute_mandelbrot_hp = instance.exports.compute_mandelbrot_hp;
+                compute_mandelbrot_hp_perturb = instance.exports.compute_mandelbrot_hp_perturb;
                 malloc = instance.exports.malloc;
                 dalloc = instance.exports.dalloc;
             });

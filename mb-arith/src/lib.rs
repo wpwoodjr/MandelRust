@@ -5,6 +5,9 @@
 */
 
 
+mod perturbation;
+pub use perturbation::*;
+
 // *** low precision *** //
 pub fn count_iterations(x: f64, y: f64, max_iterations: i32) -> i32 {
     let mut count = 0;

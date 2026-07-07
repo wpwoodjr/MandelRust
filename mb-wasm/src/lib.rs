@@ -76,3 +76,39 @@ pub extern "C" fn compute_mandelbrot_hp(xmin: *const u32, len: u32, dx: *const u
     let y = u32_to_limbs32(y);
     mandelbrot_row_hp32(&x_val, &dx, &y, chunks, columns, max_iterations, iteration_counts);
 }
+
+
+// *** high precision via perturbation *** //
+// Computes a whole strip of `rows` rows x `columns` columns in one call: a single
+// full-precision reference orbit (u32 limb engine) at the strip center, then a
+// cheap f64 delta orbit per pixel. Much faster at deep zoom; the only HP work is
+// the one reference, and the per-pixel loop is native-speed f64.
+//
+// `iteration_counts` must have room for rows*columns i32 (row-major). Rows advance
+// y downward by dy (y_i = ymax - i*dy), matching compute_mandelbrot_hp.
+#[no_mangle]
+pub extern "C" fn compute_mandelbrot_hp_perturb(
+    xmin: *const u32, len: u32, dx: *const u32, columns: u32,
+    ymax: *const u32, dy: *const u32, rows: u32,
+    max_iterations: i32, iteration_counts: *mut i32,
+) {
+    let len = len as usize;
+    let xmin = unsafe { std::slice::from_raw_parts(xmin, len) };
+    let dx = unsafe { std::slice::from_raw_parts(dx, len) };
+    let ymax = unsafe { std::slice::from_raw_parts(ymax, len) };
+    let dy = unsafe { std::slice::from_raw_parts(dy, len) };
+    let columns = columns as usize;
+    let rows = rows as usize;
+    let iteration_counts = unsafe { std::slice::from_raw_parts_mut(iteration_counts, rows*columns) };
+
+    // ignore lowest 16 bits for efficiency, like compute_mandelbrot_hp
+    let u32_chunks = len - 1;
+    let chunks = 1 + (u32_chunks - 1 + 1)/2;
+
+    let xmin = u32_to_limbs32(xmin);
+    let dx = u32_to_limbs32(dx);
+    let ymax = u32_to_limbs32(ymax);
+    let dy = u32_to_limbs32(dy);
+
+    mandelbrot_perturb32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iterations, iteration_counts);
+}
