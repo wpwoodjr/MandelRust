@@ -11,3 +11,8 @@ num = "*"
 opt-level = 3
 lto = true
 codegen-units = 1
+
+[features]
+# wasm32 SIMD128 kernels for the u32 limb engine; requires a SIMD-capable
+# wasm engine (all major browsers since 2021, Safari since 16.4)
+simd128 = []

@@ -8,7 +8,7 @@ authors = ["Bill Wood <wpwoodjr@gmail.com>"]
 crate-type = ["cdylib"]
 
 [dependencies]
-mb-arith = { path = "../mb-arith" }
+mb-arith = { path = "../mb-arith", features = ["simd128"] }
 
 [profile.release]
 opt-level = 3

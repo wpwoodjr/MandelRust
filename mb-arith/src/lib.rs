@@ -431,6 +431,132 @@ where T: Zero + One + BitAnd + Shr<usize, Output = T> + Copy + 'static,
 //   u32 limbs, u64 products - wasm32, which has no 64x64 -> 128 multiply but
 //     computes 32x64 -> 64 with a single native i64.mul
 
+// SIMD128 kernels for the u32 limb engine on wasm32. Each u64x2_extmul_*_u32x4
+// computes two 32x32 -> 64 products per instruction. One operand of each column's
+// dot product is pre-reversed once per call so both operands load contiguously.
+// Column sums and the carry recurrence are identical to the scalar path, so
+// results are bit-identical. Compiled only with the "simd128" cargo feature
+// (enabled by mb-wasm); without it the scalar path below is used. The feature
+// is scoped to these functions via #[target_feature] because enabling simd128
+// crate-wide makes LLVM autovectorize the scalar loops ~18% slower.
+pub(crate) mod simd32 {
+    // below MIN_LIMBS the columns are too short for SIMD to beat the scalar path
+    // (measured crossover in node/v8: scalar wins through 10 limbs)
+    pub const MIN_LIMBS: usize = 11;
+    pub const MAX_LIMBS: usize = 64;
+
+    #[cfg(all(target_arch = "wasm32", feature = "simd128"))]
+    pub const AVAILABLE: bool = true;
+    #[cfg(not(all(target_arch = "wasm32", feature = "simd128")))]
+    pub const AVAILABLE: bool = false;
+
+    #[cfg(not(all(target_arch = "wasm32", feature = "simd128")))]
+    pub fn multiply_pos(_x: &[u32], _y: &[u32], _out: &mut [u32]) { unreachable!() }
+    #[cfg(not(all(target_arch = "wasm32", feature = "simd128")))]
+    pub fn square_pos(_x: &[u32], _out: &mut [u32]) { unreachable!() }
+
+    #[cfg(all(target_arch = "wasm32", feature = "simd128"))]
+    use core::arch::wasm32::*;
+
+    // sum of x[k]*y[k] for k in 0..len, accumulated as split (lo, hi) halves;
+    // cannot overflow for len <= MAX_LIMBS
+    #[cfg(all(target_arch = "wasm32", feature = "simd128"))]
+    #[inline]
+    #[target_feature(enable = "simd128")]
+    unsafe fn dot_split(x: *const u32, y: *const u32, len: usize) -> (u64, u64) {
+        let low = u64x2_splat(0xFFFF_FFFF);
+        let mut vlo = u64x2_splat(0);
+        let mut vhi = u64x2_splat(0);
+        let mut k = 0;
+        while k + 4 <= len {
+            let a = v128_load(x.add(k) as *const v128);
+            let b = v128_load(y.add(k) as *const v128);
+            let p0 = u64x2_extmul_low_u32x4(a, b);
+            let p1 = u64x2_extmul_high_u32x4(a, b);
+            vlo = i64x2_add(vlo, i64x2_add(v128_and(p0, low), v128_and(p1, low)));
+            vhi = i64x2_add(vhi, i64x2_add(u64x2_shr(p0, 32), u64x2_shr(p1, 32)));
+            k += 4;
+        }
+        if k + 2 <= len {
+            let a = v128_load64_zero(x.add(k) as *const u64);
+            let b = v128_load64_zero(y.add(k) as *const u64);
+            let p = u64x2_extmul_low_u32x4(a, b);
+            vlo = i64x2_add(vlo, v128_and(p, low));
+            vhi = i64x2_add(vhi, u64x2_shr(p, 32));
+            k += 2;
+        }
+        let mut lo = u64x2_extract_lane::<0>(vlo) + u64x2_extract_lane::<1>(vlo);
+        let mut hi = u64x2_extract_lane::<0>(vhi) + u64x2_extract_lane::<1>(vhi);
+        if k < len {
+            let p = *x.add(k) as u64 * *y.add(k) as u64;
+            lo += p & 0xFFFF_FFFF;
+            hi += p >> 32;
+        }
+        (lo, hi)
+    }
+
+    #[cfg(all(target_arch = "wasm32", feature = "simd128"))]
+    #[target_feature(enable = "simd128")]
+    pub fn multiply_pos(x: &[u32], y: &[u32], out: &mut [u32]) {
+        let n = out.len();
+        debug_assert!(n <= MAX_LIMBS && x.len() >= n && y.len() >= n);
+        let mut yr = [0u32; MAX_LIMBS];
+        for k in 0..n {
+            yr[k] = y[n - 1 - k];
+        }
+        unsafe {
+            let xp = x.as_ptr();
+            let yrp = yr.as_ptr();
+            // carry-estimation column: high halves of x[i]*y[n-i] = x[1..n] . yr[0..n-1]
+            let (_, mut carry) = dot_split(xp.add(1), yrp, n - 1);
+            // column m: x[0..=m] . yr[n-1-m..]
+            for m in (0..n).rev() {
+                let (lo, hi) = dot_split(xp, yrp.add(n - 1 - m), m + 1);
+                let total = lo + carry;
+                *out.get_unchecked_mut(m) = total as u32;
+                carry = (total >> 32) + hi;
+            }
+        }
+    }
+
+    #[cfg(all(target_arch = "wasm32", feature = "simd128"))]
+    #[target_feature(enable = "simd128")]
+    pub fn square_pos(x: &[u32], out: &mut [u32]) {
+        let n = out.len();
+        debug_assert!(n <= MAX_LIMBS && x.len() >= n);
+        let mut xr = [0u32; MAX_LIMBS];
+        for k in 0..n {
+            xr[k] = x[n - 1 - k];
+        }
+        unsafe {
+            let xp = x.as_ptr();
+            let xrp = xr.as_ptr();
+            // carry-estimation column: cross pairs x[i]*x[n-i] = x[1..] . xr[0..], doubled, plus diagonal
+            let (_, ehi) = dot_split(xp.add(1), xrp, (n + 1)/2 - 1);
+            let mut carry = ehi * 2;
+            if n % 2 == 0 && n > 0 {
+                let h = *xp.add(n/2) as u64;
+                carry += (h * h) >> 32;
+            }
+            // column m: cross pairs x[0..(m+1)/2] . xr[n-1-m..], doubled, plus diagonal for even m
+            for m in (0..n).rev() {
+                let (mut lo, mut hi) = dot_split(xp, xrp.add(n - 1 - m), (m + 1)/2);
+                lo *= 2;
+                hi *= 2;
+                if m % 2 == 0 {
+                    let h = *xp.add(m/2) as u64;
+                    let p = h * h;
+                    lo += p & 0xFFFF_FFFF;
+                    hi += p >> 32;
+                }
+                let total = lo + carry;
+                *out.get_unchecked_mut(m) = total as u32;
+                carry = (total >> 32) + hi;
+            }
+        }
+    }
+}
+
 macro_rules! fw_engine {
     ($limb:ty, $wide:ty,
      $hpdata:ident, $u32_to_limbs:ident, $negate:ident, $incr:ident, $add:ident, $sub:ident,
@@ -555,6 +681,17 @@ fn $multiply_pos(x: &[$limb], y: &[$limb], out: &mut [$limb]) {
 fn $multiply_pos(x: &[$limb], y: &[$limb], out: &mut [$limb]) {
     const BITS: usize = <$limb>::BITS as usize;
     const LOW: $wide = (1 as $wide << BITS) - 1;
+
+    // u32 limbs with simd128 available: two products per instruction
+    if crate::simd32::AVAILABLE && BITS == 32
+        && out.len() >= crate::simd32::MIN_LIMBS && out.len() <= crate::simd32::MAX_LIMBS {
+        return crate::simd32::multiply_pos(
+            unsafe { core::slice::from_raw_parts(x.as_ptr() as *const u32, x.len()) },
+            unsafe { core::slice::from_raw_parts(y.as_ptr() as *const u32, y.len()) },
+            unsafe { core::slice::from_raw_parts_mut(out.as_mut_ptr() as *mut u32, out.len()) },
+        );
+    }
+
     let n = out.len();
 
     let mut carry = 0 as $wide;
@@ -619,6 +756,16 @@ fn $square_pos(x: &[$limb], out: &mut [$limb]) {
 fn $square_pos(x: &[$limb], out: &mut [$limb]) {
     const BITS: usize = <$limb>::BITS as usize;
     const LOW: $wide = (1 as $wide << BITS) - 1;
+
+    // u32 limbs with simd128 available: two products per instruction
+    if crate::simd32::AVAILABLE && BITS == 32
+        && out.len() >= crate::simd32::MIN_LIMBS && out.len() <= crate::simd32::MAX_LIMBS {
+        return crate::simd32::square_pos(
+            unsafe { core::slice::from_raw_parts(x.as_ptr() as *const u32, x.len()) },
+            unsafe { core::slice::from_raw_parts_mut(out.as_mut_ptr() as *mut u32, out.len()) },
+        );
+    }
+
     let n = out.len();
 
     let mut carry = 0 as $wide;
