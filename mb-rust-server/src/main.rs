@@ -15,8 +15,9 @@ use std::env;
 static mut NUM_THREADS: usize = 2;
 // 0 = full-width u64 limb engine (default); 32/64/128 = legacy half-limb engines
 static mut U_TYPE: usize = 0;
-// perturbation engine: one HP reference orbit per request, f64 deltas per pixel
-static mut PERTURB: bool = false;
+// perturbation engine (default): one HP reference orbit per band of rows,
+// f64 deltas per pixel
+static mut PERTURB: bool = true;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -32,13 +33,17 @@ Options:
   -h, --help     Show this help message and exit
   -r, --rayon    Number of Rayon threads for each Javascript "worker"; only affects high precision images;
                  defaults to 2
+  --no-perturb   Disable the perturbation engine and compute every pixel at full
+                 precision with the full-width 64 bit limb engine (slower, exact)
   --u32          Use legacy 32 bit engine for high precision calculations (slowest)
   --u64          Use legacy 64 bit engine for high precision calculations
   --u128         Use legacy 128 bit engine for high precision calculations
-                 default is a full-width 64 bit limb engine, faster than all of the above
-  --perturb      Use perturbation theory for high precision images: one full-precision
-                 reference orbit per request, cheap f64 deltas per pixel. Much faster at
-                 deep zoom. f64 deltas are usable down to ~1e-300 pixel scale."#;
+                 these also disable the perturbation engine
+
+  High precision images default to perturbation theory: one full-precision
+  reference orbit per band of rows, cheap f64 deltas per pixel (glitch-checked,
+  corrected by re-referencing). Much faster at deep zoom; f64 deltas are usable
+  down to ~1e-300 pixel scale."#;
 
     let mut i = 1;
     while i < args.len() {
@@ -58,15 +63,21 @@ Options:
             }
             "--u32" => unsafe {
                 U_TYPE = 32;
+                PERTURB = false;
             }
             "--u64" => unsafe {
                 U_TYPE = 64;
+                PERTURB = false;
             }
             "--u128" => unsafe {
                 U_TYPE = 128;
+                PERTURB = false;
             }
             "--perturb" => unsafe {
                 PERTURB = true;
+            }
+            "--no-perturb" => unsafe {
+                PERTURB = false;
             }
             "-h" | "--help" => {
                 println!("{help}");
@@ -82,7 +93,7 @@ Options:
     println!("Mandelbrot server running on URL {url} with {} Rayon thread(s), and the {} engine for high precision calculations.",
         unsafe { NUM_THREADS },
         if unsafe { PERTURB } {
-            "perturbation (full-width u64 reference)".to_string()
+            "perturbation (glitch-checked, full-width u64 reference)".to_string()
         } else {
             match unsafe { U_TYPE } {
                 0 => "full-width u64".to_string(),
@@ -277,8 +288,11 @@ fn compute_mandelbrot_hp64(coords: &MandelbrotCoordsHP, u32_chunks: usize, num_t
         .collect()
 }
 
-// perturbation engine: one full-precision reference orbit at the block center,
-// then cheap f64 delta orbits per pixel (with rebasing to stay glitch-free).
+// perturbation engine: shared-index + glitch-pass engine, 4-lane kernel.
+// The request's rows are split into one contiguous band per Rayon thread; each
+// band computes its own full-precision reference orbit (band center) and runs
+// cheap f64 delta orbits per pixel, glitch-checked and corrected by
+// re-referencing (stragglers fall back to brute HP).
 fn compute_mandelbrot_perturb64(coords: &MandelbrotCoordsHP, u32_chunks: usize, num_threads: usize) -> Vec<Vec<i32>> {
     let xmin = u32_to_limbs64(&coords.xmin);
     let dx = u32_to_limbs64(&coords.dx);
@@ -291,22 +305,27 @@ fn compute_mandelbrot_perturb64(coords: &MandelbrotCoordsHP, u32_chunks: usize, 
     // chunks: 1 for the integral part, plus however many u64 limbs the fraction needs
     let chunks = 1 + (u32_chunks - 1 + 3)/4;
 
-    // one high-precision reference orbit for the whole block; deltas are f64
-    let (orbit, dx_f, dy_f, dcx0, _col_ref, row_ref) =
-        perturb_setup64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter);
+    let band = core::cmp::max(1, rows.div_ceil(num_threads));
+    let mut dy_neg = vec![0u64; dy.len()];
+    negate64(&dy, &mut dy_neg);
+    let mut bands = Vec::new();
+    let mut y = ymax;
+    let mut r0 = 0;
+    while r0 < rows {
+        let h = core::cmp::min(band, rows - r0);
+        bands.push((y.clone(), h));
+        for _ in 0..h {
+            incr64(&mut y, &dy_neg);
+        }
+        r0 += h;
+    }
 
-    // parallelize the (embarrassingly parallel) per-pixel delta orbits across rows
-    let slice_size = core::cmp::max(1, rows/num_threads);
-    let row_indices: Vec<usize> = (0..rows).collect();
-    row_indices
-        .par_chunks(slice_size)
-        .map(| idxs | {
-            idxs.iter().map(| &i | {
-                let dcy = (row_ref as f64 - i as f64) * dy_f;
-                let mut row = vec![0i32; columns];
-                perturb_row(&orbit, dcx0, dx_f, dcy, columns, max_iter, &mut row);
-                row
-            }).collect::<Vec<Vec<i32>>>()
+    bands
+        .par_iter()
+        .map(| (band_ymax, h) | {
+            let mut out = vec![0i32; h * columns];
+            mandelbrot_perturb_glitch64(&xmin, &dx, band_ymax, &dy, chunks, *h, columns, max_iter, &mut out);
+            out.chunks(columns).map(| r | r.to_vec()).collect::<Vec<Vec<i32>>>()
         })
         .flatten()
         .collect()

@@ -34,10 +34,11 @@ cd mb-rust-server && cargo build --release
 mb-rust-server [URL] [OPTIONS]
   URL               # Defaults to localhost:8000
   -r, --rayon N     # Rayon threads per request (default: 2)
-  --perturb         # Perturbation engine for HP: one full-precision reference
-                    # orbit per request, cheap f64 deltas per pixel (deep-zoom fast)
-  --u32/--u64/--u128 # Legacy half-limb engines for HP calculations
-                     # (default: full-width u64 limb engine, ~2x faster)
+  --no-perturb      # Disable the perturbation engine (default: ON — one
+                    # full-precision reference orbit per band of rows, cheap f64
+                    # deltas per pixel via the glitch engine; deep-zoom fast)
+  --u32/--u64/--u128 # Legacy half-limb engines for HP calculations; these also
+                     # disable perturbation (full-precision default: u64 limbs)
 ```
 
 ## Architecture
