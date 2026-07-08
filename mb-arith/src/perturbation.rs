@@ -29,8 +29,8 @@
 // and u32 (wasm, whose f64 delta loop runs at native speed with no 64x64->128).
 
 use crate::{
-    negate64, add64, sub64, sq64, multiply64, incr64,
-    negate32, add32, sub32, sq32, multiply32, incr32,
+    negate64, add64, sub64, sq64, multiply64, incr64, HPData64, count_iterations_hp64,
+    negate32, add32, sub32, sq32, multiply32, incr32, HPData32, count_iterations_hp32,
 };
 
 const ESCAPE_R2: f64 = 8.0;
@@ -98,12 +98,136 @@ pub fn perturb_row(
     }
 }
 
+// *** shared-index variant (SIMD-friendly) *** //
+//
+// Unlike perturb_point above, this does NOT rebase per pixel: every pixel walks
+// the reference orbit with the same index n (reading Z_n), so a whole SIMD vector
+// of pixels shares one broadcast reference read instead of a per-lane gather.
+//
+// The price is that glitches (catastrophic cancellation, or a pixel outliving the
+// reference orbit) are no longer prevented locally; they are *detected* here with
+// the Pauldelbrot criterion and corrected by the caller with a fresh reference
+// (see mandelbrot_perturb_glitch*). A larger TAU flags more pixels as glitched
+// (safer, more re-reference work); smaller flags fewer (faster, riskier).
+const GLITCH_TAU: f64 = 1e-3;
+
+// safety cap on re-reference passes; leftover pixels fall back to brute-force HP
+const MAX_GLITCH_PASSES: usize = 32;
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum PtResult {
+    Escaped(i32), // crate-standard iteration count
+    Interior,     // never escaped within max_iterations
+    Glitched(i32), // lost precision / outlived the reference at this iteration
+}
+
+/// One pixel by perturbation against a shared reference index (no rebasing).
+/// Returns Escaped/Interior, or Glitched(n) when the delta can no longer be
+/// trusted (the caller must recompute this pixel against a nearer reference).
+#[inline]
+pub fn perturb_point_shared(orbit: &[(f64, f64)], dcx: f64, dcy: f64, max_iterations: i32) -> PtResult {
+    let ref_len = orbit.len();
+    let mut dr = 0.0f64;
+    let mut di = 0.0f64;
+    for n in 0..max_iterations {
+        let nu = n as usize;
+        if nu + 1 >= ref_len {
+            return PtResult::Glitched(n); // outlived the stored reference orbit
+        }
+        let (zr, zi) = unsafe { *orbit.get_unchecked(nu) };
+        let ndr = 2.0 * (zr * dr - zi * di) + (dr * dr - di * di) + dcx;
+        let ndi = 2.0 * (zr * di + zi * dr) + 2.0 * dr * di + dcy;
+        dr = ndr;
+        di = ndi;
+
+        let (z1r, z1i) = unsafe { *orbit.get_unchecked(nu + 1) };
+        let wr = z1r + dr;
+        let wi = z1i + di;
+        let w2 = wr * wr + wi * wi;
+        if w2 >= ESCAPE_R2 {
+            return PtResult::Escaped(n);
+        }
+        // Pauldelbrot: true value shrank far below the reference -> delta unreliable
+        let zref2 = z1r * z1r + z1i * z1i;
+        if w2 < GLITCH_TAU * zref2 {
+            return PtResult::Glitched(n);
+        }
+    }
+    PtResult::Interior
+}
+
+/// Process LANES pixels together against a shared reference index. Every lane
+/// advances in lock-step reading the same Z_n (a broadcast, not a per-lane
+/// gather); finished lanes are frozen by a mask rather than an early exit. This
+/// is the branchless structure the SIMD kernels vectorize, and the portable
+/// scalar fallback on targets without SIMD. Results match calling
+/// perturb_point_shared on each lane individually.
+pub fn perturb_lanes_shared<const LANES: usize>(
+    orbit: &[(f64, f64)],
+    dcx: &[f64; LANES],
+    dcy: &[f64; LANES],
+    max_iterations: i32,
+) -> [PtResult; LANES] {
+    let ref_len = orbit.len();
+    let mut dr = [0.0f64; LANES];
+    let mut di = [0.0f64; LANES];
+    let mut done = [false; LANES];
+    let mut res = [PtResult::Interior; LANES];
+
+    for n in 0..max_iterations {
+        let nu = n as usize;
+        if nu + 1 >= ref_len {
+            for l in 0..LANES {
+                if !done[l] {
+                    res[l] = PtResult::Glitched(n);
+                }
+            }
+            break;
+        }
+        let (zr, zi) = unsafe { *orbit.get_unchecked(nu) };
+        let (z1r, z1i) = unsafe { *orbit.get_unchecked(nu + 1) };
+        let zref2 = z1r * z1r + z1i * z1i;
+
+        let mut all_done = true;
+        for l in 0..LANES {
+            // frozen lanes: keep their delta, contribute nothing new
+            let active = !done[l];
+            let ndr = 2.0 * (zr * dr[l] - zi * di[l]) + (dr[l] * dr[l] - di[l] * di[l]) + dcx[l];
+            let ndi = 2.0 * (zr * di[l] + zi * dr[l]) + 2.0 * dr[l] * di[l] + dcy[l];
+            if active {
+                dr[l] = ndr;
+                di[l] = ndi;
+            }
+            let wr = z1r + dr[l];
+            let wi = z1i + di[l];
+            let w2 = wr * wr + wi * wi;
+            if active {
+                if w2 >= ESCAPE_R2 {
+                    res[l] = PtResult::Escaped(n);
+                    done[l] = true;
+                } else if w2 < GLITCH_TAU * zref2 {
+                    res[l] = PtResult::Glitched(n);
+                    done[l] = true;
+                } else {
+                    all_done = false;
+                }
+            }
+        }
+        if all_done {
+            break;
+        }
+    }
+    res
+}
+
 // Generate the width-specific reference/setup/conversion code for one limb type.
 macro_rules! perturb_engine {
     ($limb:ty,
      $negate:ident, $add:ident, $sub:ident, $sq:ident, $multiply:ident, $incr:ident,
+     $hpdata:ident, $count_iterations:ident,
      $mag_to_f64:ident, $limbs_to_f64_scratch:ident, $limbs_to_f64:ident,
-     $reference_orbit:ident, $perturb_setup:ident, $mandelbrot_perturb:ident) => {
+     $reference_orbit:ident, $perturb_setup:ident, $mandelbrot_perturb:ident,
+     $mandelbrot_perturb_glitch:ident) => {
 
 /// Convert a magnitude (non-negative limb value: limb0 = integral part, limbs 1..
 /// = fractional limbs, most significant first) to f64.
@@ -254,18 +378,99 @@ pub fn $mandelbrot_perturb(
     }
 }
 
+/// Compute a `rows` x `columns` block by shared-index perturbation with glitch
+/// correction. Each pass runs every outstanding pixel against one reference orbit
+/// (all pixels share the reference index, so this loop is SIMD-ready); pixels the
+/// Pauldelbrot criterion flags as glitched are retried next pass against a nearer
+/// reference (the longest-surviving glitched pixel, i.e. the most in-set one).
+/// Any stragglers after MAX_GLITCH_PASSES are computed exactly by brute-force HP.
+///
+/// Serial reference implementation used for validation; the server/wasm drivers
+/// parallelize the per-pixel loop within a pass.
+pub fn $mandelbrot_perturb_glitch(
+    xmin: &[$limb],
+    dx: &[$limb],
+    ymax: &[$limb],
+    dy: &[$limb],
+    chunks: usize,
+    rows: usize,
+    columns: usize,
+    max_iterations: i32,
+    out: &mut [i32],
+) {
+    let dx_f = $limbs_to_f64(&dx[..chunks]);
+    let dy_f = $limbs_to_f64(&dy[..chunks]);
+    let mut dy_neg = vec![0 as $limb; chunks];
+    $negate(&dy[..chunks], &mut dy_neg);
+
+    // coordinate (as `chunks` limbs) of pixel (r, c): xmin + c*dx, ymax - r*dy
+    let coord_of = |r: usize, c: usize| -> (Vec<$limb>, Vec<$limb>) {
+        let mut cx = xmin[..chunks].to_vec();
+        for _ in 0..c { $incr(&mut cx, &dx[..chunks]); }
+        let mut cy = ymax[..chunks].to_vec();
+        for _ in 0..r { $incr(&mut cy, &dy_neg); }
+        (cx, cy)
+    };
+
+    let mut todo: Vec<usize> = (0..rows * columns).collect();
+    let (mut ref_r, mut ref_c) = (rows / 2, columns / 2);
+
+    for _pass in 0..MAX_GLITCH_PASSES {
+        if todo.is_empty() {
+            break;
+        }
+        let (cx, cy) = coord_of(ref_r, ref_c);
+        let orbit = $reference_orbit(&cx, &cy, max_iterations);
+
+        let mut glitched: Vec<usize> = Vec::new();
+        let mut best_survived = -1i32;
+        let mut best_pixel = todo[0];
+        for &p in &todo {
+            let r = p / columns;
+            let c = p % columns;
+            let dcx = (c as f64 - ref_c as f64) * dx_f;
+            let dcy = (ref_r as f64 - r as f64) * dy_f;
+            match perturb_point_shared(&orbit, dcx, dcy, max_iterations) {
+                PtResult::Escaped(cnt) => out[p] = cnt,
+                PtResult::Interior => out[p] = -1,
+                PtResult::Glitched(surv) => {
+                    if surv > best_survived {
+                        best_survived = surv;
+                        best_pixel = p;
+                    }
+                    glitched.push(p);
+                }
+            }
+        }
+        todo = glitched;
+        ref_r = best_pixel / columns;
+        ref_c = best_pixel % columns;
+    }
+
+    // stragglers (should be rare / none): compute exactly with brute-force HP
+    if !todo.is_empty() {
+        let mut hp = $hpdata::new(chunks);
+        for &p in &todo {
+            let (cx, cy) = coord_of(p / columns, p % columns);
+            out[p] = $count_iterations(&mut hp, &cx[..chunks], &cy[..chunks], max_iterations);
+        }
+    }
+}
+
     };
 }
 
 perturb_engine!(u64,
     negate64, add64, sub64, sq64, multiply64, incr64,
+    HPData64, count_iterations_hp64,
     mag_to_f64_64, limbs_to_f64_scratch_64, limbs64_to_f64,
-    reference_orbit64, perturb_setup64, mandelbrot_perturb64);
+    reference_orbit64, perturb_setup64, mandelbrot_perturb64, mandelbrot_perturb_glitch64);
 
 perturb_engine!(u32,
     negate32, add32, sub32, sq32, multiply32, incr32,
+    HPData32, count_iterations_hp32,
     mag_to_f64_32, limbs_to_f64_scratch_32, limbs32_to_f64,
-    reference_orbit32, perturb_setup32, mandelbrot_perturb32);
+    reference_orbit32, perturb_setup32, mandelbrot_perturb32, mandelbrot_perturb_glitch32);
 
 #[cfg(test)]
 mod tests {
@@ -366,7 +571,7 @@ mod tests {
     // lies exactly on the set boundary -> the window straddles the fractal boundary
     // (rich near-boundary structure, too deep for f64 to resolve directly). Runs the
     // same assertions against both limb engines.
-    fn deep_view_body(use32: bool) {
+    fn deep_view_body(use32: bool, glitch: bool) {
         let xd = coord(0, &[0, 0, 0, 0, 0]); // 0.0
         let yd = coord(1, &[0, 0, 0, 0, 0]); // 1.0
         let dxd = coord(0, &[0, 0, 0, 1, 0]); // 2^-64
@@ -384,7 +589,11 @@ mod tests {
             for _ in 0..rows / 2 { incr32(&mut ymax, &dy); }
 
             let mut pert = vec![0i32; rows * columns];
-            mandelbrot_perturb32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert);
+            if glitch {
+                mandelbrot_perturb_glitch32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert);
+            } else {
+                mandelbrot_perturb32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert);
+            }
             let brute = brute_image32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter);
             count_stats(&pert, &brute, rows, columns)
         } else {
@@ -398,7 +607,11 @@ mod tests {
             for _ in 0..rows / 2 { incr64(&mut ymax, &dy); }
 
             let mut pert = vec![0i32; rows * columns];
-            mandelbrot_perturb64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert);
+            if glitch {
+                mandelbrot_perturb_glitch64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert);
+            } else {
+                mandelbrot_perturb64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert);
+            }
             let brute = brute_image64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter);
             count_stats(&pert, &brute, rows, columns)
         };
@@ -434,11 +647,92 @@ mod tests {
 
     #[test]
     fn deep_view_matches_brute_u64() {
-        deep_view_body(false);
+        deep_view_body(false, false);
     }
 
     #[test]
     fn deep_view_matches_brute_u32() {
-        deep_view_body(true);
+        deep_view_body(true, false);
+    }
+
+    #[test]
+    fn glitch_deep_view_matches_brute_u64() {
+        deep_view_body(false, true);
+    }
+
+    #[test]
+    fn glitch_deep_view_matches_brute_u32() {
+        deep_view_body(true, true);
+    }
+
+    #[test]
+    fn lanes_match_per_pixel() {
+        // the lane-batch kernel (the SIMD template) must give identical results to
+        // calling perturb_point_shared on each pixel individually
+        let xd = coord(0, &[0, 0, 0, 0, 0]);
+        let yd = coord(1, &[0, 0, 0, 0, 0]);
+        let dxd = coord(0, &[0, 0, 0, 1, 0]);
+        let dyd = coord(0, &[0, 0, 0, 1, 0]);
+        let chunks = chunks64_for(xd.len());
+        let (dx, dy) = (u32_to_limbs64(&dxd), u32_to_limbs64(&dyd));
+        let mut xmin = u32_to_limbs64(&xd);
+        let mut dx_neg = vec![0u64; xmin.len()];
+        negate64(&dx, &mut dx_neg);
+        let (rows, columns, max_iter) = (48, 48, 8000);
+        for _ in 0..columns / 2 { incr64(&mut xmin, &dx_neg); }
+        let mut ymax = u32_to_limbs64(&yd);
+        for _ in 0..rows / 2 { incr64(&mut ymax, &dy); }
+
+        let (orbit, dx_f, dy_f, dcx0, _cr, row_ref) =
+            perturb_setup64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter);
+
+        // collect all pixels' (dcx, dcy)
+        let mut dcxs = Vec::new();
+        let mut dcys = Vec::new();
+        for i in 0..rows {
+            let dcy = (row_ref as f64 - i as f64) * dy_f;
+            for j in 0..columns {
+                dcxs.push(dcx0 + j as f64 * dx_f);
+                dcys.push(dcy);
+            }
+        }
+
+        // LANES = 2 and 4 must both match the per-pixel result
+        let per_pixel: Vec<PtResult> = (0..dcxs.len())
+            .map(|p| perturb_point_shared(&orbit, dcxs[p], dcys[p], max_iter))
+            .collect();
+
+        for base in (0..dcxs.len()).step_by(2) {
+            let dcx = [dcxs[base], dcxs[base + 1]];
+            let dcy = [dcys[base], dcys[base + 1]];
+            let r = perturb_lanes_shared::<2>(&orbit, &dcx, &dcy, max_iter);
+            assert_eq!(r[0], per_pixel[base], "lane2 pixel {base}");
+            assert_eq!(r[1], per_pixel[base + 1], "lane2 pixel {}", base + 1);
+        }
+        for base in (0..dcxs.len()).step_by(4) {
+            let dcx = [dcxs[base], dcxs[base + 1], dcxs[base + 2], dcxs[base + 3]];
+            let dcy = [dcys[base], dcys[base + 1], dcys[base + 2], dcys[base + 3]];
+            let r = perturb_lanes_shared::<4>(&orbit, &dcx, &dcy, max_iter);
+            for l in 0..4 {
+                assert_eq!(r[l], per_pixel[base + l], "lane4 pixel {}", base + l);
+            }
+        }
+    }
+
+    #[test]
+    fn glitch_interior_all_neg1() {
+        let xd = coord(0, &[0, 0, 0, 0]);
+        let yd = coord(0, &[0, 0, 0, 0]);
+        let dxd = coord(0, &[0, 0, 1, 0]);
+        let dyd = coord(0, &[0, 0, 1, 0]);
+        let chunks = chunks64_for(xd.len());
+        let (xmin, dx, ymax, dy) =
+            (u32_to_limbs64(&xd), u32_to_limbs64(&dxd), u32_to_limbs64(&yd), u32_to_limbs64(&dyd));
+        let (rows, columns, max_iter) = (24, 24, 500);
+        let mut pert = vec![0i32; rows * columns];
+        mandelbrot_perturb_glitch64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert);
+        for &v in &pert {
+            assert_eq!(v, -1, "interior pixel should never escape");
+        }
     }
 }
