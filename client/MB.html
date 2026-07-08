@@ -634,6 +634,13 @@ let maxRowsPerJob = 32;
 // but that recompute is a small fraction of a strip's work and is outweighed by the
 // balancing/feedback win of small strips.
 let maxRowsPerJobHP = 4;
+// Remote workers are a stop-and-wait loop (send job -> server computes -> response),
+// so every job pays an HTTP round trip while the server idles. Bigger strips
+// amortize that; the server splits each request across its Rayon threads anyway.
+let maxRowsPerJobHPRemote = 32;
+function maxRowsHP() {
+    return document.getElementById("local").checked ? maxRowsPerJobHP : maxRowsPerJobHPRemote;
+}
 
 function startJob(dontClear) {
     // console.log("startJob", running, zoomTimeout, dontClear, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
@@ -668,7 +675,7 @@ function startJob(dontClear) {
         convert(dxArray,dx,chunks+1);
         convert(dyArray, dy, chunks+1);
 
-        let rowsPerJobHP = Math.min(maxRowsPerJobHP, Math.floor(rows/workerCount));
+        let rowsPerJobHP = Math.min(maxRowsHP(), Math.floor(rows/workerCount));
         for (let row = 0; row < rows; row += rowsPerJobHP) {
             let ytmp = yVal.subtract(dy.multiply(new BigDecimal(row.toString())));
             yValArray = new ArrayType(chunks+1);
@@ -833,7 +840,7 @@ function startSecondPass() {
         convert(dxArray,dx,chunks+1);
         convert(dyArray, dy, chunks+1);
 
-        let rowsPerJobHP = Math.min(maxRowsPerJobHP, Math.floor(rows/workerCount));
+        let rowsPerJobHP = Math.min(maxRowsHP(), Math.floor(rows/workerCount));
         for (let row = 0; row < rows; row += rowsPerJobHP) {
             let ytmp = yVal.subtract(dy.multiply(new BigDecimal(row.toString())));
             yValArray = new ArrayType(chunks+1);
