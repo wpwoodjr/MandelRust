@@ -1,5 +1,6 @@
 Try NEON
 Implement V3 glitch engine in server
+2× f64x2 vectors = 4 lanes — SIMD width and two independent chains wasm on x86?
 
 -------------------------------------
 Is there a way to use emulated double-click with Chrome on ios, without haveing to call touch.handleTouchCancel()?

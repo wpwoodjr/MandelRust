@@ -81,7 +81,7 @@ fn main() {
     let (t_b, out_b) = run_strips(&mut |ymax, h, out| {
         mandelbrot_perturb_glitch32(&xmin, &dx, ymax, &dy, chunks, h, COLS, MAX_ITER, out);
     });
-    println!("B. glitch 2-lane (v3)    : {t_b:8.1} ms  (pixel loop ~{:.1} ms)  -> {:.2}x vs A", t_b - t_setup, t_a / t_b);
+    println!("B. glitch lanes (cur)     : {t_b:8.1} ms  (pixel loop ~{:.1} ms)  -> {:.2}x vs A", t_b - t_setup, t_a / t_b);
 
     // D. glitch engine, whole image in one call (image-wide shared reference)
     let mut out_d = vec![0i32; rows * COLS];

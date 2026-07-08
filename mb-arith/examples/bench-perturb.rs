@@ -54,6 +54,20 @@ fn main() {
     }}
     let t2 = t.elapsed().as_secs_f64() * 1e3;
 
+    // 2b. 4-lane scalar (more independent chains per loop)
+    let mut s4 = 0i64;
+    let t = Instant::now();
+    for i in 0..rows { for j in (0..columns).step_by(4) {
+        for r in perturb_lanes_shared::<4>(&orbit, &[dcx(j), dcx(j+1), dcx(j+2), dcx(j+3)], &[dcy(i); 4], max_iter) {
+            if let PtResult::Escaped(c) = r { s4 += c as i64; }
+        }
+    }}
+    let t4 = t.elapsed().as_secs_f64() * 1e3;
+
+    println!("1. single-pixel scalar : {t1:8.1} ms");
+    println!("2. 2-lane scalar (ILP) : {t2:8.1} ms   -> {:.2}x vs single", t1/t2);
+    println!("4. 4-lane scalar (ILP) : {t4:8.1} ms   -> {:.2}x vs 2-lane, {:.2}x vs single", t2/t4, t1/t4);
+
     // 3. NEON f64x2
     #[cfg(target_arch = "aarch64")]
     {
@@ -65,11 +79,8 @@ fn main() {
             }
         }}
         let t3 = t.elapsed().as_secs_f64() * 1e3;
-        println!("1. single-pixel scalar : {t1:8.1} ms");
-        println!("2. 2-lane scalar (ILP) : {t2:8.1} ms   -> {:.2}x vs single", t1/t2);
         println!("3. NEON f64x2 (SIMD)   : {t3:8.1} ms   -> {:.2}x vs 2-lane, {:.2}x vs single", t2/t3, t1/t3);
         assert!(s1 == s2 && s2 == s3, "kernels disagree: {s1} {s2} {s3}");
     }
-    #[cfg(not(target_arch = "aarch64"))]
-    { println!("1. single: {t1:.1} ms   2. 2-lane: {t2:.1} ms ({:.2}x)", t1/t2); let _ = (s1, s2); }
+    assert!(s1 == s4, "4-lane disagrees: {s1} {s4}");
 }

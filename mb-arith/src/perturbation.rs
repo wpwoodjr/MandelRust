@@ -624,22 +624,30 @@ pub fn $mandelbrot_perturb_glitch(
             ((c as f64 - rc as f64) * dx_f, (rr as f64 - r as f64) * dy_f)
         };
 
-        // run pixels through the SIMD pair kernel (odd tail: scalar)
+        // run pixels through the 4-lane kernel (tail: scalar). 4 independent
+        // delta orbits per loop give wide cores enough ILP to fill their FP
+        // pipes; benched faster than (or equal to) 2 lanes on every core type.
         let mut results: Vec<(usize, PtResult)> = Vec::with_capacity(todo.len());
         let mut k = 0;
-        while k + 1 < todo.len() {
-            let (p0, p1) = (todo[k], todo[k + 1]);
-            let (ax, ay) = dc(p0);
-            let (bx, by) = dc(p1);
-            let r = perturb_pair_shared(&orbit, &[ax, bx], &[ay, by], max_iterations);
-            results.push((p0, r[0]));
-            results.push((p1, r[1]));
-            k += 2;
+        while k + 3 < todo.len() {
+            let mut dcx = [0f64; 4];
+            let mut dcy = [0f64; 4];
+            for i in 0..4 {
+                let (x, y) = dc(todo[k + i]);
+                dcx[i] = x;
+                dcy[i] = y;
+            }
+            let r = perturb_lanes_shared::<4>(&orbit, &dcx, &dcy, max_iterations);
+            for i in 0..4 {
+                results.push((todo[k + i], r[i]));
+            }
+            k += 4;
         }
-        if k < todo.len() {
+        while k < todo.len() {
             let p = todo[k];
             let (ax, ay) = dc(p);
             results.push((p, perturb_point_shared(&orbit, ax, ay, max_iterations)));
+            k += 1;
         }
 
         let mut glitched: Vec<usize> = Vec::new();

@@ -40,8 +40,9 @@ pub extern "C"  fn dalloc(ptr: *mut u8, size: u32) {
 // Bumped on each build so the client can confirm which binary is actually loaded
 // (an absent export = a stale cached build predating this marker). 3 = shared-index
 // + glitch engine, scalar 2-lane kernel (SIMD dropped: measured slower than ILP).
+// 4 = scalar 4-lane kernel (more ILP on wide cores, no downside on narrow ones).
 #[no_mangle]
-pub extern "C" fn mb_wasm_version() -> u32 { 3 }
+pub extern "C" fn mb_wasm_version() -> u32 { 4 }
 
 
 use mb_arith::*;
