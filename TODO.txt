@@ -1,3 +1,7 @@
+Try NEON
+Implement V3 glitch engine in server
+
+-------------------------------------
 Is there a way to use emulated double-click with Chrome on ios, without haveing to call touch.handleTouchCancel()?
 Maybe need to kill workers to increase responsiveness to touch on mobile with "default" settings
 Undo zoom is wrong if change window size between zoom and undo zoom

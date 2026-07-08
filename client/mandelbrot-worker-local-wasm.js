@@ -3,6 +3,13 @@ let /* int */ maxIterations, jobNumber, workerNumber;
 let compute_mandelbrot = null, compute_mandelbrot_hp = null, compute_mandelbrot_hp_perturb = null;
 let malloc, dalloc;
 
+// Set to true to log HP compute time per strip and the loaded .wasm size
+// (the SIMD build is ~57 KB; the pre-SIMD build was ~43 KB -> a quick cache check).
+// This lives in the WORKER scope, not the page: edit it here and hard-reload, or in
+// DevTools switch the console's context dropdown to the worker and run `DEBUG = true`.
+let DEBUG = false;
+let hpMsAccum = 0, hpStripAccum = 0;
+
 async function waitForWasm(workerNumber, jobNumber) {
     if (compute_mandelbrot && compute_mandelbrot_hp && compute_mandelbrot_hp_perturb) {
         return;
@@ -56,6 +63,7 @@ onmessage = function(msg) {
         maxIterations = data[2];
         highPrecision = data[3];
         workerNumber = data[4];
+        if (DEBUG) { hpMsAccum = 0; hpStripAccum = 0; }
     } else if ( data[0] == "task" ) {
         // console.log("task job", jobNumber);
         let myJobNumber = jobNumber;
@@ -88,7 +96,13 @@ onmessage = function(msg) {
                     let outLen = nrows*columnCount;
                     let outPtr = wasmMemory.newArrayI32(outLen).byteOffset;
 
+                    let _t0 = DEBUG ? performance.now() : 0;
                     compute_mandelbrot_hp_perturb(xminPtr, len, dxPtr, columnCount, ymaxPtr, dyPtr, nrows, maxIterations, outPtr);
+                    if (DEBUG) {
+                        let ms = performance.now() - _t0;
+                        hpMsAccum += ms; hpStripAccum += 1;
+                        console.log(`[w${workerNumber}] HP strip ${nrows}x${columnCount} maxIter=${maxIterations}: ${ms.toFixed(2)} ms  (job total ${hpMsAccum.toFixed(1)} ms over ${hpStripAccum} strips)`);
+                    }
 
                     // fresh view: wasm memory may have grown (and detached old views)
                     let counts = new Int32Array(wasmMemory.memory.buffer, outPtr, outLen);
@@ -121,6 +135,10 @@ onmessage = function(msg) {
             .instantiate(data[2], { } )
             .then(instance => {
                 // console.log("loading wasm");
+                if (DEBUG) {
+                    let v = instance.exports.mb_wasm_version;
+                    console.log(`[w${data[1]}] wasm loaded: version ${v ? v() : "absent (stale cached build)"}  (2 = SIMD glitch engine)`);
+                }
                 wasmMemory = new WasmMemory(instance.exports.memory);
                 // Hold onto the module's exports so that we can reuse them
                 compute_mandelbrot = instance.exports.compute_mandelbrot;

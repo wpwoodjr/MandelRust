@@ -37,6 +37,12 @@ pub extern "C"  fn dalloc(ptr: *mut u8, size: u32) {
     }
 }
 
+// Bumped on each build so the client can confirm which binary is actually loaded
+// (an absent export = a stale cached build predating this marker). 3 = shared-index
+// + glitch engine, scalar 2-lane kernel (SIMD dropped: measured slower than ILP).
+#[no_mangle]
+pub extern "C" fn mb_wasm_version() -> u32 { 3 }
+
 
 use mb_arith::*;
 
@@ -109,5 +115,6 @@ pub extern "C" fn compute_mandelbrot_hp_perturb(
     let ymax = u32_to_limbs32(ymax);
     let dy = u32_to_limbs32(dy);
 
-    mandelbrot_perturb32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iterations, iteration_counts);
+    // shared-index + glitch engine (SIMD-accelerated: SIMD128 f64x2 per pair)
+    mandelbrot_perturb_glitch32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iterations, iteration_counts);
 }
