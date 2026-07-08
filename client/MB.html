@@ -629,17 +629,55 @@ function stopJob(dontUpdateStatusToIdle) {
 }
 
 let maxRowsPerJob = 32;
-// Small HP strips keep the work-stealing queue balanced (short tail) and give
-// responsive progressive updates. Perturbation rebuilds a reference orbit per strip,
-// but that recompute is a small fraction of a strip's work and is outweighed by the
-// balancing/feedback win of small strips.
-let maxRowsPerJobHP = 4;
-// Remote workers are a stop-and-wait loop (send job -> server computes -> response),
-// so every job pays an HTTP round trip while the server idles. Bigger strips
-// amortize that; the server splits each request across its Rayon threads anyway.
-let maxRowsPerJobHPRemote = 32;
-function maxRowsHP() {
-    return document.getElementById("local").checked ? maxRowsPerJobHP : maxRowsPerJobHPRemote;
+// HP strip height: big blocks are efficient for the perturbation glitch engine
+// (they amortize the reference orbit and glitch-correction passes), and for remote
+// workers they also amortize the HTTP round trip the server idles through. But a
+// big job dispatched LAST to a slow core sets the image completion time, so for
+// local workers the last-dispatched jobs are re-split into minRowsPerJobHP strips
+// (splitHPTailJobs below) to balance the tail across unequal cores.
+let maxRowsPerJobHP = 32;
+let minRowsPerJobHP = 4;
+
+// Local HP job size scales with parallelism: a lone worker has no balancing
+// problem and gets the most engine-efficient big blocks, while many workers on
+// unequal cores need many small quanta so per-core speed differences average out
+// (target ~8 jobs per worker). Remote jobs are always maxRowsPerJobHP: each one
+// costs an HTTP round trip, and the server load-balances internally via Rayon.
+function rowsPerJobLocalHP(rows) {
+    let n = document.getElementById("local").checked
+        ? Math.floor(rows/(8*workerCount))
+        : maxRowsPerJobHP;
+    return Math.max(minRowsPerJobHP, Math.min(maxRowsPerJobHP, n));
+}
+
+// Split the jobs at the FRONT of the jobs array into minRowsPerJobHP strips.
+// Workers pop() from the end, so the front of the array is dispatched last --
+// this holds for the plain (reversed), interlaced, and second-pass orderings.
+// yVal/dy are the image-top BigDecimals used to build each sub-job's y value.
+function splitHPTailJobs(jobs, yVal, dy) {
+    if (!document.getElementById("local").checked) {
+        return jobs;    // remote jobs stay whole: each one costs an HTTP round trip
+    }
+    let splitCount = Math.min(jobs.length, Math.ceil(workerCount/2));
+    let tail = [];
+    for (let k = 0; k < splitCount; k++) {
+        let job = jobs[k];
+        for (let r = job.row; r < job.row + job.nrows; r += minRowsPerJobHP) {
+            let ytmp = yVal.subtract(dy.multiply(new BigDecimal(r.toString())));
+            let yValArray = new ArrayType(chunks+1);
+            convert(yValArray, ytmp, chunks+1);
+            tail.push({
+                row: r,
+                columns: job.columns,
+                xmin: job.xmin,
+                dx: job.dx,
+                yVal: yValArray,
+                dy: job.dy,
+                nrows: Math.min(minRowsPerJobHP, job.row + job.nrows - r)
+            });
+        }
+    }
+    return tail.concat(jobs.slice(splitCount));
 }
 
 function startJob(dontClear) {
@@ -675,7 +713,7 @@ function startJob(dontClear) {
         convert(dxArray,dx,chunks+1);
         convert(dyArray, dy, chunks+1);
 
-        let rowsPerJobHP = Math.min(maxRowsHP(), Math.floor(rows/workerCount));
+        let rowsPerJobHP = rowsPerJobLocalHP(rows);
         for (let row = 0; row < rows; row += rowsPerJobHP) {
             let ytmp = yVal.subtract(dy.multiply(new BigDecimal(row.toString())));
             yValArray = new ArrayType(chunks+1);
@@ -725,6 +763,11 @@ function startJob(dontClear) {
                 //sortedJobs[j] = null;
             }
         }
+    }
+
+    if (highPrecision) {
+        // AFTER any interlace reordering: re-split the last-dispatched jobs small
+        jobs = splitHPTailJobs(jobs, yVal, dy);
     }
 
     jobStartTime = Date.now();
@@ -840,7 +883,7 @@ function startSecondPass() {
         convert(dxArray,dx,chunks+1);
         convert(dyArray, dy, chunks+1);
 
-        let rowsPerJobHP = Math.min(maxRowsHP(), Math.floor(rows/workerCount));
+        let rowsPerJobHP = rowsPerJobLocalHP(rows);
         for (let row = 0; row < rows; row += rowsPerJobHP) {
             let ytmp = yVal.subtract(dy.multiply(new BigDecimal(row.toString())));
             yValArray = new ArrayType(chunks+1);
@@ -855,6 +898,8 @@ function startSecondPass() {
                 nrows: Math.min(rowsPerJobHP, rows - row)
             });
         }
+        // no interlacing on the second pass; front of the array still dispatches last
+        jobs = splitHPTailJobs(jobs, yVal, dy);
     }
     else {
         var xmin_d = Number(xStart.toString());

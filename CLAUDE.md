@@ -76,6 +76,43 @@ Coordinates are passed as `Vec<u32>` arrays of 16-bit digits (element 0 = signed
 
 Benchmark the two engines with `cargo run --release --example bench-hp` in `mb-arith/`.
 
+## Perturbation Engine (mb-arith/src/perturbation.rs)
+
+HP images default to perturbation theory on both tiers: one full-precision
+reference orbit per block (stored as f64 pairs), then a cheap f64 delta orbit per
+pixel — `d' = 2*Z_n*d + d^2 + dc`. Depth-independent per-pixel cost; f64 deltas
+are usable down to ~1e-300 pixel scale. Two engines, generated for u64/u32 limbs
+by the `perturb_engine!` macro:
+
+- `mandelbrot_perturb_glitch64/32()` - **current default** (server + wasm v4).
+  Shared-index engine: all pixels walk the reference at the same index, batched 4
+  per loop through `perturb_lanes_shared::<4>` (branchless lock-step; the ~1.3-4x
+  speedup is instruction-level parallelism, core-dependent). Glitches detected by
+  the Pauldelbrot criterion, corrected by re-referencing passes (next reference =
+  longest-surviving glitched pixel), stragglers fall back to brute HP.
+- `mandelbrot_perturb64/32()` - Zhuoran rebasing engine (`perturb_point`: reset
+  d:=z, index:=0 when |z|<|d|); glitch-free single reference, block-size
+  indifferent, but per-pixel control flow (no lanes).
+- Explicit SIMD kernels (`perturb_pair_shared_neon`, `perturb_pair_shared_wasm`)
+  exist but are UNSHIPPED: benched slower than scalar lanes on Cortex-X925/A720
+  (mask/select overhead exceeds what ILP already provides); NEON wins only on
+  Cortex-X4. Any single-kernel choice is a compromise on big.LITTLE — benchmark
+  per core type (`taskset -c N`) before believing any perf number on this machine.
+
+Job sizing (client, MB.html): local HP jobs target ~8 jobs/worker (clamped 4..32
+rows; a lone worker gets 32s), then `splitHPTailJobs()` re-splits the
+last-dispatched jobs into 4-row strips after interlace reordering (workers pop()
+from the array end, so the array FRONT dispatches last). Remote jobs are fixed 32
+rows — each costs an HTTP round trip the server idles through; the server splits
+each request into one band per Rayon thread (`compute_mandelbrot_perturb64`).
+
+Benchmarks in `mb-arith/examples/`: `bench-real.rs` (126-digit saved view, exact
+client digit pipeline, BENCH_START/BENCH_ROWS slicing), `bench-real35.rs`
+(35-digit view), `bench-perturb.rs` (single vs 2/4-lane vs NEON kernel isolation),
+`bench-strips.rs` (strip-height sweep). Measured on the dev machine (800x600,
+126-digit view): browser single-worker 2.6x vs the pre-perturbation baseline;
+server 11x vs brute HP on the same strip, bit-identical output.
+
 ## Build Configuration
 
 Release builds use aggressive optimizations (`Cargo.toml`):
@@ -90,4 +127,20 @@ WASM builds additionally strip symbols and abort on panic for minimal binary siz
 
 ## Current Development
 
-The `gpu` branch contains experimental WebGPU acceleration work. Main stable branch is `master`.
+Main stable branch is `master`. The `perturbation` branch (this work) holds the
+perturbation engines described above. The `gpu` branch contains experimental
+WebGPU acceleration work.
+
+Next steps (the `BLA` branch):
+1. **BLA (bivariate linear approximation)** — the big lever. Precompute a table of
+   composed linear maps `d' = A*d + B*dc` over the reference orbit (skips of 1, 2,
+   4, ... iterations, each with a validity radius on |d|); pixels skip 90-99% of
+   iterations at deep zoom. BLA control flow is per-pixel (variable-length skips),
+   so it pairs with the REBASING engine (`perturb_point`), not the lock-step lane
+   kernel — expect the glitch 4-lane engine to remain only as the shallow/low-iter
+   fallback if BLA wins the head-to-head. Validate pixel-exact vs brute HP on the
+   saved views in bench-real/bench-real35, and bench per core type before shipping.
+2. **floatexp deltas** (f64 mantissa + i64 exponent) to push perturbation past the
+   ~1e-300 pixel-scale f64 underflow floor.
+3. Maybe: per-core kernel dispatch on the server (sched_getcpu: NEON on X4, scalar
+   lanes elsewhere, ~+9% fleet-wide) — small potatoes next to BLA.

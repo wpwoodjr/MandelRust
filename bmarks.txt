@@ -1,3 +1,9 @@
+Links
+126 middle: http://localhost:8000/MB.html?xml=%3C%3Fxml%20version%3D'1.0'%3F%3E%0A%3Cmandelbrot_settings_2%3E%0A%3Cimage_size%20width%3D'800'%20height%3D'120'%2F%3E%0A%3Climits%3E%0A%20%20%20%3Cxmin%3E-1.860460516298673172230333018784270044276096283022855952480965923931782897011341161583793903866846101293126114224924089182699215%3C%2Fxmin%3E%0A%20%20%20%3Cxmax%3E-1.860460516298673172230333018784270044276096283022855952480965923931782897011341161583793903866846101293126100246490085964151215%3C%2Fxmax%3E%0A%20%20%20%3Cymin%3E0.000127117449884649210392863748142587684982284304423743585496794271755259301153474377737599180603696134778493395589575283380583%3C%2Fymin%3E%0A%20%20%20%3Cymax%3E0.000127117449884649210392863748142587684982284304423743585496794271755259301153474377737599180603696134778495492354675766162663%3C%2Fymax%3E%0A%3C%2Flimits%3E%0A%3Cpalette%20colorType%3D'RGB'%3E%0A%20%20%20%3CdivisionPoint%20position%3D'0'%20color%3D'0%3B0.4%3B0'%2F%3E%0A%20%20%20%3CdivisionPoint%20position%3D'0.08765652951699464'%20color%3D'0%3B0.2%3B0'%2F%3E%0A%20%20%20%3CdivisionPoint%20position%3D'0.23076923076923078'%20color%3D'0.4%3B0.4%3B0'%2F%3E%0A%20%20%20%3CdivisionPoint%20position%3D'0.43828264758497315'%20color%3D'0.4%3B0.2%3B0'%2F%3E%0A%20%20%20%3CdivisionPoint%20position%3D'0.590339892665474'%20color%3D'0%3B0.6%3B0'%2F%3E%0A%20%20%20%3CdivisionPoint%20position%3D'0.8085867620751341'%20color%3D'0.8%3B1%3B0'%2F%3E%0A%20%20%20%3CdivisionPoint%20position%3D'1'%20color%3D'0%3B0.4%3B0'%2F%3E%0A%3C%2Fpalette%3E%0A%3Cpalette_mapping%20length%3D'500'%20offset%3D'445'%2F%3E%0A%3Cmax_iterations%20value%3D'50000'%2F%3E%0A%3C%2Fmandelbrot_settings_2%3E%0A
+126 full: http://localhost:8000/MB.html?xml=%3C%3Fxml%20version%3D'1.0'%3F%3E%0A%3Cmandelbrot_settings_2%3E%0A%3Cimage_size%20width%3D'800'%20height%3D'600'%2F%3E%0A%3Climits%3E%0A%20%20%20%3Cxmin%3E-1.860460516298673172230333018784270044276096283022855952480965923931782897011341161583793903866846101293126114680263484003876440%3C%2Fxmin%3E%0A%20%20%20%3Cxmax%3E-1.860460516298673172230333018784270044276096283022855952480965923931782897011341161583793903866846101293126100066352704220696440%3C%2Fxmax%3E%0A%20%20%20%3Cymin%3E0.000127117449884649210392863748142587684982284304423743585496794271755259301153474377737599180603696134778488766908773753903895%3C%2Fymin%3E%0A%20%20%20%3Cymax%3E0.000127117449884649210392863748142587684982284304423743585496794271755259301153474377737599180603696134778499727341858591289165%3C%2Fymax%3E%0A%3C%2Flimits%3E%0A%3Cpalette%20colorType%3D'RGB'%3E%0A%20%20%20%3CdivisionPoint%20position%3D'0'%20color%3D'0%3B0.4%3B0'%2F%3E%0A%20%20%20%3CdivisionPoint%20position%3D'0.08765652951699464'%20color%3D'0%3B0.2%3B0'%2F%3E%0A%20%20%20%3CdivisionPoint%20position%3D'0.23076923076923078'%20color%3D'0.4%3B0.4%3B0'%2F%3E%0A%20%20%20%3CdivisionPoint%20position%3D'0.43828264758497315'%20color%3D'0.4%3B0.2%3B0'%2F%3E%0A%20%20%20%3CdivisionPoint%20position%3D'0.590339892665474'%20color%3D'0%3B0.6%3B0'%2F%3E%0A%20%20%20%3CdivisionPoint%20position%3D'0.8085867620751341'%20color%3D'0.8%3B1%3B0'%2F%3E%0A%20%20%20%3CdivisionPoint%20position%3D'1'%20color%3D'0%3B0.4%3B0'%2F%3E%0A%3C%2Fpalette%3E%0A%3Cpalette_mapping%20length%3D'500'%20offset%3D'445'%2F%3E%0A%3Cmax_iterations%20value%3D'50000'%2F%3E%0A%3C%2Fmandelbrot_settings_2%3E%0A
+35-digit: http://localhost:8000/MB.html?xml=%3C%3Fxml%20version%3D'1.0'%3F%3E%0A%3Cmandelbrot_settings_2%3E%0A%3Cimage_size%20width%3D'800'%20height%3D'600'%2F%3E%0A%3Climits%3E%0A%20%20%20%3Cxmin%3E-1.86046051629867317223033980199826782%3C%2Fxmin%3E%0A%20%20%20%3Cxmax%3E-1.86046051629867317223033978309405982%3C%2Fxmax%3E%0A%20%20%20%3Cymin%3E0.00012711744988464921042888420168070%3C%2Fymin%3E%0A%20%20%20%3Cymax%3E0.00012711744988464921042889837983670%3C%2Fymax%3E%0A%3C%2Flimits%3E%0A%3Cpalette%20colorType%3D'RGB'%3E%0A%20%20%20%3CdivisionPoint%20position%3D'0'%20color%3D'0%3B0.4%3B0'%2F%3E%0A%20%20%20%3CdivisionPoint%20position%3D'0.08765652951699464'%20color%3D'0%3B0.2%3B0'%2F%3E%0A%20%20%20%3CdivisionPoint%20position%3D'0.23076923076923078'%20color%3D'0.4%3B0.4%3B0'%2F%3E%0A%20%20%20%3CdivisionPoint%20position%3D'0.43828264758497315'%20color%3D'0.4%3B0.2%3B0'%2F%3E%0A%20%20%20%3CdivisionPoint%20position%3D'0.590339892665474'%20color%3D'0%3B0.6%3B0'%2F%3E%0A%20%20%20%3CdivisionPoint%20position%3D'0.8085867620751341'%20color%3D'0.8%3B1%3B0'%2F%3E%0A%20%20%20%3CdivisionPoint%20position%3D'1'%20color%3D'0%3B0.4%3B0'%2F%3E%0A%3C%2Fpalette%3E%0A%3Cpalette_mapping%20length%3D'300'%20offset%3D'135'%2F%3E%0A%3Cmax_iterations%20value%3D'2000'%2F%3E%0A%3C%2Fmandelbrot_settings_2%3E%0A
+  
+
 Chromebook Mediatek Kompanio
 
 ● That completes the matrix nicely:
@@ -32,3 +38,44 @@ Chromebook Mediatek Kompanio
 
   And the cumulative picture vs. where we started this session (pre-v3 rebasing): 2.6x single-worker on the middle view, 1.8x with 8 workers; even the adversarial full view is now 1.94x /
   1.16x. 
+
+  ● Excellent results — the round-trip amortization delivered everywhere:
+  
+  ┌──────────────────────┬────────┬────────────┬─────────────────────┐
+  │         Test         │ before │   after    │     vs browser      │
+  ├──────────────────────┼────────┼────────────┼─────────────────────┤
+  │ 126-digit full, 8w   │ 127    │ 151        │ 117 — server ahead  │
+  ├──────────────────────┼────────┼────────────┼─────────────────────┤
+  │ 126-digit full, 1w   │ 28.8   │ 56.5 (2x)  │ 33.5 — server ahead │
+  ├──────────────────────┼────────┼────────────┼─────────────────────┤
+  │ 126-digit middle, 8w │ 155    │ 169        │ 163                 │
+  ├──────────────────────┼────────┼────────────┼─────────────────────┤
+  │ 126-digit middle, 1w │ 32.6   │ 63.8 (2x)  │ 46.3                │
+  ├──────────────────────┼────────┼────────────┼─────────────────────┤
+  │ 35-digit, 8w         │ 467    │ 880 (1.9x) │ 977 — browser holds │
+  ├──────────────────────┼────────┼────────────┼─────────────────────┤
+  │ 35-digit, 1w         │ 48     │ 335 (7x!)  │ 278 — server ahead  │
+  └──────────────────────┴────────┴────────────┴─────────────────────┘
+
+  The server is back where it belongs: ahead of the browser in every single-stream test and at deep zoom, and the remaining 8-worker shallow gap (880 vs 977) is Chrome's
+  6-connections-per-host cap plus the residual stop-and-wait gaps — structural, not worth chasing.
+
+  ● That's a keeper — everything at-or-above baseline except a 2% dip on the shallow 8-worker case:
+  
+  ┌────────────────┬────────────────┬──────────┬─────────────────────┐
+  │      View      │ 4-row baseline │ adaptive │       change        │
+  ├────────────────┼────────────────┼──────────┼─────────────────────┤
+  │ 126 middle, 1w │ 46.3           │ 53–54.7  │ +15–18%             │
+  ├────────────────┼────────────────┼──────────┼─────────────────────┤
+  │ 126 middle, 8w │ 163            │ 157–166  │ par, variance tamed │
+  ├────────────────┼────────────────┼──────────┼─────────────────────┤
+  │ 126 full, 1w   │ 33.5           │ 44.2     │ +32%                │
+  ├────────────────┼────────────────┼──────────┼─────────────────────┤
+  │ 126 full, 8w   │ 117            │ 135–137  │ +16%, stable        │
+  ├────────────────┼────────────────┼──────────┼─────────────────────┤
+  │ 35-digit, 1w   │ 278            │ 288      │ +4%                 │
+  ├────────────────┼────────────────┼──────────┼─────────────────────┤
+  │ 35-digit, 8w   │ 977            │ 952      │ −2.5%               │
+  └────────────────┴────────────────┴──────────┴─────────────────────┘
+
+  The formula found the right shape: big blocks where there's no balancing problem (few workers), fine quanta where there is (many unequal cores), tail split as insurance.
