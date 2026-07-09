@@ -641,13 +641,16 @@ let minRowsPerJobHP = 4;
 // Local HP job size scales with parallelism: a lone worker has no balancing
 // problem and gets the most engine-efficient big blocks, while many workers on
 // unequal cores need many small quanta so per-core speed differences average out
-// (target ~8 jobs per worker). Remote jobs are always maxRowsPerJobHP: each one
-// costs an HTTP round trip, and the server load-balances internally via Rayon.
+// (target ~8 jobs per worker). Remote jobs want maxRowsPerJobHP: each one costs
+// an HTTP round trip, and the server load-balances internally via Rayon. Either
+// way, never create fewer jobs than workers -- the dispatch loop hands one job
+// to every worker up front (a short canvas caps the job size accordingly).
 function rowsPerJobLocalHP(rows) {
+    let onePerWorker = Math.max(1, Math.floor(rows/workerCount));
     let n = document.getElementById("local").checked
-        ? Math.floor(rows/(8*workerCount))
+        ? Math.max(minRowsPerJobHP, Math.floor(rows/(8*workerCount)))
         : maxRowsPerJobHP;
-    return Math.max(minRowsPerJobHP, Math.min(maxRowsPerJobHP, n));
+    return Math.max(1, Math.min(maxRowsPerJobHP, n, onePerWorker));
 }
 
 // Split the jobs at the FRONT of the jobs array into minRowsPerJobHP strips.
@@ -773,6 +776,9 @@ function startJob(dontClear) {
     jobStartTime = Date.now();
     for (let i = 0; i < workerCount; i++) {
         let j = jobs.pop();
+        if (!j) {   // more workers than jobs (very short canvas): leave the rest idle
+            break;
+        }
         j.workerNum = i;
         workers[i].postMessage(["setup",jobNum, maxIterSlider.value,highPrecision,i]);
         workers[i].postMessage([
@@ -925,6 +931,9 @@ function startSecondPass() {
 
     for (var i = 0; i < workerCount; i++) {
         var j = jobs.pop();
+        if (!j) {   // more workers than jobs (very short canvas): leave the rest idle
+            break;
+        }
         j.workerNum = i;
         workers[i].postMessage(["setup",jobNum, maxIterSlider.value,highPrecision,i]);
         workers[i].postMessage([
