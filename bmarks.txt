@@ -113,3 +113,41 @@ BLA
   For calibration: the two exact engines already disagree with each other on 1 pixel of this view (f64 boundary noise), so 2⁻⁴⁰ is essentially at the method's intrinsic noise floor — and no
   interior↔escaped flips at any setting. I've set 2⁻⁴⁰ as the default; giving up 8x→11.4x for near-exactness feels right for this project, but it's one constant if you ever want the faster
   dial.
+
+● Mostly triumphant, but one anomaly worth chasing:
+
+  ┌────────────────┬─────────────┬──────────┬─────────────────────────────┐
+  │      Test      │ before (v4) │ BLA (v5) │           change            │
+  ├────────────────┼─────────────┼──────────┼─────────────────────────────┤
+  │ 126 full, 1w   │ 44.2        │ 152      │ 3.4x                        │
+  ├────────────────┼─────────────┼──────────┼─────────────────────────────┤
+  │ 126 full, 8w   │ ~136        │ 850      │ 6.2x                        │
+  ├────────────────┼─────────────┼──────────┼─────────────────────────────┤
+  │ 126 middle, 1w │ 54.7        │ 144      │ 2.6x                        │
+  ├────────────────┼─────────────┼──────────┼─────────────────────────────┤
+  │ 126 middle, 8w │ ~163        │ 732      │ 4.5x                        │
+  ├────────────────┼─────────────┼──────────┼─────────────────────────────┤
+  │ 35-digit, 1w   │ 288         │ 170      │ 0.6x — regression!          │
+  ├────────────────┼─────────────┼──────────┼─────────────────────────────┤
+  │ 35-digit, 8w   │ 952         │ 1000     │ par (likely overhead-bound) │
+  └────────────────┴─────────────┴──────────┴─────────────────────────────┘
+
+  The deep view delivered handsomely. But the 35-digit single-worker dropping from 288 to 170 contradicts my native bench (which showed BLA 2.45x faster there) — except that bench only ran
+  the top 120 rows. The full view includes different regions, and BLA's pixel loop is scalar — it gave up the 4-lane ILP — so in regions where skips don't validate (shallow depth,
+  near-interior structure shrinking the radii), BLA pays scalar cost per iteration while v4 had 4 lanes.
+
+● That's a wrap on the hybrid — every cell landed where predicted (no BLA on 35-digit):
+
+  ┌────────────┬─────────────────────┬───────────┐
+  │    View    │      1 worker       │ 8 workers │
+  ├────────────┼─────────────────────┼───────────┤
+  │ 35-digit   │ 290 (was 170 on v5) │ 943       │
+  ├────────────┼─────────────────────┼───────────┤
+  │ 126 full   │ 150                 │ 862       │
+  ├────────────┼─────────────────────┼───────────┤
+  │ 126 middle │ 146                 │ 690–732   │
+  └────────────┴─────────────────────┴───────────┘
+
+  And the full-day arc on the 126-digit full view, browser: 17.3 → 150 rows/sec single-worker (8.7x), 101 → 862 with 8 workers (8.5x) — from perturbation kernel work (~2.6x) times BLA
+  (~3.4x), with the scheduling fixes keeping the multi-worker scaling honest. The server got the same BLA lift plus its protocol fix (48 → 335+ single-stream at 35 digits, 33x vs brute on
+  deep strips).

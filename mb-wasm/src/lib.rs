@@ -42,8 +42,10 @@ pub extern "C"  fn dalloc(ptr: *mut u8, size: u32) {
 // + glitch engine, scalar 2-lane kernel (SIMD dropped: measured slower than ILP).
 // 4 = scalar 4-lane kernel (more ILP on wide cores, no downside on narrow ones).
 // 5 = BLA (rebasing + composed-skip table): skips most iterations at deep zoom.
+// 6 = depth hybrid: BLA at >= 16 u32 digits, glitch 4-lane below (wasm JITs run
+//     the branchy BLA loop poorly; the crossover is ~60-70 decimal digits).
 #[no_mangle]
-pub extern "C" fn mb_wasm_version() -> u32 { 5 }
+pub extern "C" fn mb_wasm_version() -> u32 { 6 }
 
 
 use mb_arith::*;
@@ -117,7 +119,15 @@ pub extern "C" fn compute_mandelbrot_hp_perturb(
     let ymax = u32_to_limbs32(ymax);
     let dy = u32_to_limbs32(dy);
 
-    // BLA engine: rebasing perturbation + a composed-skip table built once per
-    // reference orbit; skips most iterations at deep zoom (see mb-arith)
-    mandelbrot_perturb_bla32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iterations, iteration_counts);
+    // Engine choice (wasm-specific): BLA's scalar probe-per-iteration loop runs
+    // at only ~1/3 native speed under wasm JITs, while the 4-lane glitch engine
+    // runs at ~native speed. BLA still wins decisively at deep zoom (~3.4x at
+    // 126 decimal digits, node-measured) but loses at shallow depth (~0.6x at
+    // 35 digits), so pick by zoom depth; the crossover is around 60-70 decimal
+    // digits = ~16 u32 16-bit digits. The native server uses BLA at all depths.
+    if u32_chunks >= 16 {
+        mandelbrot_perturb_bla32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iterations, iteration_counts);
+    } else {
+        mandelbrot_perturb_glitch32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iterations, iteration_counts);
+    }
 }

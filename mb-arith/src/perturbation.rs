@@ -128,11 +128,14 @@ pub struct BlaEntry {
     pub r2: f64,
 }
 
-/// Composed-skip table over a reference orbit: `levels[k][j]` skips the 2^k
+/// Composed-skip table over a reference orbit: level k, entry j skips the 2^k
 /// iterations starting at orbit index j*2^k (power-of-two aligned). Level 0 is
 /// the linearized single step; each level above merges pairs from the one below.
+/// Stored flat (one allocation, levels back to back) so a probe is a single
+/// computed-index load -- wasm engines don't hoist nested-Vec indirections.
 pub struct BlaTable {
-    pub levels: Vec<Vec<BlaEntry>>,
+    pub entries: Vec<BlaEntry>,
+    pub level_off: Vec<u32>, // start of level k within entries
 }
 
 // compose "x then y" into one linear step over both spans
@@ -163,25 +166,24 @@ pub fn build_bla_table(orbit: &[(f64, f64)], dc_max: f64) -> BlaTable {
     // step i maps d_i -> d_{i+1} using Z_i; the last usable step needs Z_{i+1}
     // to exist for the escape check, hence orbit.len()-1 steps.
     let steps = orbit.len().saturating_sub(1);
-    let mut level0 = Vec::with_capacity(steps);
+    let mut entries = Vec::with_capacity(2 * steps + 8);
     for i in 0..steps {
         let (zx, zy) = orbit[i];
         let r = BLA_EPS * (zx * zx + zy * zy).sqrt();
-        level0.push(BlaEntry { ax: 2.0 * zx, ay: 2.0 * zy, bx: 1.0, by: 0.0, r2: r * r });
+        entries.push(BlaEntry { ax: 2.0 * zx, ay: 2.0 * zy, bx: 1.0, by: 0.0, r2: r * r });
     }
-    let mut levels = vec![level0];
-    loop {
-        let prev = levels.last().unwrap();
-        if prev.len() < 2 {
-            break;
+    let mut level_off = vec![0u32];
+    let (mut off, mut len) = (0usize, steps);
+    while len >= 2 {
+        level_off.push(entries.len() as u32);
+        for j in 0..len / 2 {
+            let merged = bla_merge(&entries[off + 2 * j], &entries[off + 2 * j + 1], dc_max);
+            entries.push(merged);
         }
-        let mut next = Vec::with_capacity(prev.len() / 2);
-        for j in 0..prev.len() / 2 {
-            next.push(bla_merge(&prev[2 * j], &prev[2 * j + 1], dc_max));
-        }
-        levels.push(next);
+        off = *level_off.last().unwrap() as usize;
+        len /= 2;
     }
-    BlaTable { levels }
+    BlaTable { entries, level_off }
 }
 
 /// Like `perturb_point` (same rebasing, same count conventions -- see that fn),
@@ -200,7 +202,7 @@ pub fn perturb_point_bla(
         return -1;
     }
     let last = ref_len - 1;
-    let n_levels = bla.levels.len();
+    let n_levels = bla.level_off.len();
 
     let mut dr = 0.0f64;
     let mut di = 0.0f64;
@@ -208,30 +210,41 @@ pub fn perturb_point_bla(
     let mut n = 0i32; // crate-standard iteration counter
 
     while n < max_iterations {
-        // longest power-of-two skip aligned at m whose radius admits |d| (skips of
-        // 1 are skipped: a linearized single step costs the same as an exact one)
+        // Longest power-of-two skip aligned at m whose radius admits |d|. Radii
+        // are monotone non-increasing up the levels (a merged radius is <= its
+        // left child's), and the bounds checks only get harder as skips grow, so
+        // scan UPWARD and stop at the first failure: iterations that cannot skip
+        // (large |d|, shallow zoom) pay a single probe instead of a full descent.
+        // Skips of 1 aren't taken: a linearized step costs the same as an exact one.
+        // (m + s <= last also keeps m>>k inside level k: len_k = steps >> k.)
         let d2 = dr * dr + di * di;
         let k_align = if m == 0 { usize::MAX } else { m.trailing_zeros() as usize };
-        let mut k = k_align.min(n_levels - 1);
-        let mut skipped = false;
-        while k >= 1 {
+        let k_max = k_align.min(n_levels - 1);
+        let mut found: Option<(&BlaEntry, usize)> = None;
+        let mut k = 1usize;
+        while k <= k_max {
             let s = 1usize << k;
-            if m + s <= last && (n as usize + s) <= max_iterations as usize {
-                let e = unsafe { bla.levels.get_unchecked(k).get_unchecked(m >> k) };
-                if d2 < e.r2 {
-                    let new_dr = e.ax * dr - e.ay * di + e.bx * dcx - e.by * dcy;
-                    let new_di = e.ax * di + e.ay * dr + e.bx * dcy + e.by * dcx;
-                    dr = new_dr;
-                    di = new_di;
-                    m += s;
-                    n += s as i32;
-                    skipped = true;
-                    break;
-                }
+            if m + s > last || (n as usize + s) > max_iterations as usize {
+                break;
             }
-            k -= 1;
+            let e = unsafe {
+                bla.entries
+                    .get_unchecked(*bla.level_off.get_unchecked(k) as usize + (m >> k))
+            };
+            if d2 >= e.r2 {
+                break;
+            }
+            found = Some((e, s));
+            k += 1;
         }
-        if !skipped {
+        if let Some((e, s)) = found {
+            let new_dr = e.ax * dr - e.ay * di + e.bx * dcx - e.by * dcy;
+            let new_di = e.ax * di + e.ay * dr + e.bx * dcy + e.by * dcx;
+            dr = new_dr;
+            di = new_di;
+            m += s;
+            n += s as i32;
+        } else {
             // exact step, identical to perturb_point
             let (zr, zi) = unsafe { *orbit.get_unchecked(m) };
             let new_dr = 2.0 * (zr * dr - zi * di) + (dr * dr - di * di) + dcx;
