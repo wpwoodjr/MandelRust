@@ -127,10 +127,10 @@ each request into one band per Rayon thread (`compute_mandelbrot_perturb64`).
 Benchmarks in `mb-arith/examples/`: `bench-real.rs` (126-digit saved view, exact
 client digit pipeline, BENCH_START/BENCH_ROWS slicing, engines A/B/D/E/F),
 `bench-real35.rs` (35-digit view), `bench-perturb.rs` (single vs 2/4-lane vs NEON
-kernel isolation), `bench-strips.rs` (strip-height sweep). For wasm numbers, a
-node driver calling the deployed `client/mb-wasm.wasm` predicts browser
-single-worker rows/sec within ~1% — write one before trusting any wasm perf
-theory (browser pipeline noise is not the wasm engine).
+kernel isolation), `bench-strips.rs` (strip-height sweep). For wasm numbers, run
+`node mb-wasm/bench-wasm.js` against the deployed `client/mb-wasm.wasm` — it
+predicts browser single-worker rows/sec within ~1%. Use it before trusting any
+wasm perf theory (browser pipeline noise is not the wasm engine).
 
 Measured on the dev machine (800x600, 126-digit view, rows/sec, see bmarks.txt):
 browser 8-worker 101 -> 1440 and single-worker 17 -> 281 across the perturbation
@@ -165,3 +165,37 @@ Next steps (after the `BLA` branch):
 3. Smaller fry: share the reference orbit + BLA table across a worker's jobs
    (saves the few % of HP setup per job); revisit within-pixel SIMD only on x86
    hardware (AVX2 shuffles are cheaper — measure, don't assume).
+
+## x86 Evaluation Playbook (BLA branch)
+
+All perf numbers above are from an aarch64 big.LITTLE dev machine
+(1x Cortex-X925 + 3x X4 + 4x A720 — heterogeneity repeatedly produced
+misleading unpinned benchmarks). On an x86 box, measure in this order:
+
+1. `cd mb-arith && cargo run --release --example bench-real` (and
+   `bench-real35`) — native engine comparison on the two saved views:
+   A = rebasing, B = glitch 4-lane, E/F = BLA per-strip / one-reference.
+   Expect BLA (E) to dominate; homogeneous cores should give stable numbers
+   without `taskset`.
+2. `cargo run --release --example bench-perturb` — single-pixel vs 2-lane vs
+   4-lane scalar kernels (the NEON section auto-skips on x86). Answers how much
+   lane ILP x86 extracts; on ARM this ranged 1.2x (A720) to 2.2x (X925).
+3. **The AVX2 question**: rerun 1-2 with `RUSTFLAGS="-C target-cpu=native"`
+   (default x86-64 assumes only SSE2). The branchless `[f64; 4]` lane kernel in
+   `perturb_lanes_shared::<4>` is autovectorizer-friendly — if the glitch
+   engine (B) jumps, that's free 256-bit SIMD for an x86 server build (would
+   need the flag added to the build to actually ship). BLA (E) is a scalar
+   latency chain and should move little.
+4. `node mb-wasm/bench-wasm.js` — wasm-vs-native ratio under x86 V8. On ARM,
+   wasm runs ~83-86% of native for every engine; wasm SIMD is capped at 128-bit
+   regardless of host, so the gap may widen on x86 wherever native got AVX2.
+5. Browser + server tests as usual (rows/sec readout, saved views in
+   bmarks.txt). Note whether the chip has SMT: "8 workers" vs physical core
+   count is a variable the ARM machine didn't have; also Chrome caps 6
+   concurrent connections per host for the remote (server) engine.
+
+Known ARM-derived conclusions to RE-TEST rather than assume on x86: explicit
+SIMD kernels lost to scalar ILP (AVX2's cheap shuffles may flip this for a
+within-pixel complex-mul kernel); the 4-lane width choice; BLA winning at all
+depths in wasm (V8 x86 codegen may differ). The |d|^2-carry rule in
+perturb_point_bla is architectural, not ARM-specific — keep it.
