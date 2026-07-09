@@ -151,3 +151,18 @@ BLA
   And the full-day arc on the 126-digit full view, browser: 17.3 → 150 rows/sec single-worker (8.7x), 101 → 862 with 8 workers (8.5x) — from perturbation kernel work (~2.6x) times BLA
   (~3.4x), with the scheduling fixes keeping the multi-worker scaling honest. The server got the same BLA lift plus its protocol fix (48 → 335+ single-stream at 35 digits, 33x vs brute on
   deep strips).
+
+● Server numbers are monstrous — the native BLA path with no wasm penalty and 2 Rayon threads per request:
+
+  ┌────────────┬──────────┬───────────┐
+  │    View    │ 1 worker │ 8 workers │
+  ├────────────┼──────────┼───────────┤
+  │ 35-digit   │ 378      │ ~1500     │
+  ├────────────┼──────────┼───────────┤
+  │ 126 full   │ 317–393  │ ~1600     │
+  ├────────────┼──────────┼───────────┤
+  │ 126 middle │ 273–405  │ ~1130     │
+  └────────────┴──────────┴───────────┘
+
+  That's ~10x over this morning's server on the deep view, and the server is now decisively ahead of the browser everywhere (1600 vs 862 on 126-full). The 126-digit view now renders faster
+  than the 35-digit view did yesterday. Also worth noting: 8-worker server throughput now rivals your LP numbers — the HP/LP gap has nearly closed at these depths.

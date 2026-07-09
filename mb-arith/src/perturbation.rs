@@ -206,6 +206,7 @@ pub fn perturb_point_bla(
 
     let mut dr = 0.0f64;
     let mut di = 0.0f64;
+    let mut d2 = 0.0f64; // |d|^2, maintained across iterations
     let mut m = 0usize; // reference index
     let mut n = 0i32; // crate-standard iteration counter
 
@@ -217,33 +218,37 @@ pub fn perturb_point_bla(
         // (large |d|, shallow zoom) pay a single probe instead of a full descent.
         // Skips of 1 aren't taken: a linearized step costs the same as an exact one.
         // (m + s <= last also keeps m>>k inside level k: len_k = steps >> k.)
-        let d2 = dr * dr + di * di;
         let k_align = if m == 0 { usize::MAX } else { m.trailing_zeros() as usize };
         let k_max = k_align.min(n_levels - 1);
-        let mut found: Option<(&BlaEntry, usize)> = None;
+        let mut best_k = 0usize;
         let mut k = 1usize;
         while k <= k_max {
             let s = 1usize << k;
             if m + s > last || (n as usize + s) > max_iterations as usize {
                 break;
             }
-            let e = unsafe {
+            let r2 = unsafe {
                 bla.entries
                     .get_unchecked(*bla.level_off.get_unchecked(k) as usize + (m >> k))
+                    .r2
             };
-            if d2 >= e.r2 {
+            if d2 >= r2 {
                 break;
             }
-            found = Some((e, s));
+            best_k = k;
             k += 1;
         }
-        if let Some((e, s)) = found {
+        if best_k > 0 {
+            let e = unsafe {
+                bla.entries
+                    .get_unchecked(*bla.level_off.get_unchecked(best_k) as usize + (m >> best_k))
+            };
             let new_dr = e.ax * dr - e.ay * di + e.bx * dcx - e.by * dcy;
             let new_di = e.ax * di + e.ay * dr + e.bx * dcy + e.by * dcx;
             dr = new_dr;
             di = new_di;
-            m += s;
-            n += s as i32;
+            m += 1usize << best_k;
+            n += (1usize << best_k) as i32;
         } else {
             // exact step, identical to perturb_point
             let (zr, zi) = unsafe { *orbit.get_unchecked(m) };
@@ -263,9 +268,11 @@ pub fn perturb_point_bla(
         if w2 >= ESCAPE_R2 {
             return n - 1;
         }
-        if w2 < dr * dr + di * di || m == last {
+        d2 = dr * dr + di * di;
+        if w2 < d2 || m == last {
             dr = wr;
             di = wi;
+            d2 = w2;
             m = 0;
         }
     }
