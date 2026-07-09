@@ -49,10 +49,28 @@ fn main() {
 
     let (t_rebase, out_r) = run64(false);
     let (t_glitch, out_g) = run64(true);
+
+    // BLA per strip
+    let mut out_bla = vec![0i32; rows * COLS];
+    let t_bla = {
+        let mut ymax = ymax0.clone();
+        let t = Instant::now();
+        let mut r0 = 0;
+        while r0 < rows {
+            let h = STRIP.min(rows - r0);
+            mandelbrot_perturb_bla64(&xmin, &dx, &ymax, &dy, chunks64, h, COLS, MAX_ITER, &mut out_bla[r0 * COLS..(r0 + h) * COLS]);
+            for _ in 0..h { incr64(&mut ymax, &dy_neg); }
+            r0 += h;
+        }
+        t.elapsed().as_secs_f64() * 1e3
+    };
+
     let n = rows * COLS;
     let interior = out_g.iter().filter(|&&c| c < 0).count();
     let diff = out_r.iter().zip(&out_g).filter(|(a, b)| a != b).count();
+    let diff_bla = out_r.iter().zip(&out_bla).filter(|(a, b)| a != b).count();
     println!("u64 rebasing : {t_rebase:8.1} ms   ({:.1} ms per 4-row strip)", t_rebase / (rows as f64 / STRIP as f64));
     println!("u64 glitch   : {t_glitch:8.1} ms   ({:.1} ms per 4-row strip)  -> {:.2}x vs rebasing", t_glitch / (rows as f64 / STRIP as f64), t_rebase / t_glitch);
-    println!("interior px  : {interior}/{n}, rebasing-vs-glitch mismatches {diff}");
+    println!("u64 BLA      : {t_bla:8.1} ms   ({:.1} ms per 4-row strip)  -> {:.2}x vs rebasing, {:.2}x vs glitch", t_bla / (rows as f64 / STRIP as f64), t_rebase / t_bla, t_glitch / t_bla);
+    println!("interior px  : {interior}/{n}, rebasing-vs-glitch mismatches {diff}, rebasing-vs-BLA {diff_bla}");
 }

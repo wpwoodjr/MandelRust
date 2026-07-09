@@ -90,9 +90,37 @@ fn main() {
     let t_d = t.elapsed().as_secs_f64() * 1e3;
     println!("D. glitch, ONE reference : {t_d:8.1} ms  -> {:.2}x vs A, {:.2}x vs B", t_a / t_d, t_b / t_d);
 
+    // E. BLA (rebasing + skip table), per strip like the browser
+    let (t_e, out_e) = run_strips(&mut |ymax, h, out| {
+        mandelbrot_perturb_bla32(&xmin, &dx, ymax, &dy, chunks, h, COLS, MAX_ITER, out);
+    });
+    println!("E. BLA, per strip        : {t_e:8.1} ms  -> {:.2}x vs A, {:.2}x vs B", t_a / t_e, t_b / t_e);
+
+    // F. BLA, whole image in one call
+    let mut out_f = vec![0i32; rows * COLS];
+    let t = Instant::now();
+    mandelbrot_perturb_bla32(&xmin, &dx, &ymax0, &dy, chunks, rows, COLS, MAX_ITER, &mut out_f);
+    let t_f = t.elapsed().as_secs_f64() * 1e3;
+    println!("F. BLA, ONE reference    : {t_f:8.1} ms  -> {:.2}x vs A, {:.2}x vs B", t_a / t_f, t_b / t_f);
+
     // sanity: engines should agree
     let diff = |x: &[i32], y: &[i32]| x.iter().zip(y).filter(|(a, b)| a != b).count();
-    println!("\nmismatches: A vs B = {}/{}, B vs D = {}/{}", diff(&out_a, &out_b), out_a.len(), diff(&out_b, &out_d), out_b.len());
+    println!("\nmismatches: A vs B = {}/{}, B vs D = {}/{}, A vs E = {}/{}, A vs F = {}/{}",
+        diff(&out_a, &out_b), out_a.len(), diff(&out_b, &out_d), out_b.len(),
+        diff(&out_a, &out_e), out_a.len(), diff(&out_a, &out_f), out_a.len());
+    // how bad are the BLA mismatches? (interior<->escaped flips are the worst kind)
+    let mut max_delta = 0i64;
+    let mut flips = 0usize;
+    for (&a, &e) in out_a.iter().zip(&out_e) {
+        if a != e {
+            if a < 0 || e < 0 {
+                flips += 1;
+            } else {
+                max_delta = max_delta.max((a as i64 - e as i64).abs());
+            }
+        }
+    }
+    println!("A vs E mismatch severity: max count delta {max_delta}, interior<->escaped flips {flips}");
     let escaped = out_b.iter().filter(|&&c| c >= 0).count();
     println!("escaped pixels: {escaped}/{} (rest interior at maxIter)", out_b.len());
 

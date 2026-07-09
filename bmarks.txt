@@ -79,3 +79,37 @@ Chromebook Mediatek Kompanio
   └────────────────┴────────────────┴──────────┴─────────────────────┘
 
   The formula found the right shape: big blocks where there's no balancing problem (few workers), fine quanta where there is (many unequal cores), tail split as insurance.
+
+
+BLA
+● The picture is complete, and it's spectacular. At ε=2⁻⁴⁰ (near-exact):
+
+  126-digit view (middle 120 rows, per-strip like the browser):
+
+  ┌─────────────────┬────────────────────────────────┬────────┬─────────┐
+  │      Core       │ current engine (glitch 4-lane) │  BLA   │ speedup │
+  ├─────────────────┼────────────────────────────────┼────────┼─────────┤
+  │ X925            │ 2805 ms                        │ 358 ms │ 8.0x    │
+  ├─────────────────┼────────────────────────────────┼────────┼─────────┤
+  │ A720 (majority) │ 7251 ms                        │ 650 ms │ 11.2x   │
+  └─────────────────┴────────────────────────────────┴────────┴─────────┘
+
+  Core-agnostic as promised — the A720s actually gain more, which means the browser fleet benefits fully, no big.LITTLE caveats this time.
+
+  35-digit view: 2.45x vs the current engine (fewer iterations to skip at shallow depth, but still a solid win).
+
+  The accuracy dial (126-digit view, 96,000 pixels):
+
+  ┌─────────┬───────────────────┬─────────────┬─────────────────┐
+  │ BLA_EPS │ vs current engine │ mismatches  │ max count delta │
+  ├─────────┼───────────────────┼─────────────┼─────────────────┤
+  │ 2⁻²⁴    │ 13.7x             │ 199 (0.21%) │ 214             │
+  ├─────────┼───────────────────┼─────────────┼─────────────────┤
+  │ 2⁻³²    │ 11.4x             │ 18 (0.019%) │ 39              │
+  ├─────────┼───────────────────┼─────────────┼─────────────────┤
+  │ 2⁻⁴⁰    │ 8.0x              │ 2 (0.002%)  │ 6               │
+  └─────────┴───────────────────┴─────────────┴─────────────────┘
+
+  For calibration: the two exact engines already disagree with each other on 1 pixel of this view (f64 boundary noise), so 2⁻⁴⁰ is essentially at the method's intrinsic noise floor — and no
+  interior↔escaped flips at any setting. I've set 2⁻⁴⁰ as the default; giving up 8x→11.4x for near-exactness feels right for this project, but it's one constant if you ever want the faster
+  dial.

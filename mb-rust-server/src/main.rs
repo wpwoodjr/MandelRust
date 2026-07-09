@@ -40,10 +40,10 @@ Options:
   --u128         Use legacy 128 bit engine for high precision calculations
                  these also disable the perturbation engine
 
-  High precision images default to perturbation theory: one full-precision
-  reference orbit per band of rows, cheap f64 deltas per pixel (glitch-checked,
-  corrected by re-referencing). Much faster at deep zoom; f64 deltas are usable
-  down to ~1e-300 pixel scale."#;
+  High precision images default to perturbation theory with BLA acceleration:
+  one full-precision reference orbit per band of rows, cheap f64 deltas per
+  pixel, and a composed-skip table that skips most iterations at deep zoom.
+  f64 deltas are usable down to ~1e-300 pixel scale."#;
 
     let mut i = 1;
     while i < args.len() {
@@ -93,7 +93,7 @@ Options:
     println!("Mandelbrot server running on URL {url} with {} Rayon thread(s), and the {} engine for high precision calculations.",
         unsafe { NUM_THREADS },
         if unsafe { PERTURB } {
-            "perturbation (glitch-checked, full-width u64 reference)".to_string()
+            "perturbation + BLA (full-width u64 reference)".to_string()
         } else {
             match unsafe { U_TYPE } {
                 0 => "full-width u64".to_string(),
@@ -288,11 +288,11 @@ fn compute_mandelbrot_hp64(coords: &MandelbrotCoordsHP, u32_chunks: usize, num_t
         .collect()
 }
 
-// perturbation engine: shared-index + glitch-pass engine, 4-lane kernel.
+// perturbation engine: BLA (rebasing + composed-skip table, see mb-arith).
 // The request's rows are split into one contiguous band per Rayon thread; each
-// band computes its own full-precision reference orbit (band center) and runs
-// cheap f64 delta orbits per pixel, glitch-checked and corrected by
-// re-referencing (stragglers fall back to brute HP).
+// band computes its own full-precision reference orbit (band center), builds the
+// BLA table for it once, and runs cheap f64 delta orbits per pixel that skip
+// most iterations at deep zoom.
 fn compute_mandelbrot_perturb64(coords: &MandelbrotCoordsHP, u32_chunks: usize, num_threads: usize) -> Vec<Vec<i32>> {
     let xmin = u32_to_limbs64(&coords.xmin);
     let dx = u32_to_limbs64(&coords.dx);
@@ -324,7 +324,7 @@ fn compute_mandelbrot_perturb64(coords: &MandelbrotCoordsHP, u32_chunks: usize, 
         .par_iter()
         .map(| (band_ymax, h) | {
             let mut out = vec![0i32; h * columns];
-            mandelbrot_perturb_glitch64(&xmin, &dx, band_ymax, &dy, chunks, *h, columns, max_iter, &mut out);
+            mandelbrot_perturb_bla64(&xmin, &dx, band_ymax, &dy, chunks, *h, columns, max_iter, &mut out);
             out.chunks(columns).map(| r | r.to_vec()).collect::<Vec<Vec<i32>>>()
         })
         .flatten()

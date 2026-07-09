@@ -98,6 +98,195 @@ pub fn perturb_row(
     }
 }
 
+// *** bivariate linear approximation (BLA) *** //
+//
+// When |d| is small against |Z_n|, the delta step
+//     d' = 2*Z_n*d + d^2 + dc
+// is dominated by its linear part: d' ~= A*d + B*dc with A = 2*Z_n, B = 1.
+// Consecutive linear steps compose into a single linear step (A, B merge), so we
+// precompute, for skips of 1, 2, 4, ... iterations along the reference orbit, the
+// composed (A, B) plus a validity radius r. Entering a skip with |d| < r keeps
+// |d| inside every sub-step's own radius (the merge shrinks r accordingly), so a
+// valid skip can neither miss an escape nor a missed-rebase glitch: both require
+// |d| ~ |Z|, while validity keeps |d| <= BLA_EPS*|Z| << |Z|. Where the reference
+// passes near zero (r -> 0) or |d| has grown (near escape), no skip validates and
+// the loop falls back to exact single steps, so the interesting iterations are
+// still computed exactly.
+//
+// BLA_EPS scales the per-step radius (r_1 = BLA_EPS * |Z_n|): smaller is more
+// accurate but skips less. Approximation error only shifts pixels sitting exactly
+// on an iteration-count boundary; validated against brute HP in tests.
+pub const BLA_EPS: f64 = 9.094_947_017_729_282e-13; // 2^-40
+
+#[derive(Clone, Copy)]
+pub struct BlaEntry {
+    // d' = A*d + B*dc (complex), valid while |d|^2 < r2
+    pub ax: f64,
+    pub ay: f64,
+    pub bx: f64,
+    pub by: f64,
+    pub r2: f64,
+}
+
+/// Composed-skip table over a reference orbit: `levels[k][j]` skips the 2^k
+/// iterations starting at orbit index j*2^k (power-of-two aligned). Level 0 is
+/// the linearized single step; each level above merges pairs from the one below.
+pub struct BlaTable {
+    pub levels: Vec<Vec<BlaEntry>>,
+}
+
+// compose "x then y" into one linear step over both spans
+fn bla_merge(x: &BlaEntry, y: &BlaEntry, dc_max: f64) -> BlaEntry {
+    // A = Ay*Ax, B = Ay*Bx + By  (complex)
+    let ax = y.ax * x.ax - y.ay * x.ay;
+    let ay = y.ax * x.ay + y.ay * x.ax;
+    let bx = y.ax * x.bx - y.ay * x.by + y.bx;
+    let by = y.ax * x.by + y.ay * x.bx + y.by;
+    // valid while x is valid AND x's output stays inside y's radius:
+    // |Ax*d + Bx*dc| <= |Ax|*|d| + |Bx|*dc_max < ry
+    let ax_mag = (x.ax * x.ax + x.ay * x.ay).sqrt();
+    let bx_mag = (x.bx * x.bx + x.by * x.by).sqrt();
+    let rx = x.r2.sqrt();
+    let ry = y.r2.sqrt();
+    let r = if ax_mag > 0.0 {
+        rx.min(((ry - bx_mag * dc_max) / ax_mag).max(0.0))
+    } else {
+        rx
+    };
+    BlaEntry { ax, ay, bx, by, r2: r * r }
+}
+
+/// Build the BLA table for `orbit`. `dc_max` must bound |dc| over every pixel the
+/// table will serve; a bigger bound shrinks merged radii (slower, never wrong).
+/// Memory/build cost is ~2x the orbit length; build once per reference orbit.
+pub fn build_bla_table(orbit: &[(f64, f64)], dc_max: f64) -> BlaTable {
+    // step i maps d_i -> d_{i+1} using Z_i; the last usable step needs Z_{i+1}
+    // to exist for the escape check, hence orbit.len()-1 steps.
+    let steps = orbit.len().saturating_sub(1);
+    let mut level0 = Vec::with_capacity(steps);
+    for i in 0..steps {
+        let (zx, zy) = orbit[i];
+        let r = BLA_EPS * (zx * zx + zy * zy).sqrt();
+        level0.push(BlaEntry { ax: 2.0 * zx, ay: 2.0 * zy, bx: 1.0, by: 0.0, r2: r * r });
+    }
+    let mut levels = vec![level0];
+    loop {
+        let prev = levels.last().unwrap();
+        if prev.len() < 2 {
+            break;
+        }
+        let mut next = Vec::with_capacity(prev.len() / 2);
+        for j in 0..prev.len() / 2 {
+            next.push(bla_merge(&prev[2 * j], &prev[2 * j + 1], dc_max));
+        }
+        levels.push(next);
+    }
+    BlaTable { levels }
+}
+
+/// Like `perturb_point` (same rebasing, same count conventions -- see that fn),
+/// but consults the BLA table each iteration and replaces up to 2^k exact steps
+/// with one composed multiply-add when the current |d| is inside a skip's radius.
+#[inline]
+pub fn perturb_point_bla(
+    orbit: &[(f64, f64)],
+    bla: &BlaTable,
+    dcx: f64,
+    dcy: f64,
+    max_iterations: i32,
+) -> i32 {
+    let ref_len = orbit.len();
+    if ref_len < 2 {
+        return -1;
+    }
+    let last = ref_len - 1;
+    let n_levels = bla.levels.len();
+
+    let mut dr = 0.0f64;
+    let mut di = 0.0f64;
+    let mut m = 0usize; // reference index
+    let mut n = 0i32; // crate-standard iteration counter
+
+    while n < max_iterations {
+        // longest power-of-two skip aligned at m whose radius admits |d| (skips of
+        // 1 are skipped: a linearized single step costs the same as an exact one)
+        let d2 = dr * dr + di * di;
+        let k_align = if m == 0 { usize::MAX } else { m.trailing_zeros() as usize };
+        let mut k = k_align.min(n_levels - 1);
+        let mut skipped = false;
+        while k >= 1 {
+            let s = 1usize << k;
+            if m + s <= last && (n as usize + s) <= max_iterations as usize {
+                let e = unsafe { bla.levels.get_unchecked(k).get_unchecked(m >> k) };
+                if d2 < e.r2 {
+                    let new_dr = e.ax * dr - e.ay * di + e.bx * dcx - e.by * dcy;
+                    let new_di = e.ax * di + e.ay * dr + e.bx * dcy + e.by * dcx;
+                    dr = new_dr;
+                    di = new_di;
+                    m += s;
+                    n += s as i32;
+                    skipped = true;
+                    break;
+                }
+            }
+            k -= 1;
+        }
+        if !skipped {
+            // exact step, identical to perturb_point
+            let (zr, zi) = unsafe { *orbit.get_unchecked(m) };
+            let new_dr = 2.0 * (zr * dr - zi * di) + (dr * dr - di * di) + dcx;
+            let new_di = 2.0 * (zr * di + zi * dr) + 2.0 * dr * di + dcy;
+            dr = new_dr;
+            di = new_di;
+            m += 1;
+            n += 1;
+        }
+
+        // escape / rebase checks at the new position (count n-1, as perturb_point)
+        let (zmr, zmi) = unsafe { *orbit.get_unchecked(m) };
+        let wr = zmr + dr;
+        let wi = zmi + di;
+        let w2 = wr * wr + wi * wi;
+        if w2 >= ESCAPE_R2 {
+            return n - 1;
+        }
+        if w2 < dr * dr + di * di || m == last {
+            dr = wr;
+            di = wi;
+            m = 0;
+        }
+    }
+    -1
+}
+
+// bound |dc| over a rows x columns block and run the BLA pixel loop for it
+fn bla_block(
+    orbit: &[(f64, f64)],
+    dx_f: f64,
+    dy_f: f64,
+    dcx0: f64,
+    row_ref: usize,
+    rows: usize,
+    columns: usize,
+    max_iterations: i32,
+    out: &mut [i32],
+) {
+    let x1 = dcx0 + columns.saturating_sub(1) as f64 * dx_f;
+    let mx = dcx0.abs().max(x1.abs());
+    let y1 = (row_ref as f64 - (rows as f64 - 1.0)) * dy_f;
+    let my = (row_ref as f64 * dy_f).abs().max(y1.abs());
+    let dc_max = (mx * mx + my * my).sqrt();
+    let bla = build_bla_table(orbit, dc_max);
+
+    for i in 0..rows {
+        let dcy = (row_ref as f64 - i as f64) * dy_f;
+        for j in 0..columns {
+            let dcx = dcx0 + j as f64 * dx_f;
+            out[i * columns + j] = perturb_point_bla(orbit, &bla, dcx, dcy, max_iterations);
+        }
+    }
+}
+
 // *** shared-index variant (SIMD-friendly) *** //
 //
 // Unlike perturb_point above, this does NOT rebase per pixel: every pixel walks
@@ -696,6 +885,31 @@ perturb_engine!(u32,
     mag_to_f64_32, limbs_to_f64_scratch_32, limbs32_to_f64,
     reference_orbit32, perturb_setup32, mandelbrot_perturb32, mandelbrot_perturb_glitch32);
 
+/// Compute a block by BLA-accelerated perturbation (rebasing engine + skip
+/// table), reference at the block center. Same signature/semantics as
+/// mandelbrot_perturb64; the BLA table is built once per reference orbit.
+pub fn mandelbrot_perturb_bla64(
+    xmin: &[u64], dx: &[u64], ymax: &[u64], dy: &[u64],
+    chunks: usize, rows: usize, columns: usize,
+    max_iterations: i32, out: &mut [i32],
+) {
+    let (orbit, dx_f, dy_f, dcx0, _col_ref, row_ref) =
+        perturb_setup64(xmin, dx, ymax, dy, chunks, rows, columns, max_iterations);
+    bla_block(&orbit, dx_f, dy_f, dcx0, row_ref, rows, columns, max_iterations, out);
+}
+
+/// u32-limb variant of mandelbrot_perturb_bla64 (the delta loop and BLA table
+/// are width-agnostic f64; only the reference orbit differs).
+pub fn mandelbrot_perturb_bla32(
+    xmin: &[u32], dx: &[u32], ymax: &[u32], dy: &[u32],
+    chunks: usize, rows: usize, columns: usize,
+    max_iterations: i32, out: &mut [i32],
+) {
+    let (orbit, dx_f, dy_f, dcx0, _col_ref, row_ref) =
+        perturb_setup32(xmin, dx, ymax, dy, chunks, rows, columns, max_iterations);
+    bla_block(&orbit, dx_f, dy_f, dcx0, row_ref, rows, columns, max_iterations, out);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -795,7 +1009,14 @@ mod tests {
     // lies exactly on the set boundary -> the window straddles the fractal boundary
     // (rich near-boundary structure, too deep for f64 to resolve directly). Runs the
     // same assertions against both limb engines.
-    fn deep_view_body(use32: bool, glitch: bool) {
+    #[derive(Clone, Copy)]
+    enum Eng {
+        Rebase,
+        Glitch,
+        Bla,
+    }
+
+    fn deep_view_body(use32: bool, engine: Eng) {
         let xd = coord(0, &[0, 0, 0, 0, 0]); // 0.0
         let yd = coord(1, &[0, 0, 0, 0, 0]); // 1.0
         let dxd = coord(0, &[0, 0, 0, 1, 0]); // 2^-64
@@ -813,10 +1034,10 @@ mod tests {
             for _ in 0..rows / 2 { incr32(&mut ymax, &dy); }
 
             let mut pert = vec![0i32; rows * columns];
-            if glitch {
-                mandelbrot_perturb_glitch32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert);
-            } else {
-                mandelbrot_perturb32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert);
+            match engine {
+                Eng::Glitch => mandelbrot_perturb_glitch32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert),
+                Eng::Rebase => mandelbrot_perturb32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert),
+                Eng::Bla => mandelbrot_perturb_bla32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert),
             }
             let brute = brute_image32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter);
             count_stats(&pert, &brute, rows, columns)
@@ -831,10 +1052,10 @@ mod tests {
             for _ in 0..rows / 2 { incr64(&mut ymax, &dy); }
 
             let mut pert = vec![0i32; rows * columns];
-            if glitch {
-                mandelbrot_perturb_glitch64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert);
-            } else {
-                mandelbrot_perturb64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert);
+            match engine {
+                Eng::Glitch => mandelbrot_perturb_glitch64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert),
+                Eng::Rebase => mandelbrot_perturb64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert),
+                Eng::Bla => mandelbrot_perturb_bla64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert),
             }
             let brute = brute_image64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter);
             count_stats(&pert, &brute, rows, columns)
@@ -871,22 +1092,74 @@ mod tests {
 
     #[test]
     fn deep_view_matches_brute_u64() {
-        deep_view_body(false, false);
+        deep_view_body(false, Eng::Rebase);
     }
 
     #[test]
     fn deep_view_matches_brute_u32() {
-        deep_view_body(true, false);
+        deep_view_body(true, Eng::Rebase);
     }
 
     #[test]
     fn glitch_deep_view_matches_brute_u64() {
-        deep_view_body(false, true);
+        deep_view_body(false, Eng::Glitch);
     }
 
     #[test]
     fn glitch_deep_view_matches_brute_u32() {
-        deep_view_body(true, true);
+        deep_view_body(true, Eng::Glitch);
+    }
+
+    #[test]
+    fn bla_deep_view_matches_brute_u64() {
+        deep_view_body(false, Eng::Bla);
+    }
+
+    #[test]
+    fn bla_deep_view_matches_brute_u32() {
+        deep_view_body(true, Eng::Bla);
+    }
+
+    #[test]
+    fn bla_interior_all_neg1() {
+        // interior window: every pixel must run to max_iter through the skip path
+        let xd = coord(0, &[0, 0, 0, 0]);
+        let yd = coord(0, &[0, 0, 0, 0]);
+        let dxd = coord(0, &[0, 0, 1, 0]); // 2^-48
+        let dyd = coord(0, &[0, 0, 1, 0]);
+        let chunks = chunks64_for(xd.len());
+        let (xmin, dx, ymax, dy) =
+            (u32_to_limbs64(&xd), u32_to_limbs64(&dxd), u32_to_limbs64(&yd), u32_to_limbs64(&dyd));
+        let (rows, columns, max_iter) = (24, 24, 500);
+
+        let mut pert = vec![0i32; rows * columns];
+        mandelbrot_perturb_bla64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert);
+        for &v in &pert {
+            assert_eq!(v, -1, "interior pixel should never escape");
+        }
+    }
+
+    #[test]
+    fn bla_exterior_fast_escape_exact() {
+        // fast escapes have large |d| almost immediately: BLA must not skip there
+        // and must match brute exactly, like the plain rebasing engine
+        let xd = coord(0, &[0x8000, 0, 0, 0]); // 0.5
+        let yd = coord(0, &[0x8000, 0, 0, 0]); // 0.5
+        let dxd = coord(0, &[0, 0, 1, 0]); // 2^-48
+        let dyd = coord(0, &[0, 0, 1, 0]);
+        let chunks = chunks64_for(xd.len());
+        let (xmin, dx, ymax, dy) =
+            (u32_to_limbs64(&xd), u32_to_limbs64(&dxd), u32_to_limbs64(&yd), u32_to_limbs64(&dyd));
+        let (rows, columns, max_iter) = (24, 24, 500);
+
+        let mut pert = vec![0i32; rows * columns];
+        mandelbrot_perturb_bla64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert);
+        let brute = brute_image64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter);
+        for i in 0..rows {
+            for j in 0..columns {
+                assert_eq!(pert[i * columns + j], brute[i][j], "mismatch at ({i},{j})");
+            }
+        }
     }
 
     #[test]

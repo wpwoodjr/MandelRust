@@ -41,8 +41,9 @@ pub extern "C"  fn dalloc(ptr: *mut u8, size: u32) {
 // (an absent export = a stale cached build predating this marker). 3 = shared-index
 // + glitch engine, scalar 2-lane kernel (SIMD dropped: measured slower than ILP).
 // 4 = scalar 4-lane kernel (more ILP on wide cores, no downside on narrow ones).
+// 5 = BLA (rebasing + composed-skip table): skips most iterations at deep zoom.
 #[no_mangle]
-pub extern "C" fn mb_wasm_version() -> u32 { 4 }
+pub extern "C" fn mb_wasm_version() -> u32 { 5 }
 
 
 use mb_arith::*;
@@ -116,6 +117,7 @@ pub extern "C" fn compute_mandelbrot_hp_perturb(
     let ymax = u32_to_limbs32(ymax);
     let dy = u32_to_limbs32(dy);
 
-    // shared-index + glitch engine (SIMD-accelerated: SIMD128 f64x2 per pair)
-    mandelbrot_perturb_glitch32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iterations, iteration_counts);
+    // BLA engine: rebasing perturbation + a composed-skip table built once per
+    // reference orbit; skips most iterations at deep zoom (see mb-arith)
+    mandelbrot_perturb_bla32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iterations, iteration_counts);
 }
