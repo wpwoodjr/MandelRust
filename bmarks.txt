@@ -221,3 +221,24 @@ BLA vs perturbation
   for SIMD to chew on. The remaining levers are algorithmic or structural: floatexp to go past 300 digits, reference/table sharing across jobs (saves the last few percent of HP work), and
   whatever pipeline ceiling the 1700-rows/sec plateau turns out to be. On x86 hardware the within-pixel question could be re-asked (AVX2's cheap shuffles might make vectorized complex mul a
   small win), but that's a measurement for a machine you don't have.
+
+  BMarks
+    Orig
+      browser 35-digit 1 worker: 19.1
+      browser 126 middle 1 worker: 0.474
+      browser 126 full 8 workers: 1.7
+
+    Speedup
+      browser 35-digit 1 worker: 35.3
+      browser 126 middle 1 worker: 0.666
+      browser 126 full 8 workers: 2.14
+
+    Perturbation
+      browser 35-digit 1 worker: 282
+      browser 126 middle 1 worker: 51.8
+      browser 126 full 8 workers: 127
+
+    BLA
+      browser 35-digit 1 worker: 303
+      browser 126 middle 1 worker: 265
+      browser 126 full 8 workers: 1440
