@@ -166,3 +166,58 @@ BLA
 
   That's ~10x over this morning's server on the deep view, and the server is now decisively ahead of the browser everywhere (1600 vs 862 on 126-full). The 126-digit view now renders faster
   than the 35-digit view did yesterday. Also worth noting: 8-worker server throughput now rivals your LP numbers — the HP/LP gap has nearly closed at these depths.
+
+BLA vs perturbation
+● 126-digit full view, deep zoom (rows/sec; █ = 100):
+
+                  perturbation                 BLA (today)
+  browser 1w   ▍ 44                         ██▊ 281                6.4x
+  browser 8w   █▎ 136                       ██████████████▍ 1440   10.6x
+  server  1w   ▌ 57                         ████ 401               7.1x
+  server  8w   █▌ 151                       █████████████████▌ 1750  11.6x
+
+  126-digit middle view:
+
+  browser 1w   ▌ 54                         ██▌ 261                4.8x
+  browser 8w   █▌ 162                       ███████████▌ 1155      7.1x
+  server  1w   ▋ 64                         ████▉ 491              7.7x
+  server  8w   █▋ 169                       ████████████ 1205      7.1x
+
+  35-digit view, shallow zoom:
+
+  browser 1w   ██▉ 288                      ███ 307                1.1x
+  browser 8w   █████████▌ 952               ████████████████▊ 1680  1.8x
+  server  1w   ███▎ 335                     ████▌ 456              1.4x
+  server  8w   ████████▊ 880                █████████████████▎ 1730  2.0x
+
+  ("perturbation" = the perturbation branch's final state this afternoon: glitch 4-lane engine, adaptive job sizing, 32-row remote jobs. "BLA" = v7 as of tonight. Ranges averaged to
+  midpoints.)
+
+  Three things the chart makes plain:
+
+  1. BLA's gain scales with depth — ~7–11x at 126 digits, ~1.1–2x at 35 — exactly as the theory said: the deeper the zoom, the more iterations there are to skip.
+  2. Every tier and worker count landed between 1.1x and 11.6x, with no regressions — the depth hybrid detour and the |δ|² fix mattered; before them, the 35-digit browser cell was a 0.6x
+  regression.
+  3. The 35-digit 8-worker "ceiling" of ~950 wasn't the protocol after all — BLA pushed it to ~1700, so it was compute-bound the whole time. There may still be headroom before the true
+  pipeline ceiling.
+
+
+> and perturbation was the 4 lane stuff right?  Is there room now for any SIMD?                                                                                                              
+
+● Right — the "perturbation" column is the branch's final form: the shared-index glitch engine with the 4-lane scalar kernel (v4), adaptive job sizing, 32-row remote jobs. All of today's
+  kernel-level tuning, in other words.
+
+  Is there room for SIMD now? Mostly no — BLA closed the window, for a structural reason worth spelling out:
+
+  1. Across pixels (the classic approach — what the 4-lane kernel did): BLA's control flow is per-pixel — each pixel takes different-length skips at different orbit indices and rebases at
+  its own times. Vectorizing that means lock-stepping lanes to the shortest skip and gathering table entries from different addresses per lane — and neither wasm SIMD128 nor NEON has gather
+  loads. You'd give back most of what BLA won. This is exactly the trade we evaluated when choosing rebasing+BLA over the lane engine, and BLA won 7–11x vs the lanes' 1.3x.
+  2. Within a pixel (complex mul as f64x2): we measured this twice today in other guises — the shuffle/mask overhead of packing one complex number into a vector loses to scalar on your
+  cores (NEON 0.78x, wasm 0.69x). The BLA loop is a latency chain, and SIMD doesn't shorten latency.
+  3. The one place SIMD still legitimately lives: the HP reference orbit. It's now the only bulk arithmetic left — and it's already SIMD-accelerated in wasm (the simd32 SIMD128 limb kernels
+  kick in at 11+ limbs; your 126-digit view uses 15, so they're active). With 32-row jobs the reference is only a few percent of each job, so even doubling its speed moves the needle ~2%.
+
+  The honest big picture: the day's arc went "make the arithmetic parallel" (SIMD/ILP, ~1.3x) → "delete the arithmetic" (BLA, ~10x), and once the arithmetic is deleted there's little left
+  for SIMD to chew on. The remaining levers are algorithmic or structural: floatexp to go past 300 digits, reference/table sharing across jobs (saves the last few percent of HP work), and
+  whatever pipeline ceiling the 1700-rows/sec plateau turns out to be. On x86 hardware the within-pixel question could be re-asked (AVX2's cheap shuffles might make vectorized complex mul a
+  small win), but that's a measurement for a machine you don't have.
