@@ -10,6 +10,11 @@ let malloc, dalloc;
 let DEBUG = false;
 let hpMsAccum = 0, hpStripAccum = 0;
 
+// Must match mb_wasm_version() in mb-wasm/src/lib.rs. Bump both together, and
+// bump ASSET_VERSION in MB.html so caches can't pair a new worker with an old
+// binary (or vice versa).
+const EXPECTED_WASM_VERSION = 7;
+
 async function waitForWasm(workerNumber, jobNumber) {
     if (compute_mandelbrot && compute_mandelbrot_hp && compute_mandelbrot_hp_perturb) {
         return;
@@ -135,9 +140,21 @@ onmessage = function(msg) {
             .instantiate(data[2], { } )
             .then(instance => {
                 // console.log("loading wasm");
+                // A mismatch here means this worker and mb-wasm.wasm came from
+                // different builds; the engine we'd select would be whatever the
+                // older half happens to export. Fail loudly rather than silently
+                // benchmarking the wrong engine.
+                let v = instance.exports.mb_wasm_version;
+                let version = v ? v() : 0;
+                if (version !== EXPECTED_WASM_VERSION) {
+                    let msg = `worker ${data[1]}: expected wasm version ${EXPECTED_WASM_VERSION}, `
+                        + `loaded ${version || "none (pre-v4 build)"} -- stale cached mb-wasm.wasm or worker script`;
+                    console.error(msg);
+                    postMessage([ "fatal", msg ]);
+                    throw new Error(msg);
+                }
                 if (DEBUG) {
-                    let v = instance.exports.mb_wasm_version;
-                    console.log(`[w${data[1]}] wasm loaded: version ${v ? v() : "absent (stale cached build)"}  (2 = SIMD glitch engine)`);
+                    console.log(`[w${data[1]}] wasm loaded: version ${version}`);
                 }
                 wasmMemory = new WasmMemory(instance.exports.memory);
                 // Hold onto the module's exports so that we can reuse them

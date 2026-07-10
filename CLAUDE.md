@@ -62,7 +62,7 @@ mb-rust-server [URL] [OPTIONS]
 **Worker scripts in client/:**
 - `mandelbrot-worker-local-js.js` - JavaScript compute worker
 - `mandelbrot-worker-local-wasm.js` - WASM compute worker
-- `mandelbrot-worker-remote-v2.0.js` - Remote server worker
+- `mandelbrot-worker-remote.js` - Remote server worker
 
 ## High Precision Calculations
 
@@ -149,6 +149,42 @@ codegen-units = 1
 ```
 
 WASM builds additionally strip symbols and abort on panic for minimal binary size.
+
+## Client Asset Versioning
+
+`MB.html` is the main document (always revalidated); the worker scripts and
+`mb-wasm.wasm` are subresources it loads by URL. `stamp-assets.sh` (run by
+`mb-wasm/build.sh`, hence by `local-build.sh`) hashes the 8 cache-sensitive
+assets and stamps that hash into `MB.html` twice: as `ASSET_VERSION` (used by JS
+to fetch the wasm and spawn workers) and as `?v=<hash>` on the four `<script
+src>` tags, which are markup and cannot read a JS constant. Changed content
+therefore always means a changed cache key. `stamp-assets.sh --check` exits 1 if
+either stamp is stale (compares content, never mtimes — `git checkout` rewrites
+mtimes on every branch switch); run it before committing, since editing a worker
+or page script by hand triggers no build and so no re-stamp.
+
+The server sends `Cache-Control: max-age=600`, matching what GitHub Pages serves
+so the local server behaves like the live demo. Sending *no* header is NOT
+equivalent and must not be "simplified" to that: with no `Cache-Control` the
+browser invents a heuristic freshness window (~10% of the file's age, unbounded),
+which is exactly how a stale worker once outlived its wasm.
+
+`MB.html` cannot be versioned — it is the entry point and carries the hash — so
+it can be up to 10 min stale, and a stale `MB.html` hands out an old
+`ASSET_VERSION`, quietly loading a *coherent* old build (old worker + old wasm
+agree, so the version gate never fires). BENCH NOTE: hard-reload
+(ctrl-shift-R) before trusting any browser benchmark; pasting a saved-view URL
+from `bmarks.txt` is a navigation, not a reload, and is cache-eligible.
+
+Independently, the wasm worker checks `mb_wasm_version()` against
+`EXPECTED_WASM_VERSION` and fails loudly on mismatch, which catches the reverse
+skew (new worker, old wasm).
+CACHE NOTE: without this, a browser-cached worker silently outlived the binary it
+drove. The perturbation branch's `bmarks.txt` browser row was measured with a
+speedup-era worker calling `compute_mandelbrot_hp` on a v4 binary — brute HP, ~9x
+and ~60x understated, no error shown. Any two of {worker, wasm} from different
+builds can produce plausible-but-wrong numbers, so never trust a browser
+benchmark taken on a reused origin (port) without a cache-disabled reload.
 
 ## Current Development
 

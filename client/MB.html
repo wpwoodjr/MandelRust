@@ -298,10 +298,10 @@
   </style>
 </style>
 
-<script src="BigDecimal-all-last.min.js"></script>
-<script src="slider.js"></script>
-<script src="touch.js"></script>
-<script src="percentage-complete.js"></script>
+<script src="BigDecimal-all-last.min.js?v=e831076668"></script>
+<script src="slider.js?v=e831076668"></script>
+<script src="touch.js?v=e831076668"></script>
+<script src="percentage-complete.js?v=e831076668"></script>
 <script>
 
 "use strict";
@@ -448,9 +448,16 @@ var digits, chunks;
 var /* BigDecimal */ twoTo16 = new BigDecimal("65536");
 var log2of10 = Math.log(10)/Math.log(2);
 
+// Cache key for the worker scripts and the wasm binary. This page is the main
+// document, so it always revalidates; embedding a content hash in the subresource
+// URLs is what stops a cached worker from outliving the binary it drives.
+// Stamped from the assets' contents by stamp-assets.sh at build time -- do not
+// edit by hand. Distinct from EXPECTED_WASM_VERSION, which pins the wasm ABI.
+const ASSET_VERSION = "e831076668";
+
 let compute_mandelbrot;
 WebAssembly
-    .compileStreaming(fetch("mb-wasm.wasm"))
+    .compileStreaming(fetch(`mb-wasm.wasm?v=${ASSET_VERSION}`))
     .then(wasmModule => {
         compute_mandelbrot = wasmModule;
         init();
@@ -587,7 +594,7 @@ function repaint(dontUpdateStatusToIdle) {
     }
 }
 
-const jsRemoteWorker = "mandelbrot-worker-remote-v2.0.js"
+const jsRemoteWorker = "mandelbrot-worker-remote.js"
 const jsLocalWorker = "mandelbrot-worker-local-wasm.js"
 function newWorkers(count) {
     // console.log("newWorkers from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
@@ -599,7 +606,7 @@ function newWorkers(count) {
     workers = [];
     let jsWorker = document.getElementById("local").checked ? jsLocalWorker : jsRemoteWorker;
     for (let i = 0; i < count; i++) {
-        workers[i] = new Worker(jsWorker);
+        workers[i] = new Worker(`${jsWorker}?v=${ASSET_VERSION}`);
         workers[i].onmessage = jobFinished;
         workers[i].postMessage([ "wasm", i, compute_mandelbrot ]);
     }
@@ -803,8 +810,22 @@ function startJob(dontClear) {
     currentXML = currentExampletoXML();
 }
 
+let fatalReported = false;
+function reportFatal(msg) {
+    if (fatalReported) return;
+    fatalReported = true;
+    console.error(msg);
+    alert(`Mandelbrot: ${msg}\n\nReload with cache disabled (DevTools > Network > Disable cache).`);
+}
+
 function jobFinished(msg) {
     var job = msg.data;
+    // Version-skew report from a worker; not a completed job, and jobNum would
+    // never match, so it has to be caught before the job-number filter below.
+    if (job[0] === "fatal") {
+       reportFatal(job[1]);
+       return;
+    }
     if (job[0] != jobNum)
        return;
     if (jobs.length > 0) {

@@ -5,7 +5,7 @@
 
 // *** web server *** //
 use actix_rt::System;
-use actix_web::{web, App, HttpResponse, HttpServer, HttpRequest, Result};
+use actix_web::{web, App, HttpResponse, HttpServer, HttpRequest, Responder, Result};
 use actix_files::NamedFile;
 use serde::{Deserialize};
 use std::path::PathBuf;
@@ -104,9 +104,22 @@ Options:
     web_server(&url);
 }
 
-async fn file(req: HttpRequest) -> Result<NamedFile> {
+async fn file(req: HttpRequest) -> Result<HttpResponse> {
     let path: PathBuf = req.match_info().query("filename").parse().unwrap();
-    Ok(NamedFile::open(path)?)
+    let file = NamedFile::open(path)?;
+    // Match what GitHub Pages serves, so the local server behaves like the live
+    // demo. Sending NO Cache-Control would not be equivalent: the browser would
+    // then invent a heuristic freshness window (~10% of the file's age, unbounded),
+    // which is how a 2023-era worker once outlived the wasm it drives.
+    // Subresources carry ?v=<content hash> (see stamp-assets.sh), so 10 minutes of
+    // staleness cannot pair a new worker with an old binary. MB.html cannot be
+    // versioned -- it carries the hash -- so hard-reload (ctrl-shift-R) before
+    // trusting a browser benchmark.
+    Ok(file
+        .customize()
+        .insert_header(("cache-control", "max-age=600"))
+        .respond_to(&req)
+        .map_into_boxed_body())
 }
 
 async fn redirect() -> Result<HttpResponse> {

@@ -222,7 +222,8 @@ BLA vs perturbation
   whatever pipeline ceiling the 1700-rows/sec plateau turns out to be. On x86 hardware the within-pixel question could be re-asked (AVX2's cheap shuffles might make vectorized complex mul a
   small win), but that's a measurement for a machine you don't have.
 
-  BMarks
+BMarks
+  Lenovo Chromebook (ARM 8 core Mediatek Kompanio)
     Orig
       browser 35-digit 1 worker: 19.1
       browser 126 middle 1 worker: 0.474
@@ -242,3 +243,24 @@ BLA vs perturbation
       browser 35-digit 1 worker: 303
       browser 126 middle 1 worker: 265
       browser 126 full 8 workers: 1440
+
+  Beast (x86 24 cores/32 threads i9-13900KF)
+    Orig
+      browser 35-digit 1 worker: 20.7
+      browser 126 middle 1 worker: 0.542
+      browser 126 full 32 workers: 7.78
+
+    Speedup
+      browser 35-digit 1 worker: 39.9
+      browser 126 middle 1 worker: 0.670
+      browser 126 full 32 workers: 8.65
+
+    Perturbation
+      browser 35-digit 1 worker: 30.5 / 297
+      browser 126 middle 1 worker: 0.688 / 53.7
+      browser 126 full 32 workers: 8.82 / 439
+
+    BLA
+      browser 35-digit 1 worker: 605
+      browser 126 middle 1 worker: 478
+      browser 126 full 32 workers: 6450
