@@ -133,5 +133,95 @@ fn main() {
     let per_band_1t = run(16, 1, ROWS);
     println!("  shared, 1 call        : {shared:>7.1} rows/sec");
     println!("  per-band 16, 1 thread : {per_band_1t:>7.1} rows/sec");
-    println!("  single-thread speedup : {:>7.2}x from not rebuilding the orbit per strip", shared / per_band_1t);
+    println!("  single-thread speedup : {:>7.2}x from not rebuilding the orbit per strip\n", shared / per_band_1t);
+
+    // --- PROTOTYPE: share the orbit, per-strip BLA tables (bla_strip) ---
+    // Build ONE orbit for the whole image (reference at image center), then grind
+    // each STRIP against it with a per-strip dc_max. Compare speed AND counts to
+    // the shipping per-strip engine (mandelbrot_perturb_bla64, which rebuilds the
+    // orbit at each strip's own center). Both are BLA approximations; the question
+    // is whether sharing changes results and how much faster it is. STRIP = the
+    // 4-row balance-friendly size the browser wants but currently can't afford.
+    let strip = 4usize;
+    println!("orbit-sharing prototype (bla_strip, {strip}-row strips, 1 thread):");
+
+    // shipping per-strip engine: rebuild orbit per strip
+    let mut out_ship = vec![0i32; ROWS * COLS];
+    let ship_ms = {
+        let mut dy_neg = vec![0u64; dy.len()];
+        negate64(&dy, &mut dy_neg);
+        let mut y = ymax.clone();
+        let t = Instant::now();
+        let mut r0 = 0;
+        while r0 < ROWS {
+            let h = strip.min(ROWS - r0);
+            mandelbrot_perturb_bla64(&xmin, &dx, &y, &dy, chunks, h, COLS, MAX_ITER,
+                &mut out_ship[r0 * COLS..(r0 + h) * COLS]);
+            for _ in 0..h { incr64(&mut y, &dy_neg); }
+            r0 += h;
+        }
+        t.elapsed().as_secs_f64() * 1e3
+    };
+
+    // shared orbit: one perturb_setup64 for the whole image, then bla_strip/strip
+    let mut out_shared = vec![0i32; ROWS * COLS];
+    let (build_ms, grind_ms) = {
+        let tb = Instant::now();
+        let (orbit, dx_f, dy_f, dcx0, _col_ref, img_row_ref) =
+            perturb_setup64(&xmin, &dx, &ymax, &dy, chunks, ROWS, COLS, MAX_ITER);
+        let build_ms = tb.elapsed().as_secs_f64() * 1e3;
+        let tg = Instant::now();
+        let mut r0 = 0;
+        while r0 < ROWS {
+            let h = strip.min(ROWS - r0);
+            bla_strip(&orbit, dx_f, dy_f, dcx0, img_row_ref, r0, h, COLS, MAX_ITER,
+                &mut out_shared[r0 * COLS..(r0 + h) * COLS]);
+            r0 += h;
+        }
+        (build_ms, tg.elapsed().as_secs_f64() * 1e3)
+    };
+
+    // Self-consistency: does per-strip bla_strip reproduce the WHOLE-IMAGE single
+    // call (same image-center reference, one big dc_max table)? If yes, per-strip
+    // tables are faithful and any vs-shipping delta is purely the reference choice
+    // (image-center vs strip-center), not a bla_strip bug.
+    let mut out_whole = vec![0i32; ROWS * COLS];
+    mandelbrot_perturb_bla64(&xmin, &dx, &ymax, &dy, chunks, ROWS, COLS, MAX_ITER, &mut out_whole);
+    let (mut whole_diff, mut whole_maxd) = (0usize, 0i32);
+    for (a, b) in out_whole.iter().zip(out_shared.iter()) {
+        let d = (a - b).abs();
+        if d != 0 { whole_diff += 1; whole_maxd = whole_maxd.max(d); }
+    }
+
+    // agreement vs the shipping engine, with a row-distance diagnostic: if the
+    // differences cluster in rows far from the image center, that's a single-far-
+    // reference accuracy problem; if they're spread near the set boundary, it's
+    // count-gradient noise (adjacent boundary pixels differ by 1000s anyway).
+    let mut diff = 0usize;
+    let mut maxd = 0i32;
+    let mut sum_dist = 0f64; // avg |row - center| of differing pixels, in rows
+    let center = ROWS as f64 / 2.0;
+    let mut near_center = 0usize; // diffs within the central half of rows
+    for (idx, (a, b)) in out_ship.iter().zip(out_shared.iter()).enumerate() {
+        let d = (a - b).abs();
+        if d != 0 {
+            diff += 1;
+            maxd = maxd.max(d);
+            let row = (idx / COLS) as f64;
+            sum_dist += (row - center).abs();
+            if (row - center).abs() < ROWS as f64 / 4.0 { near_center += 1; }
+        }
+    }
+    let total = ROWS * COLS;
+    println!("  shipping (rebuild/strip): {ship_ms:>7.0} ms  -> {:>6.1} rows/sec", ROWS as f64 / (ship_ms / 1e3));
+    println!("  shared orbit + bla_strip: build {build_ms:>4.0} ms + grind {grind_ms:>6.0} ms = {:>6.0} ms  -> {:>6.1} rows/sec",
+        build_ms + grind_ms, ROWS as f64 / ((build_ms + grind_ms) / 1e3));
+    println!("  speedup                 : {:>7.2}x", ship_ms / (build_ms + grind_ms));
+    println!("  agreement vs shipping   : {diff}/{total} px differ ({:.4}%), max |delta| {maxd}",
+        100.0 * diff as f64 / total as f64);
+    if diff > 0 {
+        println!("  diff distribution       : avg |row-center| {:.0} of {:.0} max; {:.0}% within central half",
+            sum_dist / diff as f64, center, 100.0 * near_center as f64 / diff as f64);
+    }
+    println!("  bla_strip vs whole-image: {whole_diff}/{total} px differ, max |delta| {whole_maxd}  (0 = per-strip tables faithful)");
 }

@@ -307,6 +307,47 @@ fn bla_block(
     }
 }
 
+/// Orbit-sharing strip grinder. Compute image rows `[strip_row0, strip_row0 +
+/// strip_rows)` against a reference orbit that was built ONCE for the whole
+/// image (reference at the image center, i.e. `perturb_setup(.., image_rows, ..)`
+/// so `image_row_ref = image_rows/2`, `dcx0 = -(columns/2)*dx_f`). The orbit is
+/// shared read-only; only the CHEAP f64 BLA table is (re)built here, and it is
+/// bounded by THIS strip's `dc_max` so the skips stay long -- that is the whole
+/// point: pay the expensive HP orbit once, keep per-strip tables tight.
+/// `out` holds `strip_rows * columns` i32, row-major. Bit-identical to
+/// `bla_block` when the strip is the whole image.
+#[allow(clippy::too_many_arguments)]
+pub fn bla_strip(
+    orbit: &[(f64, f64)],
+    dx_f: f64,
+    dy_f: f64,
+    dcx0: f64,
+    image_row_ref: usize,
+    strip_row0: usize,
+    strip_rows: usize,
+    columns: usize,
+    max_iterations: i32,
+    out: &mut [i32],
+) {
+    let x1 = dcx0 + columns.saturating_sub(1) as f64 * dx_f;
+    let mx = dcx0.abs().max(x1.abs());
+    // |dcy| over this strip's image rows: extremes are the top and bottom rows.
+    let dcy_top = (image_row_ref as f64 - strip_row0 as f64) * dy_f;
+    let dcy_bot = (image_row_ref as f64 - (strip_row0 + strip_rows.saturating_sub(1)) as f64) * dy_f;
+    let my = dcy_top.abs().max(dcy_bot.abs());
+    let dc_max = (mx * mx + my * my).sqrt();
+    let bla = build_bla_table(orbit, dc_max);
+
+    for i in 0..strip_rows {
+        let img_row = strip_row0 + i;
+        let dcy = (image_row_ref as f64 - img_row as f64) * dy_f;
+        for j in 0..columns {
+            let dcx = dcx0 + j as f64 * dx_f;
+            out[i * columns + j] = perturb_point_bla(orbit, &bla, dcx, dcy, max_iterations);
+        }
+    }
+}
+
 // *** shared-index variant (SIMD-friendly) *** //
 //
 // Unlike perturb_point above, this does NOT rebase per pixel: every pixel walks
