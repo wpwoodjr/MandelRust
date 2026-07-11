@@ -298,10 +298,10 @@
   </style>
 </style>
 
-<script src="BigDecimal-all-last.min.js?v=d0c5323d65"></script>
-<script src="slider.js?v=d0c5323d65"></script>
-<script src="touch.js?v=d0c5323d65"></script>
-<script src="percentage-complete.js?v=d0c5323d65"></script>
+<script src="BigDecimal-all-last.min.js?v=0b169b1527"></script>
+<script src="slider.js?v=0b169b1527"></script>
+<script src="touch.js?v=0b169b1527"></script>
+<script src="percentage-complete.js?v=0b169b1527"></script>
 <script>
 
 "use strict";
@@ -453,7 +453,7 @@ var log2of10 = Math.log(10)/Math.log(2);
 // URLs is what stops a cached worker from outliving the binary it drives.
 // Stamped from the assets' contents by stamp-assets.sh at build time -- do not
 // edit by hand. Distinct from EXPECTED_WASM_VERSION, which pins the wasm ABI.
-const ASSET_VERSION = "d0c5323d65";
+const ASSET_VERSION = "0b169b1527";
 
 let compute_mandelbrot;
 WebAssembly
@@ -654,7 +654,18 @@ let minRowsPerJobHP = 4;
 // sharing (build the orbit once, reuse across strips), being prototyped on this
 // branch. NOTE: after editing, hard-reload (ctrl-shift-R) -- MB.html is served
 // max-age=600, so a plain reload can serve the old page for up to 10 min.
-let TEST_HP_JOB_ROWS = 128;
+let TEST_HP_JOB_ROWS = 8;
+
+// ORBIT SHARING (per-worker): build the reference orbit ONCE per image per worker
+// (build_reference_orbit) and reuse it across all that worker's strips
+// (compute_strip_with_orbit), instead of rebuilding per strip. Decouples strip
+// size from build cost, so small strips (good balance) become cheap. Requires
+// wasm v8. Toggle off to A/B against the classic per-strip perturb path.
+let USE_ORBIT_SHARING = true;
+// Bumped per pass; identifies which image an orbit belongs to so a worker knows
+// when to rebuild (the two passes use half-pixel-shifted grids, so each is a
+// distinct orbit). Only meaningful when USE_ORBIT_SHARING.
+let hpOrbitId = 0;
 
 // Local HP job size scales with parallelism: a lone worker has no balancing
 // problem and gets the most engine-efficient big blocks, while many workers on
@@ -679,6 +690,12 @@ function rowsPerJobLocalHP(rows) {
 // this holds for the plain (reversed), interlaced, and second-pass orderings.
 // yVal/dy are the image-top BigDecimals used to build each sub-job's y value.
 function splitHPTailJobs(jobs, yVal, dy) {
+    if (USE_ORBIT_SHARING) {
+        // Tail-splitting with sharing needs sub-jobs to inherit the image id/top
+        // (not reconvert a strip yVal); deferred. Strip size is set by
+        // TEST_HP_JOB_ROWS meanwhile -- small strips are already cheap here.
+        return jobs;
+    }
     if (TEST_HP_JOB_ROWS > 0) {
         return jobs;    // TEST KNOB on: keep uniform N-row jobs, no tail re-split
     }
@@ -740,19 +757,35 @@ function startJob(dontClear) {
         convert(dxArray,dx,chunks+1);
         convert(dyArray, dy, chunks+1);
 
+        // Orbit sharing: one image-top yVal for all jobs; the worker offsets by
+        // job.row against the shared reference. Otherwise each job carries its
+        // own strip-top yVal (and the worker rebuilds the orbit per strip).
+        let imageId = 0, yValImageArray = null;
+        if (USE_ORBIT_SHARING) {
+            imageId = ++hpOrbitId;
+            yValImageArray = new ArrayType(chunks+1);
+            convert(yValImageArray, yVal, chunks+1);
+        }
         let rowsPerJobHP = rowsPerJobLocalHP(rows);
         for (let row = 0; row < rows; row += rowsPerJobHP) {
-            let ytmp = yVal.subtract(dy.multiply(new BigDecimal(row.toString())));
-            yValArray = new ArrayType(chunks+1);
-            convert(yValArray, ytmp, chunks+1);
+            let jobYVal;
+            if (USE_ORBIT_SHARING) {
+                jobYVal = yValImageArray;   // shared image top
+            } else {
+                let ytmp = yVal.subtract(dy.multiply(new BigDecimal(row.toString())));
+                jobYVal = new ArrayType(chunks+1);
+                convert(jobYVal, ytmp, chunks+1);
+            }
             jobs.push({
                 row: row,
                 columns: columns,
                 xmin: xminArray,
                 dx: dxArray,
-                yVal: yValArray,
+                yVal: jobYVal,
                 dy: dyArray,
-                nrows: Math.min(rowsPerJobHP, rows - row)
+                nrows: Math.min(rowsPerJobHP, rows - row),
+                imageRows: USE_ORBIT_SHARING ? rows : undefined,
+                imageId: USE_ORBIT_SHARING ? imageId : undefined
             });
         }
     }
@@ -807,7 +840,8 @@ function startJob(dontClear) {
         workers[i].postMessage(["setup",jobNum, maxIterSlider.value,highPrecision,i]);
         workers[i].postMessage([
             "task", j.row, j.columns,
-            j.xmin, j.dx, j.yVal, j.dy, j.nrows
+            j.xmin, j.dx, j.yVal, j.dy, j.nrows,
+            j.imageRows, j.imageId
         ]);
     }
 
@@ -850,7 +884,8 @@ function jobFinished(msg) {
        var j = jobs.pop();
        worker.postMessage([
             "task", j.row, j.columns,
-            j.xmin, j.dx, j.yVal, j.dy, j.nrows
+            j.xmin, j.dx, j.yVal, j.dy, j.nrows,
+            j.imageRows, j.imageId
         ]);
     }
     var iterationCounts = job[2];
@@ -927,19 +962,34 @@ function startSecondPass() {
         convert(dxArray,dx,chunks+1);
         convert(dyArray, dy, chunks+1);
 
+        // Orbit sharing: second pass is a distinct half-pixel-shifted grid, so it
+        // gets its own image id / orbit. Same shared-image-top scheme as startJob.
+        let imageId = 0, yValImageArray = null;
+        if (USE_ORBIT_SHARING) {
+            imageId = ++hpOrbitId;
+            yValImageArray = new ArrayType(chunks+1);
+            convert(yValImageArray, yVal, chunks+1);
+        }
         let rowsPerJobHP = rowsPerJobLocalHP(rows);
         for (let row = 0; row < rows; row += rowsPerJobHP) {
-            let ytmp = yVal.subtract(dy.multiply(new BigDecimal(row.toString())));
-            yValArray = new ArrayType(chunks+1);
-            convert(yValArray, ytmp, chunks+1);
+            let jobYVal;
+            if (USE_ORBIT_SHARING) {
+                jobYVal = yValImageArray;
+            } else {
+                let ytmp = yVal.subtract(dy.multiply(new BigDecimal(row.toString())));
+                jobYVal = new ArrayType(chunks+1);
+                convert(jobYVal, ytmp, chunks+1);
+            }
             jobs.push({
                 row: row,
                 columns: columns,
                 xmin: xminArray,
                 dx: dxArray,
-                yVal: yValArray,
+                yVal: jobYVal,
                 dy: dyArray,
-                nrows: Math.min(rowsPerJobHP, rows - row)
+                nrows: Math.min(rowsPerJobHP, rows - row),
+                imageRows: USE_ORBIT_SHARING ? rows : undefined,
+                imageId: USE_ORBIT_SHARING ? imageId : undefined
             });
         }
         // no interlacing on the second pass; front of the array still dispatches last
@@ -976,7 +1026,8 @@ function startSecondPass() {
         workers[i].postMessage(["setup",jobNum, maxIterSlider.value,highPrecision,i]);
         workers[i].postMessage([
             "task", j.row, j.columns,
-            j.xmin, j.dx, j.yVal, j.dy, j.nrows
+            j.xmin, j.dx, j.yVal, j.dy, j.nrows,
+            j.imageRows, j.imageId
         ]);
     }
     running = true;

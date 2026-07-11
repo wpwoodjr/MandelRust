@@ -45,8 +45,10 @@ pub extern "C"  fn dalloc(ptr: *mut u8, size: u32) {
 // 6 = depth hybrid: BLA at >= 16 u32 digits, glitch 4-lane below (wasm JITs ran
 //     the then-current BLA loop poorly; superseded).
 // 7 = BLA at all depths (loop restructure fixed the wasm JIT penalty).
+// 8 = orbit-sharing FFI (build_reference_orbit + compute_strip_with_orbit +
+//     malloc_f64/free_f64); classic compute_mandelbrot_hp_perturb still present.
 #[no_mangle]
-pub extern "C" fn mb_wasm_version() -> u32 { 7 }
+pub extern "C" fn mb_wasm_version() -> u32 { 8 }
 
 
 use mb_arith::*;

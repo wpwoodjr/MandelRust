@@ -2,6 +2,10 @@ let /* boolean */ highPrecision;
 let /* int */ maxIterations, jobNumber, workerNumber;
 let compute_mandelbrot = null, compute_mandelbrot_hp = null, compute_mandelbrot_hp_perturb = null;
 let malloc, dalloc;
+// orbit sharing (v8): build one reference orbit per image, reuse across strips
+let build_reference_orbit = null, compute_strip_with_orbit = null, malloc_f64 = null, free_f64 = null;
+// cached orbit for the image this worker is currently rendering
+let cachedImageId = null, cachedOrbit = null; // {ptr, len, dx_f, dy_f, dcx0, rowRef}
 
 // Set to true to log HP compute time per strip and the loaded .wasm size
 // (the SIMD build is ~57 KB; the pre-SIMD build was ~43 KB -> a quick cache check).
@@ -13,16 +17,21 @@ let hpMsAccum = 0, hpStripAccum = 0;
 // Must match mb_wasm_version() in mb-wasm/src/lib.rs. Bump both together, and
 // bump ASSET_VERSION in MB.html so caches can't pair a new worker with an old
 // binary (or vice versa).
-const EXPECTED_WASM_VERSION = 7;
+const EXPECTED_WASM_VERSION = 8;
+
+function wasmReady() {
+    return compute_mandelbrot && compute_mandelbrot_hp && compute_mandelbrot_hp_perturb
+        && build_reference_orbit && compute_strip_with_orbit && malloc_f64 && free_f64;
+}
 
 async function waitForWasm(workerNumber, jobNumber) {
-    if (compute_mandelbrot && compute_mandelbrot_hp && compute_mandelbrot_hp_perturb) {
+    if (wasmReady()) {
         return;
     } else {
         await new Promise(resolve => {
             // console.log(`worker ${workerNumber} job ${jobNumber} waiting for WASM`);
             const intervalId = setInterval(() => {
-                if (compute_mandelbrot && compute_mandelbrot_hp && compute_mandelbrot_hp_perturb) {
+                if (wasmReady()) {
                     clearInterval(intervalId);
                     resolve();
                 }
@@ -86,7 +95,51 @@ onmessage = function(msg) {
                 let ymax = data[5];
                 let dy = data[6];
                 let nrows = data[7];
-                if (highPrecision) {
+                let imageRows = data[8];   // orbit sharing only
+                let imageId = data[9];     // orbit sharing only (undefined otherwise)
+                if (highPrecision && imageId !== undefined) {
+                    // ORBIT SHARING: build the reference orbit ONCE per image
+                    // (cached by imageId), then grind this strip against it. ymax
+                    // here is the IMAGE top (shared by all jobs); firstRow is the
+                    // strip's offset within the image.
+                    let len = xmin.length;
+                    if (cachedImageId !== imageId) {
+                        if (cachedOrbit) { free_f64(cachedOrbit.ptr, cachedOrbit.len * 2); cachedOrbit = null; }
+                        // capture pointers as numbers: build grows wasm memory
+                        let xminPtr = wasmMemory.copyFromArrayU32(xmin).byteOffset;
+                        let dxPtr = wasmMemory.copyFromArrayU32(dx).byteOffset;
+                        let ymaxPtr = wasmMemory.copyFromArrayU32(ymax).byteOffset;
+                        let dyPtr = wasmMemory.copyFromArrayU32(dy).byteOffset;
+                        let lenPtr = malloc(4);
+                        let metaPtr = malloc_f64(3);
+                        let _tb = DEBUG ? performance.now() : 0;
+                        let orbitPtr = build_reference_orbit(xminPtr, dxPtr, ymaxPtr, dyPtr, len,
+                            columnCount, imageRows, maxIterations, lenPtr, metaPtr);
+                        let orbitLen = new Uint32Array(wasmMemory.memory.buffer, lenPtr, 1)[0];
+                        let meta = new Float64Array(wasmMemory.memory.buffer, metaPtr, 3);
+                        cachedOrbit = { ptr: orbitPtr, len: orbitLen,
+                            dx_f: meta[0], dy_f: meta[1], dcx0: meta[2], rowRef: imageRows >>> 1 };
+                        cachedImageId = imageId;
+                        if (DEBUG) console.log(`[w${workerNumber}] built orbit ${orbitLen} pts for image ${imageId} in ${(performance.now()-_tb).toFixed(1)} ms`);
+                        dalloc(lenPtr, 4); free_f64(metaPtr, 3);
+                        dalloc(dyPtr, len*4); dalloc(ymaxPtr, len*4); dalloc(dxPtr, len*4); dalloc(xminPtr, len*4);
+                    }
+                    let o = cachedOrbit;
+                    let outLen = nrows*columnCount;
+                    let outPtr = wasmMemory.newArrayI32(outLen).byteOffset;
+                    let _t0 = DEBUG ? performance.now() : 0;
+                    compute_strip_with_orbit(o.ptr, o.len, o.dx_f, o.dy_f, o.dcx0, o.rowRef,
+                        firstRow, nrows, columnCount, maxIterations, outPtr);
+                    if (DEBUG) { hpMsAccum += performance.now()-_t0; hpStripAccum += 1; }
+                    // fresh view: grinding (BLA table alloc) may have grown memory
+                    let counts = new Int32Array(wasmMemory.memory.buffer, outPtr, outLen);
+                    let returnIterations = new Array(nrows);
+                    for (let i = 0; i < nrows; i++) {
+                        returnIterations[i] = Array.from(counts.subarray(i*columnCount, (i + 1)*columnCount));
+                    }
+                    dalloc(outPtr, outLen*4);
+                    postMessage([ jobNumber, firstRow, returnIterations, workerNumber, nrows ]);
+                } else if (highPrecision) {
                     // console.log(jobNumber,workerNumber,xmin,dx,columnCount,ymax,maxIterations,highPrecision);
                     // Perturbation: one full-precision reference orbit for the whole
                     // strip, then a cheap f64 delta orbit per pixel. The reference
@@ -163,6 +216,10 @@ onmessage = function(msg) {
                 compute_mandelbrot_hp_perturb = instance.exports.compute_mandelbrot_hp_perturb;
                 malloc = instance.exports.malloc;
                 dalloc = instance.exports.dalloc;
+                build_reference_orbit = instance.exports.build_reference_orbit;
+                compute_strip_with_orbit = instance.exports.compute_strip_with_orbit;
+                malloc_f64 = instance.exports.malloc_f64;
+                free_f64 = instance.exports.free_f64;
             });
     }
 }
