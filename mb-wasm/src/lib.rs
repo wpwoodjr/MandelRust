@@ -47,8 +47,11 @@ pub extern "C"  fn dalloc(ptr: *mut u8, size: u32) {
 // 7 = BLA at all depths (loop restructure fixed the wasm JIT penalty).
 // 8 = orbit-sharing FFI (build_reference_orbit + compute_strip_with_orbit +
 //     malloc_f64/free_f64); classic compute_mandelbrot_hp_perturb still present.
+// 9 = compute_strip_with_orbit takes dcy_off so one orbit serves both passes
+//     (the second pass's grid is half-pixel-shifted; the reference is not a grid
+//     point, so pass-2 samples are just different dc offsets).
 #[no_mangle]
-pub extern "C" fn mb_wasm_version() -> u32 { 8 }
+pub extern "C" fn mb_wasm_version() -> u32 { 9 }
 
 
 use mb_arith::*;
@@ -203,12 +206,15 @@ pub extern "C" fn build_reference_orbit(
 // Grind image rows [strip_row0, strip_row0+strip_rows) against a shared orbit
 // (2*orbit_len interleaved f64, as returned/broadcast from build_reference_orbit).
 // dx_f/dy_f/dcx0 come from out_meta; image_row_ref = image_rows/2 fixes the
-// reference the orbit was built at. Writes strip_rows*columns i32 to out.
+// reference the orbit was built at. dcy_off shifts every sample in dc.y: 0.0 for
+// the reference's own grid, 0.5*dy_f for the half-pixel-shifted second pass (a
+// matching x shift is folded into dcx0 by the caller). Writes strip_rows*columns
+// i32 to out.
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
 pub extern "C" fn compute_strip_with_orbit(
     orbit_ptr: *const f64, orbit_len: u32,
-    dx_f: f64, dy_f: f64, dcx0: f64, image_row_ref: u32,
+    dx_f: f64, dy_f: f64, dcx0: f64, dcy_off: f64, image_row_ref: u32,
     strip_row0: u32, strip_rows: u32, columns: u32,
     max_iterations: i32, iteration_counts: *mut i32,
 ) {
@@ -221,7 +227,7 @@ pub extern "C" fn compute_strip_with_orbit(
     let columns = columns as usize;
     let out = unsafe { std::slice::from_raw_parts_mut(iteration_counts, strip_rows * columns) };
     bla_strip(
-        orbit, dx_f, dy_f, dcx0, image_row_ref as usize,
+        orbit, dx_f, dy_f, dcx0, dcy_off, image_row_ref as usize,
         strip_row0 as usize, strip_rows, columns, max_iterations, out,
     );
 }

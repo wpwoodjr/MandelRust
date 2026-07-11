@@ -174,7 +174,7 @@ fn main() {
         let mut r0 = 0;
         while r0 < ROWS {
             let h = strip.min(ROWS - r0);
-            bla_strip(&orbit, dx_f, dy_f, dcx0, img_row_ref, r0, h, COLS, MAX_ITER,
+            bla_strip(&orbit, dx_f, dy_f, dcx0, 0.0, img_row_ref, r0, h, COLS, MAX_ITER,
                 &mut out_shared[r0 * COLS..(r0 + h) * COLS]);
             r0 += h;
         }

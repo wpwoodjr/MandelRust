@@ -17,7 +17,7 @@ let hpMsAccum = 0, hpStripAccum = 0;
 // Must match mb_wasm_version() in mb-wasm/src/lib.rs. Bump both together, and
 // bump ASSET_VERSION in MB.html so caches can't pair a new worker with an old
 // binary (or vice versa).
-const EXPECTED_WASM_VERSION = 8;
+const EXPECTED_WASM_VERSION = 9;
 
 function wasmReady() {
     return compute_mandelbrot && compute_mandelbrot_hp && compute_mandelbrot_hp_perturb
@@ -69,6 +69,30 @@ class WasmMemory {
 
 let wasmMemory;
 
+// Build the whole-image reference orbit from the basis grid coords and cache it.
+// Pointers are captured as numbers: the build grows wasm memory (detaching views).
+function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows) {
+    if (cachedOrbit) { free_f64(cachedOrbit.ptr, cachedOrbit.len * 2); cachedOrbit = null; }
+    let len = xmin.length;
+    let xminPtr = wasmMemory.copyFromArrayU32(xmin).byteOffset;
+    let dxPtr = wasmMemory.copyFromArrayU32(dx).byteOffset;
+    let ymaxPtr = wasmMemory.copyFromArrayU32(ymax).byteOffset;
+    let dyPtr = wasmMemory.copyFromArrayU32(dy).byteOffset;
+    let lenPtr = malloc(4);
+    let metaPtr = malloc_f64(3);
+    let _tb = DEBUG ? performance.now() : 0;
+    let orbitPtr = build_reference_orbit(xminPtr, dxPtr, ymaxPtr, dyPtr, len,
+        basisCols, basisRows, maxIterations, lenPtr, metaPtr);
+    let orbitLen = new Uint32Array(wasmMemory.memory.buffer, lenPtr, 1)[0];
+    let meta = new Float64Array(wasmMemory.memory.buffer, metaPtr, 3);
+    cachedOrbit = { ptr: orbitPtr, len: orbitLen,
+        dx_f: meta[0], dy_f: meta[1], dcx0: meta[2], rowRef: basisRows >>> 1 };
+    cachedImageId = imageId;
+    if (DEBUG) console.log(`[w${workerNumber}] built orbit ${orbitLen} pts for image ${imageId} in ${(performance.now()-_tb).toFixed(1)} ms`);
+    dalloc(lenPtr, 4); free_f64(metaPtr, 3);
+    dalloc(dyPtr, len*4); dalloc(ymaxPtr, len*4); dalloc(dxPtr, len*4); dalloc(xminPtr, len*4);
+}
+
 onmessage = function(msg) {
     let data = msg.data;
     if ( data[0] == "setup" ) {
@@ -95,40 +119,27 @@ onmessage = function(msg) {
                 let ymax = data[5];
                 let dy = data[6];
                 let nrows = data[7];
-                let imageRows = data[8];   // orbit sharing only
-                let imageId = data[9];     // orbit sharing only (undefined otherwise)
+                // orbit sharing only (all undefined on the classic path):
+                let imageRows = data[8];   // BASIS grid rows (pass 1) -- build param
+                let imageId = data[9];     // identifies the view's orbit
+                let imageCols = data[10];  // BASIS grid columns -- build param
+                let ox = data[11], oy = data[12]; // this job's grid offset from the
+                                                  // basis grid, in pixels (pass 2: -0.5, +0.5)
                 if (highPrecision && imageId !== undefined) {
-                    // ORBIT SHARING: build the reference orbit ONCE per image
-                    // (cached by imageId), then grind this strip against it. ymax
-                    // here is the IMAGE top (shared by all jobs); firstRow is the
-                    // strip's offset within the image.
-                    let len = xmin.length;
+                    // ORBIT SHARING: build the reference orbit ONCE per view
+                    // (cached by imageId), then grind this strip against it.
+                    // xmin/ymax/etc here are the BASIS (pass-1) image coords shared
+                    // by every job of both passes; firstRow/columnCount describe
+                    // THIS job's sampling grid, offset from the basis by (ox, oy).
                     if (cachedImageId !== imageId) {
-                        if (cachedOrbit) { free_f64(cachedOrbit.ptr, cachedOrbit.len * 2); cachedOrbit = null; }
-                        // capture pointers as numbers: build grows wasm memory
-                        let xminPtr = wasmMemory.copyFromArrayU32(xmin).byteOffset;
-                        let dxPtr = wasmMemory.copyFromArrayU32(dx).byteOffset;
-                        let ymaxPtr = wasmMemory.copyFromArrayU32(ymax).byteOffset;
-                        let dyPtr = wasmMemory.copyFromArrayU32(dy).byteOffset;
-                        let lenPtr = malloc(4);
-                        let metaPtr = malloc_f64(3);
-                        let _tb = DEBUG ? performance.now() : 0;
-                        let orbitPtr = build_reference_orbit(xminPtr, dxPtr, ymaxPtr, dyPtr, len,
-                            columnCount, imageRows, maxIterations, lenPtr, metaPtr);
-                        let orbitLen = new Uint32Array(wasmMemory.memory.buffer, lenPtr, 1)[0];
-                        let meta = new Float64Array(wasmMemory.memory.buffer, metaPtr, 3);
-                        cachedOrbit = { ptr: orbitPtr, len: orbitLen,
-                            dx_f: meta[0], dy_f: meta[1], dcx0: meta[2], rowRef: imageRows >>> 1 };
-                        cachedImageId = imageId;
-                        if (DEBUG) console.log(`[w${workerNumber}] built orbit ${orbitLen} pts for image ${imageId} in ${(performance.now()-_tb).toFixed(1)} ms`);
-                        dalloc(lenPtr, 4); free_f64(metaPtr, 3);
-                        dalloc(dyPtr, len*4); dalloc(ymaxPtr, len*4); dalloc(dxPtr, len*4); dalloc(xminPtr, len*4);
+                        buildOrbit(imageId, xmin, dx, ymax, dy, imageCols, imageRows);
                     }
                     let o = cachedOrbit;
                     let outLen = nrows*columnCount;
                     let outPtr = wasmMemory.newArrayI32(outLen).byteOffset;
                     let _t0 = DEBUG ? performance.now() : 0;
-                    compute_strip_with_orbit(o.ptr, o.len, o.dx_f, o.dy_f, o.dcx0, o.rowRef,
+                    compute_strip_with_orbit(o.ptr, o.len, o.dx_f, o.dy_f,
+                        o.dcx0 + ox*o.dx_f, oy*o.dy_f, o.rowRef,
                         firstRow, nrows, columnCount, maxIterations, outPtr);
                     if (DEBUG) { hpMsAccum += performance.now()-_t0; hpStripAccum += 1; }
                     // fresh view: grinding (BLA table alloc) may have grown memory
@@ -187,6 +198,42 @@ onmessage = function(msg) {
                     postMessage([ jobNumber, firstRow, returnIterations, workerNumber, nrows ]);
                 }
             });
+    } else if (data[0] == "buildOrbit") {
+        // BROADCAST mode: this worker is the designated builder. Build the orbit
+        // from the basis coords, cache it locally, and post a copy of the f64
+        // buffer back to the main thread for relay to the other workers.
+        // ["buildOrbit", imageId, xmin, dx, ymax, dy, basisCols, basisRows]
+        waitForWasm(workerNumber, jobNumber).then(() => {
+            let imageId = data[1];
+            if (cachedImageId !== imageId) {
+                buildOrbit(imageId, data[2], data[3], data[4], data[5], data[6], data[7]);
+            }
+            let o = cachedOrbit;
+            // copy out of wasm memory (the view may not be transferred directly)
+            let copy = new Float64Array(o.len * 2);
+            copy.set(new Float64Array(wasmMemory.memory.buffer, o.ptr, o.len * 2));
+            postMessage([ "orbit", imageId,
+                { len: o.len, dx_f: o.dx_f, dy_f: o.dy_f, dcx0: o.dcx0, rowRef: o.rowRef },
+                copy ], [ copy.buffer ]);
+        });
+    } else if (data[0] == "orbit") {
+        // BROADCAST mode: receive the relayed orbit and adopt it as the cache.
+        // ["orbit", imageId, meta, Float64Array]  (arrives before any task for
+        // this image -- main dispatches tasks only after relaying, and per-pair
+        // postMessage ordering is FIFO.)
+        waitForWasm(workerNumber, jobNumber).then(() => {
+            let imageId = data[1], meta = data[2], arr = data[3];
+            if (cachedImageId === imageId) {
+                return; // the builder itself: already cached in wasm memory
+            }
+            if (cachedOrbit) { free_f64(cachedOrbit.ptr, cachedOrbit.len * 2); cachedOrbit = null; }
+            let ptr = malloc_f64(arr.length);
+            new Float64Array(wasmMemory.memory.buffer, ptr, arr.length).set(arr);
+            cachedOrbit = { ptr: ptr, len: meta.len,
+                dx_f: meta.dx_f, dy_f: meta.dy_f, dcx0: meta.dcx0, rowRef: meta.rowRef };
+            cachedImageId = imageId;
+            if (DEBUG) console.log(`[w${workerNumber}] adopted broadcast orbit ${meta.len} pts for image ${imageId}`);
+        });
     } else if (data[0] == "wasm") {
         // console.log("wasm worker", data[1]);
         WebAssembly
