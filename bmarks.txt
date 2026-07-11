@@ -330,3 +330,31 @@ BMarks
     Cross-pass reuse: pass 2 rides pass 1's orbit (offsets -0.5,+0.5 px), so real
     two-pass renders skip the second build entirely (benchmarks above are
     single-pass and exclude that bonus).
+
+    Stock-defaults browser confirmation (640x480): 16w 299, 32w 286 single-pass
+    (beats every hand-tuned knob config); with second pass on, 353 effective --
+    pass 2 measured build-free (1.07s == pass-1 grind time, the build+relay
+    ~0.6s is pass 1 only).
+
+  Server protocol v2 (/mb-computeHP2): one streaming request per image
+    One request carries the whole image + thread count; the server builds the
+    orbit ONCE, grinds rows/(4*threads)-row strips (clamp [4,32]) on a
+    per-request rayon pool, and streams each strip as an NDJSON line as it
+    finishes (out of order, client paints by firstRow). Old per-32-row-job
+    protocol kept as /mb-computeHP for old clients.
+
+    640x2048: 16t 445, 32t 512  (old protocol best 392 -> +31%; ABOVE the 502
+      "native ceiling" from bench-server270, because that bench still paid one
+      orbit build per band -- HP2 pays one, period. 32t > 16t again: the
+      per-request pool can't oversubscribe.)
+    640x480:  16t 315, 32t 304  (old best 305 -> +3%: the short image is
+      build-bound -- the ~0.6s serial orbit build is ~40% of wall time, is
+      rebuilt every request/pass, and more threads can't help a serial build.)
+
+    Cross-machine ranking is back to architecture: server 512 vs browser 466 on
+    the tall image (~ the known wasm/native ratio).
+
+    NEXT LEVER (short images / second pass on the server): cross-request orbit
+    caching keyed on the view coords -- the server-side analog of the browser's
+    cross-pass reuse. Predicted ~550 rows/sec grind-only at 32t on 640x480, and
+    a free second pass.
