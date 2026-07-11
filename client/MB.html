@@ -647,14 +647,10 @@ let minRowsPerJobHP = 4;
 
 // TEST KNOB: force the local HP job size to this many rows and skip the tail
 // re-split, so the browser runs uniform N-row jobs. 0 = normal adaptive sizing.
-// Investigation finding (see bmarks.txt / CLAUDE.md): HP throughput is dominated
-// by the per-strip reference-orbit rebuild, so BIG bands win -- on a 270-digit
-// view this took the browser 80 -> 472 rows/sec (band 128, 16 workers, 2048
-// rows). This knob is a scaffold for that measurement; the real fix is orbit
-// sharing (build the orbit once, reuse across strips), being prototyped on this
-// branch. NOTE: after editing, hard-reload (ctrl-shift-R) -- MB.html is served
-// max-age=600, so a plain reload can serve the old page for up to 10 min.
-let TEST_HP_JOB_ROWS = 4;
+// A benchmarking scaffold from the orbit-rebuild investigation (bmarks.txt);
+// leave at 0. NOTE: after editing, hard-reload (ctrl-shift-R) -- MB.html is
+// served max-age=600, so a plain reload can serve the old page for up to 10 min.
+let TEST_HP_JOB_ROWS = 0;
 
 // ORBIT SHARING (local workers only): build the reference orbit ONCE per view
 // and reuse it across all strips of BOTH passes (the reference is not a grid
@@ -662,12 +658,17 @@ let TEST_HP_JOB_ROWS = 4;
 // offsets against the same orbit). Decouples strip size from build cost, so
 // small strips (good balance) become cheap. Requires wasm v9. Toggle off to A/B
 // against the classic per-strip perturb path.
+// Measured (i9-13900KF, 270-digit view, bmarks.txt): 640x480 230 -> 292 rows/sec
+// best-vs-best; ties the no-share record on 640x2048 (466). No measured loss.
 let USE_ORBIT_SHARING = true;
 // With sharing on: false = each worker builds the orbit itself (builds run in
 // parallel, ~one build of wall time, no transport); true = worker 0 builds it
-// once, the main thread relays the ~12MB f64 orbit to the other workers, and the
-// first dispatch waits for the relay (one build total, solo-turbo speed).
-let USE_ORBIT_BROADCAST = false;
+// once, the main thread relays the ~16MB f64 orbit to the other workers (~3ms
+// per worker), and the first dispatch waits for the relay (one build total, at
+// solo-turbo speed). Broadcast won every measured cell: +12-35% over per-worker
+// on 640x480 (the gap grows with worker count -- N simultaneous builds contend),
+// +9% on 640x2048.
+let USE_ORBIT_BROADCAST = true;
 // Identifies which view an orbit belongs to (bumped once per startJob; the
 // second pass reuses the same id, and so the same orbit).
 let hpOrbitId = 0;
@@ -685,11 +686,21 @@ let pendingOrbitDispatch = null;
 // way, never create fewer jobs than workers -- the dispatch loop hands one job
 // to every worker up front (a short canvas caps the job size accordingly).
 function rowsPerJobLocalHP(rows) {
-    if (TEST_HP_JOB_ROWS > 0 && document.getElementById("local").checked) {
+    let local = document.getElementById("local").checked;
+    if (TEST_HP_JOB_ROWS > 0 && local) {
         return Math.max(1, Math.min(TEST_HP_JOB_ROWS, rows));
     }
     let onePerWorker = Math.max(1, Math.floor(rows/workerCount));
-    let n = document.getElementById("local").checked
+    if (local && USE_ORBIT_SHARING) {
+        // Sharing decouples the orbit build from strip size, so strips are chosen
+        // for balance alone: target ~4 jobs/worker, floor 8 (below that the
+        // per-strip BLA-table rebuild and message traffic start to bite), cap
+        // maxRowsPerJobHP. Lands on the measured optimum in every benchmarked
+        // cell: 480 rows -> 8, 2048 rows/16w -> 32, 2048 rows/32w -> 16.
+        let n = Math.max(8, Math.floor(rows/(4*workerCount)));
+        return Math.max(1, Math.min(maxRowsPerJobHP, n, onePerWorker));
+    }
+    let n = local
         ? Math.max(minRowsPerJobHP, Math.floor(rows/(8*workerCount)))
         : maxRowsPerJobHP;
     return Math.max(1, Math.min(maxRowsPerJobHP, n, onePerWorker));
@@ -700,12 +711,6 @@ function rowsPerJobLocalHP(rows) {
 // this holds for the plain (reversed), interlaced, and second-pass orderings.
 // yVal/dy are the image-top BigDecimals used to build each sub-job's y value.
 function splitHPTailJobs(jobs, yVal, dy) {
-    if (USE_ORBIT_SHARING) {
-        // Tail-splitting with sharing needs sub-jobs to inherit the image id/top
-        // (not reconvert a strip yVal); deferred. Strip size is set by
-        // TEST_HP_JOB_ROWS meanwhile -- small strips are already cheap here.
-        return jobs;
-    }
     if (TEST_HP_JOB_ROWS > 0) {
         return jobs;    // TEST KNOB on: keep uniform N-row jobs, no tail re-split
     }
@@ -716,6 +721,17 @@ function splitHPTailJobs(jobs, yVal, dy) {
     let tail = [];
     for (let k = 0; k < splitCount; k++) {
         let job = jobs[k];
+        if (job.imageId !== undefined) {
+            // Orbit sharing: sub-jobs are free -- every field is the shared basis
+            // except the row window, so no BigDecimal work and no rebuilt yVal.
+            for (let r = job.row; r < job.row + job.nrows; r += minRowsPerJobHP) {
+                tail.push(Object.assign({}, job, {
+                    row: r,
+                    nrows: Math.min(minRowsPerJobHP, job.row + job.nrows - r)
+                }));
+            }
+            continue;
+        }
         for (let r = job.row; r < job.row + job.nrows; r += minRowsPerJobHP) {
             let ytmp = yVal.subtract(dy.multiply(new BigDecimal(r.toString())));
             let yValArray = new ArrayType(chunks+1);
@@ -920,11 +936,11 @@ function jobFinished(msg) {
     // release the deferred first dispatch. Per-worker FIFO ordering guarantees
     // the orbit lands before any task that needs it.
     if (job[0] === "orbit") {
-        let t0 = performance.now();
+        // let t0 = performance.now();
         for (let i = 1; i < workers.length; i++) {
             workers[i].postMessage([ "orbit", job[1], job[2], job[3] ]);
         }
-        console.log(`orbit broadcast: ${job[2].len} pts to ${workers.length-1} workers in ${(performance.now()-t0).toFixed(0)} ms`);
+        // console.log(`orbit broadcast: ${job[2].len} pts to ${workers.length-1} workers in ${(performance.now()-t0).toFixed(0)} ms`);
         if (pendingOrbitDispatch) {
             let dispatch = pendingOrbitDispatch;
             pendingOrbitDispatch = null;

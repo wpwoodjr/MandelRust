@@ -299,3 +299,34 @@ BMarks
     tuning only half-achieves. Server: share in-place across rayon threads.
     Browser: compute once on a worker, broadcast the ~16MB f64 orbit (SAB-free),
     build per-strip tables locally. Prototyping on branch BLA-orbit-sharing.
+
+  Orbit sharing results (BLA-orbit-sharing branch, wasm v9, same 270-digit view,
+  single pass, rows/sec)
+    Two modes, both reusing one orbit across all strips of both passes:
+      per-worker: every worker builds the orbit itself (parallel builds)
+      broadcast:  worker 0 builds once, main thread relays the f64 orbit
+                  (~16MB, ~3ms/worker); dispatch waits for the relay
+
+    640x480 (short image -- build-dominated; old no-share best 230):
+                          16 workers    32 workers
+      no-share strip 16      201           230
+      per-worker strip 16    254/260       206/209   (win at 2 strips/worker,
+                                                      ref-tax loss at 1/worker)
+      broadcast strip 4      279           272
+      broadcast strip 8      290           280
+      broadcast strip 16     292           282       <- best: +27% over no-share
+    Broadcast vs per-worker: +12% @16w, +35% @32w -- N simultaneous million-
+    iteration builds contend (all-core turbo + SMT); one solo build does not.
+
+    640x2048 (tall image -- no-share big strips' best case; record 466):
+      per-worker strip 32, 16w: 429  (identical build count as no-share strip 128
+                                      @16w = one/worker; the -10% is pure
+                                      far-reference tax, isolated)
+      broadcast strip 32:  16w 457, 32w 466  <- TIES the record on sharing's
+                                                worst terrain
+    Verdict: broadcast won or tied every measured cell. Defaults now
+    USE_ORBIT_SHARING=true, USE_ORBIT_BROADCAST=true, adaptive strips
+    rows/(4*workers) clamped [8,32] (hits the measured optimum in every cell).
+    Cross-pass reuse: pass 2 rides pass 1's orbit (offsets -0.5,+0.5 px), so real
+    two-pass renders skip the second build entirely (benchmarks above are
+    single-pass and exclude that bonus).

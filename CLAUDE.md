@@ -237,14 +237,25 @@ Few builds AND fast lookups AND all-core scaling — what big bands only half-do
   reference glitch-free. The "BLA one-reference" engine already validates this
   (matches exact on all but ~0.002% of pixels, <=6 counts off).
 - **Server**: rayon shares memory — build once, all threads read one read-only
-  orbit/table in place. No new transport. Clean win, no blockers.
-- **Browser**: web workers have isolated memory. Compute the orbit on one worker,
-  postMessage-broadcast the ~16MB f64 orbit (cheap; the 96MB BLA table is NOT
-  moved — rebuilt locally per strip), each worker builds per-strip tables. This
-  is SAB-free (works on GitHub Pages). A shared read-only *table* across workers
-  would need SharedArrayBuffer (COOP/COEP headers Pages can't set) — deferred;
-  measure whether per-worker tables wall out on lookup-phase memory bandwidth
-  first.
+  orbit/table in place. No new transport. Clean win, no blockers. NOT YET DONE —
+  the server still rebuilds per band; this is the branch's remaining work item.
+- **Browser**: SHIPPED on this branch (wasm v9). Web workers have isolated
+  memory, so worker 0 builds the orbit and the main thread relays the ~16MB f64
+  buffer to the others (~3ms/worker; the ~40MB BLA table is NOT moved — rebuilt
+  per strip). SAB-free, works on GitHub Pages. `USE_ORBIT_SHARING` +
+  `USE_ORBIT_BROADCAST` in MB.html (both default true; broadcast=false is the
+  per-worker-build variant, which measured 12-35% slower — N simultaneous
+  million-iteration builds throttle each other). The engine is
+  `bla_strip`/`compute_strip_with_orbit` with per-strip dc_max; jobs carry the
+  pass-1 BASIS grid coords + per-job (ox, oy) pixel offsets, so BOTH passes share
+  one orbit (pass 2 = offsets (-0.5, +0.5); validated to max-delta-1 vs the
+  shipping engine on the shifted grid). Adaptive strips under sharing:
+  rows/(4*workers) clamped [8,32]. Results (270-digit view): 640x480 230 -> 292
+  rows/sec; ties the 640x2048 no-share record (466). Known cost: a far reference
+  shortens BLA skips (~10% on a 2048-row span, isolated in bmarks.txt); known
+  ceiling: per-worker BLA tables still contend for memory bandwidth at high
+  worker counts — a shared read-only table needs SharedArrayBuffer (COOP/COEP
+  headers Pages can't set), deferred.
 
 ## x86 Evaluation Playbook (BLA branch)
 
