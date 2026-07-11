@@ -128,3 +128,98 @@ pub extern "C" fn compute_mandelbrot_hp_perturb(
     // same ratio as every other engine, and beats the glitch engine everywhere.)
     mandelbrot_perturb_bla32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iterations, iteration_counts);
 }
+
+// *** orbit sharing (v8): build the reference orbit ONCE for the whole image,
+// then grind strips against it. The orbit is stored as interleaved f64 pairs
+// (zr,zi) == Vec<(f64,f64)> layout. On the browser one worker calls
+// build_reference_orbit, JS broadcasts the f64 buffer, every worker copies it into
+// an 8-aligned buffer (malloc_f64) and calls compute_strip_with_orbit per strip.
+// See mb-arith::bla_strip and CLAUDE.md (BLA-orbit-sharing). *** //
+
+// 8-byte-aligned allocation for the orbit buffer. The general malloc uses
+// align_of::<usize>() = 4 on wasm32, but f64 access and JS Float64Array views both
+// require 8-byte alignment, so the orbit needs its own allocator. Freed by free_f64
+// with the matching (size, align).
+#[no_mangle]
+pub extern "C" fn malloc_f64(count: u32) -> *mut f64 {
+    unsafe {
+        let layout = Layout::from_size_align_unchecked(count as usize * 8, 8);
+        alloc(layout) as *mut f64
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn free_f64(ptr: *mut f64, count: u32) {
+    unsafe {
+        let layout = Layout::from_size_align_unchecked(count as usize * 8, 8);
+        dealloc(ptr as *mut u8, layout);
+    }
+}
+
+// Build the whole-image reference orbit (reference at image center, matching
+// perturb_setup32). Returns a pointer to `2*N` interleaved f64 (zr,zi); writes the
+// orbit point count N to *out_len and the f64 pixel steps [dx_f, dy_f, dcx0] to
+// out_meta[0..3] so the caller can hand them to compute_strip_with_orbit without
+// reconverting limbs. The buffer is 8-aligned; free it with free_f64(ptr, 2*N).
+#[no_mangle]
+pub extern "C" fn build_reference_orbit(
+    xmin: *const u32, dx: *const u32, ymax: *const u32, dy: *const u32, len: u32,
+    columns: u32, image_rows: u32, max_iterations: i32,
+    out_len: *mut u32, out_meta: *mut f64,
+) -> *mut f64 {
+    let len = len as usize;
+    let xmin = unsafe { std::slice::from_raw_parts(xmin, len) };
+    let dx = unsafe { std::slice::from_raw_parts(dx, len) };
+    let ymax = unsafe { std::slice::from_raw_parts(ymax, len) };
+    let dy = unsafe { std::slice::from_raw_parts(dy, len) };
+    let chunks = 1 + (len - 1 + 1) / 2;
+
+    let xmin = u32_to_limbs32(xmin);
+    let dx = u32_to_limbs32(dx);
+    let ymax = u32_to_limbs32(ymax);
+    let dy = u32_to_limbs32(dy);
+
+    let (orbit, dx_f, dy_f, dcx0, _col_ref, _row_ref) = perturb_setup32(
+        &xmin, &dx, &ymax, &dy, chunks, image_rows as usize, columns as usize, max_iterations,
+    );
+
+    // into_boxed_slice shrinks capacity to len, so free_f64(ptr, 2*N) matches the
+    // allocation exactly (N * (f64,f64) == 2N * f64, align 8).
+    let boxed: Box<[(f64, f64)]> = orbit.into_boxed_slice();
+    let n = boxed.len();
+    let ptr = boxed.as_ptr() as *mut f64;
+    std::mem::forget(boxed); // ownership passes to JS; freed via free_f64
+    unsafe {
+        *out_len = n as u32;
+        *out_meta.add(0) = dx_f;
+        *out_meta.add(1) = dy_f;
+        *out_meta.add(2) = dcx0;
+    }
+    ptr
+}
+
+// Grind image rows [strip_row0, strip_row0+strip_rows) against a shared orbit
+// (2*orbit_len interleaved f64, as returned/broadcast from build_reference_orbit).
+// dx_f/dy_f/dcx0 come from out_meta; image_row_ref = image_rows/2 fixes the
+// reference the orbit was built at. Writes strip_rows*columns i32 to out.
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub extern "C" fn compute_strip_with_orbit(
+    orbit_ptr: *const f64, orbit_len: u32,
+    dx_f: f64, dy_f: f64, dcx0: f64, image_row_ref: u32,
+    strip_row0: u32, strip_rows: u32, columns: u32,
+    max_iterations: i32, iteration_counts: *mut i32,
+) {
+    // The buffer is the byte-image of a [(f64,f64)] slice (built that way, or a
+    // JS copy of one), 8-aligned, so this reinterpret is layout-valid.
+    let orbit = unsafe {
+        std::slice::from_raw_parts(orbit_ptr as *const (f64, f64), orbit_len as usize)
+    };
+    let strip_rows = strip_rows as usize;
+    let columns = columns as usize;
+    let out = unsafe { std::slice::from_raw_parts_mut(iteration_counts, strip_rows * columns) };
+    bla_strip(
+        orbit, dx_f, dy_f, dcx0, image_row_ref as usize,
+        strip_row0 as usize, strip_rows, columns, max_iterations, out,
+    );
+}
