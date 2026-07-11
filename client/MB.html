@@ -773,6 +773,11 @@ function startJob(dontClear) {
     var columns = canvas.width;
     savedIterationCounts = new Array(rows);
     savedIterationCounts2ndPass = new Array(rows+1);
+    // Every render invalidates the orbit basis; only an HP sharing render sets a
+    // new one below. Otherwise a later HP second pass (e.g. LP render, then the
+    // High Precision box checked, then Second Pass checked -- no redraw between)
+    // would reuse a basis from an OLDER view and composite the wrong image.
+    hpBasis = null;
     if (highPrecision) {
         digits = xmin.scale();
         chunks = Math.floor((digits * log2of10)/16 + 2);
