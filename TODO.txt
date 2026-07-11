@@ -8,7 +8,8 @@ One loose end worth naming for the record: the ~2.7x wasm penalty on the BLA loo
   something deeper in how V8 compiles that branchy, latency-bound loop (register spilling across the probe loop is my remaining guess). The hybrid sidesteps it; if we ever want the full
   BLA win in the browser at mid depths, that's a focused investigation for another session. Also on the shelf: tightening the 16-digit crossover with a ~60-70-digit test view.
 Middle wheel zooms at cursor
-Bump maxiter
+Bump maxiter - now is 999999
+Why different band sizes on server than client
 -------------------------------------
 Is there a way to use emulated double-click with Chrome on ios, without haveing to call touch.handleTouchCancel()?
 Maybe need to kill workers to increase responsiveness to touch on mobile with "default" settings

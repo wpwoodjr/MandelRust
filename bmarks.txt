@@ -264,3 +264,38 @@ BMarks
       browser 35-digit 1 worker: 605
       browser 126 middle 1 worker: 478
       browser 126 full 32 workers: 6450
+
+  Orbit-rebuild investigation (Beast, 270-digit view, max_iter 999999)
+    Finding: HP throughput is dominated by the per-strip reference-orbit rebuild.
+    "builds per row" is the master knob; every other lever (browser strip size,
+    server -r, worker count, band size, image height) turned out to be that knob
+    in disguise. Big bands win because they rebuild fewer orbits per row.
+
+    Browser progression (same view), rows/sec:
+      original 4-row jobs .............................  80
+      strip 16 (640x480, 32w) ......................... 230
+      strip 32 (640x1024, 32w) ........................ 327
+      band 128 (604x1024, 8w) ......................... 401
+      band 128 (640x2048, 16w) ........................ 472   <- big band + cores
+    band-128 wasm @16w (472) beat band-64 NATIVE @16t (405): fewer builds beat
+    the whole wasm penalty.
+
+    Server (640x1024, -r 1 = 32-row bands), rows/sec by worker count:
+      8w 232, 16w 320, 24w 335, 32w 392 (monotone; HTTP ~free vs native)
+    -r is a single-stream lever only: -r 2/1w=47 vs -r 1/1w=33 (2 threads), but
+    -r 1/2w=62 beats -r 2/1w (overlapped round trips + bigger bands). -r 1 is
+    robust across worker counts (no rayon-pool oversubscription); -r 2 collapses
+    (32w -> 200). Default -r 2 halves single-stream, so it is not a free swap.
+
+    Native compute ceiling (mb-arith/examples/bench-server270, no HTTP/client):
+      480-row image, 32t: band16 ~299, band32 ~301  (== HTTP 305: geometry-capped)
+      2048-row image, 32t: band16 328, band32 424, band64 502  (box's real ceiling)
+      orbit sharing, 1 thread, one orbit for all rows: 2.22x over per-band rebuild
+      (worst case: whole-image dc_max; per-strip tables keep dc_max tight -> more)
+
+    Conclusion: orbit sharing (build the reference orbit once, reuse across
+    strips, rebuild only the cheap f64 BLA table per strip so dc_max stays small)
+    gets FEW builds AND fast lookups AND all-core scaling at once -- what big-band
+    tuning only half-achieves. Server: share in-place across rayon threads.
+    Browser: compute once on a worker, broadcast the ~16MB f64 orbit (SAB-free),
+    build per-strip tables locally. Prototyping on branch BLA-orbit-sharing.

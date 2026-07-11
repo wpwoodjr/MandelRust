@@ -645,6 +645,17 @@ let maxRowsPerJob = 32;
 let maxRowsPerJobHP = 32;
 let minRowsPerJobHP = 4;
 
+// TEST KNOB: force the local HP job size to this many rows and skip the tail
+// re-split, so the browser runs uniform N-row jobs. 0 = normal adaptive sizing.
+// Investigation finding (see bmarks.txt / CLAUDE.md): HP throughput is dominated
+// by the per-strip reference-orbit rebuild, so BIG bands win -- on a 270-digit
+// view this took the browser 80 -> 472 rows/sec (band 128, 16 workers, 2048
+// rows). This knob is a scaffold for that measurement; the real fix is orbit
+// sharing (build the orbit once, reuse across strips), being prototyped on this
+// branch. NOTE: after editing, hard-reload (ctrl-shift-R) -- MB.html is served
+// max-age=600, so a plain reload can serve the old page for up to 10 min.
+let TEST_HP_JOB_ROWS = 128;
+
 // Local HP job size scales with parallelism: a lone worker has no balancing
 // problem and gets the most engine-efficient big blocks, while many workers on
 // unequal cores need many small quanta so per-core speed differences average out
@@ -653,6 +664,9 @@ let minRowsPerJobHP = 4;
 // way, never create fewer jobs than workers -- the dispatch loop hands one job
 // to every worker up front (a short canvas caps the job size accordingly).
 function rowsPerJobLocalHP(rows) {
+    if (TEST_HP_JOB_ROWS > 0 && document.getElementById("local").checked) {
+        return Math.max(1, Math.min(TEST_HP_JOB_ROWS, rows));
+    }
     let onePerWorker = Math.max(1, Math.floor(rows/workerCount));
     let n = document.getElementById("local").checked
         ? Math.max(minRowsPerJobHP, Math.floor(rows/(8*workerCount)))
@@ -665,6 +679,9 @@ function rowsPerJobLocalHP(rows) {
 // this holds for the plain (reversed), interlaced, and second-pass orderings.
 // yVal/dy are the image-top BigDecimals used to build each sub-job's y value.
 function splitHPTailJobs(jobs, yVal, dy) {
+    if (TEST_HP_JOB_ROWS > 0) {
+        return jobs;    // TEST KNOB on: keep uniform N-row jobs, no tail re-split
+    }
     if (!document.getElementById("local").checked) {
         return jobs;    // remote jobs stay whole: each one costs an HTTP round trip
     }

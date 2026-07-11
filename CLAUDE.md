@@ -198,9 +198,53 @@ Next steps (after the `BLA` branch):
    the ~1e-300 pixel-scale f64 underflow floor (~300 decimal digits) — now the
    only depth limit.
 2. Merge `BLA` -> `perturbation` -> `master` once soaked.
-3. Smaller fry: share the reference orbit + BLA table across a worker's jobs
-   (saves the few % of HP setup per job); revisit within-pixel SIMD only on x86
-   hardware (AVX2 shuffles are cheaper — measure, don't assume).
+3. **Orbit sharing** — build the reference orbit once and reuse it across a
+   worker's strips (see below). NOTE: an earlier note here called this "a few %
+   of HP setup per job" — that is WRONG at depth. On a 270-digit view the
+   per-strip orbit rebuild is 90%+ of the work; this is the dominant HP lever,
+   not smaller fry. Being prototyped on the `BLA-orbit-sharing` branch.
+4. Revisit within-pixel SIMD only on x86 hardware (AVX2 shuffles are cheaper —
+   measure, don't assume).
+
+## Orbit-Rebuild Bottleneck / Orbit Sharing (BLA-orbit-sharing branch)
+
+The single biggest HP lever at depth, found by benchmarking a 270-digit view.
+Both tiers rebuild the reference orbit + BLA table **per strip** (per local job,
+per server band). The orbit is ~max_iter HP iterations at N limbs and dominates:
+on the 270-digit view it is 90%+ of a small strip's time. So the whole
+throughput story reduces to ONE quantity — **builds per row** — and every knob
+(browser strip size, server `-r`, worker count, band size, image height) is that
+quantity wearing a disguise.
+
+Consequences measured (Beast i9-13900KF, see bmarks.txt):
+- Big bands win by rebuilding fewer orbits per row: browser 80 -> 472 rows/sec on
+  the 270-digit view purely by strip sizing. band-128 wasm beat band-64 native —
+  fewer builds beat the wasm penalty.
+- Native compute ceiling (`bench-server270`) ~500 rows/sec at 32 threads; the
+  480-row image caps at ~305 only because it can't feed 32 threads with big
+  bands (geometry, not the box).
+- Big bands have a cost: a tall band gives its BLA table a large `dc_max`, which
+  shortens the linear skips (slower per pixel). So big-band tuning trades build
+  savings for lookup slowdown — a compromise, not the fix.
+
+The fix — **share the orbit, keep per-strip BLA tables**: build the expensive HP
+orbit once, reuse it across strips (kills the rebuilds), but rebuild the CHEAP
+f64 BLA table per strip so each strip's `dc_max` stays small (keeps skips long).
+Few builds AND fast lookups AND all-core scaling — what big bands only half-do.
+- Correctness: one orbit serves the whole image because at deep zoom the entire
+  image spans ~1e-(digits) of the plane, so every pixel is an infinitesimal `dc`
+  from the reference; the rebasing engine (`mandelbrot_perturb64`) makes a single
+  reference glitch-free. The "BLA one-reference" engine already validates this
+  (matches exact on all but ~0.002% of pixels, <=6 counts off).
+- **Server**: rayon shares memory — build once, all threads read one read-only
+  orbit/table in place. No new transport. Clean win, no blockers.
+- **Browser**: web workers have isolated memory. Compute the orbit on one worker,
+  postMessage-broadcast the ~16MB f64 orbit (cheap; the 96MB BLA table is NOT
+  moved — rebuilt locally per strip), each worker builds per-strip tables. This
+  is SAB-free (works on GitHub Pages). A shared read-only *table* across workers
+  would need SharedArrayBuffer (COOP/COEP headers Pages can't set) — deferred;
+  measure whether per-worker tables wall out on lookup-phase memory bandwidth
+  first.
 
 ## x86 Evaluation Playbook (BLA branch)
 
