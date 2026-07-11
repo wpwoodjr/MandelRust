@@ -298,10 +298,10 @@
   </style>
 </style>
 
-<script src="BigDecimal-all-last.min.js?v=47480160fe"></script>
-<script src="slider.js?v=47480160fe"></script>
-<script src="touch.js?v=47480160fe"></script>
-<script src="percentage-complete.js?v=47480160fe"></script>
+<script src="BigDecimal-all-last.min.js?v=6a7b5c6abd"></script>
+<script src="slider.js?v=6a7b5c6abd"></script>
+<script src="touch.js?v=6a7b5c6abd"></script>
+<script src="percentage-complete.js?v=6a7b5c6abd"></script>
 <script>
 
 "use strict";
@@ -453,7 +453,7 @@ var log2of10 = Math.log(10)/Math.log(2);
 // URLs is what stops a cached worker from outliving the binary it drives.
 // Stamped from the assets' contents by stamp-assets.sh at build time -- do not
 // edit by hand. Distinct from EXPECTED_WASM_VERSION, which pins the wasm ABI.
-const ASSET_VERSION = "47480160fe";
+const ASSET_VERSION = "6a7b5c6abd";
 
 let compute_mandelbrot;
 WebAssembly
@@ -687,11 +687,17 @@ let pendingOrbitDispatch = null;
 // to every worker up front (a short canvas caps the job size accordingly).
 function rowsPerJobLocalHP(rows) {
     let local = document.getElementById("local").checked;
-    if (TEST_HP_JOB_ROWS > 0 && local) {
+    if (!local) {
+        // Remote HP is ONE whole-image streaming request (mb-computeHP2): the
+        // server builds the orbit once and streams strips back as they finish.
+        // The worker slider rides along as the server-side thread count.
+        return rows;
+    }
+    if (TEST_HP_JOB_ROWS > 0) {
         return Math.max(1, Math.min(TEST_HP_JOB_ROWS, rows));
     }
     let onePerWorker = Math.max(1, Math.floor(rows/workerCount));
-    if (local && USE_ORBIT_SHARING) {
+    if (USE_ORBIT_SHARING) {
         // Sharing decouples the orbit build from strip size, so strips are chosen
         // for balance alone: target ~4 jobs/worker, floor 8 (below that the
         // per-strip BLA-table rebuild and message traffic start to bite), cap
@@ -876,7 +882,7 @@ function startJob(dontClear) {
                 break;
             }
             j.workerNum = i;
-            workers[i].postMessage(["setup",jobNum, maxIterSlider.value,highPrecision,i]);
+            workers[i].postMessage(["setup",jobNum, maxIterSlider.value,highPrecision,i,workerCount]);
             workers[i].postMessage([
                 "task", j.row, j.columns,
                 j.xmin, j.dx, j.yVal, j.dy, j.nrows,
@@ -896,7 +902,7 @@ function startJob(dontClear) {
             if (myJobNum === jobNum) dispatchFirstJobs();
         };
         for (let i = 0; i < workerCount; i++) {
-            workers[i].postMessage(["setup",jobNum, maxIterSlider.value,highPrecision,i]);
+            workers[i].postMessage(["setup",jobNum, maxIterSlider.value,highPrecision,i,workerCount]);
         }
         workers[0].postMessage(["buildOrbit", hpBasis.id,
             hpBasis.xmin, hpBasis.dx, hpBasis.yVal, hpBasis.dy, hpBasis.cols, hpBasis.rows]);
@@ -1102,7 +1108,7 @@ function startSecondPass() {
             break;
         }
         j.workerNum = i;
-        workers[i].postMessage(["setup",jobNum, maxIterSlider.value,highPrecision,i]);
+        workers[i].postMessage(["setup",jobNum, maxIterSlider.value,highPrecision,i,workerCount]);
         workers[i].postMessage([
             "task", j.row, j.columns,
             j.xmin, j.dx, j.yVal, j.dy, j.nrows,

@@ -56,7 +56,13 @@ mb-rust-server [URL] [OPTIONS]
 
 **Server API endpoints:**
 - `POST /mb-compute` - Low precision (f64) calculation
-- `POST /mb-computeHP` - High precision (arbitrary precision) calculation
+- `POST /mb-computeHP` - High precision, legacy: one 32-row job per request,
+  banded by `-r`, orbit rebuilt per band. Kept for old clients
+- `POST /mb-computeHP2` - High precision v2: ONE request per image/pass
+  (`threads` in the body, clamped server-side; `-r` does not apply). Builds the
+  reference orbit once, computes small strips in parallel, streams each strip as
+  an NDJSON line the moment it finishes (out of order; client paints by
+  firstRow). A dropped connection aborts remaining strips
 - `GET /remoteCanComputeMB` - Health check
 
 **Worker scripts in client/:**
@@ -236,9 +242,19 @@ Few builds AND fast lookups AND all-core scaling — what big bands only half-do
   from the reference; the rebasing engine (`mandelbrot_perturb64`) makes a single
   reference glitch-free. The "BLA one-reference" engine already validates this
   (matches exact on all but ~0.002% of pixels, <=6 counts off).
-- **Server**: rayon shares memory — build once, all threads read one read-only
-  orbit/table in place. No new transport. Clean win, no blockers. NOT YET DONE —
-  the server still rebuilds per band; this is the branch's remaining work item.
+- **Server**: SHIPPED via a protocol change (`/mb-computeHP2`): the client sends
+  ONE whole-image request (thread count in the body) instead of 32-row jobs, so
+  "once per request" = once per image. The orbit is built once, strips
+  (`rows/(4*threads)` clamped [4,32]) run on a per-request rayon pool reading it
+  in place, and each strip streams back as an NDJSON line when it finishes —
+  progressive paint survives, out-of-order, no batch barrier; an aborted fetch
+  kills the remaining strips at the next send. The remote worker
+  (mandelbrot-worker-remote.js) streams via fetch, dedupes strips on retry, and
+  falls back to the legacy endpoint on 404 (old servers). Validated vs the old
+  endpoint and vs the wasm shared engine (u64 vs u32 limb orbits round to
+  identical f64s): <=6/25600 px, max delta <=4. The server does not cache orbits
+  across requests, so each pass rebuilds once (~0.5s) — cross-request caching is
+  possible future work.
 - **Browser**: SHIPPED on this branch (wasm v9). Web workers have isolated
   memory, so worker 0 builds the orbit and the main thread relays the ~16MB f64
   buffer to the others (~3ms/worker; the ~40MB BLA table is NOT moved — rebuilt

@@ -136,6 +136,7 @@ fn web_server(url: &str) {
         App::new()
             .route("/mb-compute", web::post().to(compute_mandelbrot))
             .route("/mb-computeHP", web::post().to(compute_mandelbrot_hp))
+            .route("/mb-computeHP2", web::post().to(compute_mandelbrot_hp2))
             .route("/remoteCanComputeMB", web::get().to(ping))
             .route("/", web::get().to(redirect))
             .route("/{filename:.*}", web::get().to(file))
@@ -257,6 +258,86 @@ async fn compute_mandelbrot_hp(mandelbrot_coords_hp: web::Json<MandelbrotCoordsH
         _ => panic!("illegal size!")
     };
     HttpResponse::Ok().json(iteration_counts)
+}
+
+
+// *** high precision v2: whole image per request, orbit shared, streamed *** //
+#[derive(Deserialize)]
+#[allow(non_snake_case)]
+struct MandelbrotCoordsHP2 {
+    columns: usize,
+    rows: usize,
+    xmin: Vec<u32>,
+    dx: Vec<u32>,
+    ymax: Vec<u32>,
+    dy: Vec<u32>,
+    maxIterations: i32,
+    threads: usize,
+}
+
+// One request = one whole image (or one pass). The reference orbit is built ONCE
+// (image-center reference, same scheme as the browser's orbit sharing), then
+// small strips are computed in parallel on a per-request rayon pool sized by the
+// client's `threads` (clamped to the machine). Each strip is streamed back the
+// moment it finishes as one NDJSON line -- out of order; the client paints by
+// firstRow -- so the display stays progressive with no batch barrier. If the
+// client disconnects, the next strip's send fails and remaining strips
+// early-out. This replaces the old 32-row-jobs protocol for HP, which rebuilt
+// the orbit per band and idled through per-request round trips; legacy flags
+// (--no-perturb, --u32/64/128) do not apply here.
+async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpResponse {
+    let coords = coords.into_inner();
+    let (tx, rx) = tokio::sync::mpsc::channel::<std::result::Result<web::Bytes, std::convert::Infallible>>(64);
+
+    std::thread::spawn(move || {
+        let u32_chunks = coords.xmin.len();
+        let chunks = 1 + (u32_chunks - 1 + 3)/4;
+        let xmin = u32_to_limbs64(&coords.xmin);
+        let dx = u32_to_limbs64(&coords.dx);
+        let ymax = u32_to_limbs64(&coords.ymax);
+        let dy = u32_to_limbs64(&coords.dy);
+        let rows = coords.rows;
+        let columns = coords.columns;
+        let max_iter = coords.maxIterations;
+
+        let max_threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+        let threads = coords.threads.clamp(1, max_threads);
+        // Builds are decoupled from strips, so strips are sized for balance alone
+        // (same reasoning as the browser's adaptive formula).
+        let strip = rows.div_ceil(4*threads).clamp(4, 32);
+
+        let (orbit, dx_f, dy_f, dcx0, _col_ref, row_ref) =
+            perturb_setup64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter);
+
+        let pool = match rayon::ThreadPoolBuilder::new().num_threads(threads).build() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        let dead = std::sync::atomic::AtomicBool::new(false);
+        pool.install(|| {
+            let starts: Vec<usize> = (0..rows).step_by(strip).collect();
+            starts.par_iter().for_each(|&r0| {
+                if dead.load(std::sync::atomic::Ordering::Relaxed) {
+                    return;
+                }
+                let h = strip.min(rows - r0);
+                let mut out = vec![0i32; h*columns];
+                bla_strip(&orbit, dx_f, dy_f, dcx0, 0.0, row_ref, r0, h, columns, max_iter, &mut out);
+                let counts: Vec<&[i32]> = out.chunks(columns).collect();
+                let line = format!(
+                    "{{\"firstRow\":{},\"nrows\":{},\"iterationCounts\":{}}}\n",
+                    r0, h, serde_json::to_string(&counts).unwrap()
+                );
+                if tx.blocking_send(Ok(web::Bytes::from(line))).is_err() {
+                    dead.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+            });
+        });
+    });
+
+    HttpResponse::Ok()
+        .content_type("application/x-ndjson")
+        .streaming(tokio_stream::wrappers::ReceiverStream::new(rx))
 }
 
 use std::ops::{ BitAnd, BitAndAssign, Shl, Shr, AddAssign, Sub };
