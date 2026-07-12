@@ -1460,33 +1460,96 @@ let cancelDoubleClick = false;
 function setUpDragging() {  // for image canvas
     var zoomin;
     var startX, startY; // for mouse only
+    var panning = false;            // left-button drag = pan the image
+    var lastX, lastY;               // last on-canvas position during a pan
+    var panCanvas = null, panCtx = null;   // snapshot for live pan feedback
+    // Sentinel stored in the global dragbox during a pan so Mouser's mouseup
+    // path (which only fires endDrag when dragbox is set) delivers the release
+    // and suppresses the double-click, same as for a zoom rectangle. width 0
+    // keeps doDraw's "dragbox.width > 2" guard from trying to draw it.
+    var panBox = { width: 0, height: 0 };
     dragbox = null;  // initially, the mouse is not being dragged.
     canvas.addEventListener("dblclick",doMouseDoubleClick,false);
+    // passive: false so preventDefault can keep the page from scrolling
+    canvas.addEventListener("wheel", doMouseWheel, { passive: false });
+    // The zoom rectangle lives on a right-button DRAG; a plain right CLICK (no
+    // movement) still opens the browser menu, e.g. "Save image as...". The
+    // contextmenu event follows mouseup, so endDrag has already told us whether
+    // this gesture was a drag. (On macOS the menu fires on mousedown instead,
+    // so there a right-drag may open the menu -- Windows/Linux behave as
+    // described.)
+    var suppressMenu = false;
+    canvas.addEventListener("contextmenu", function(evt) {
+        if (suppressMenu) {
+            suppressMenu = false;
+            evt.preventDefault();
+        }
+    }, false);
     new Mouser(canvas, startDrag, continueDrag, endDrag, true);
     function startDrag(x,y,evt) {
-        if (evt && evt.button != 0)  // only allow left button to start drag
-            return false;
         startX = x;
         startY = y;
         dragbox = null;
-        zoomin = ! (evt && evt.shiftKey); 
-        return true;
+        panning = false;
+        suppressMenu = false;   // each gesture decides afresh (a stale flag from a
+                                // release off-canvas must not eat the next click's menu)
+        if (evt && evt.button === 2) {      // right button: zoom rectangle
+            zoomin = ! evt.shiftKey;
+            return true;
+        }
+        if (!evt || evt.button === 0) {     // left button: pan the image
+            panning = true;
+            return true;
+        }
+        return false;
     }
     function continueDrag(x,y) {
-        if (dragbox == null) {
-            if ( Math.abs(startX - x) < 3 && Math.abs(startY - y) < 3) {
-                return;  // don't show zoombox until mouse/touch has moved a bit.
+        if ( dragbox == null && Math.abs(startX - x) < 3 && Math.abs(startY - y) < 3) {
+            return;  // don't start the pan/zoombox until the mouse has moved a bit
+        }
+        if (panning) {
+            if (dragbox == null) {          // pan just passed the threshold
+                stopJob();
+                if (!panCanvas) {
+                    panCanvas = document.createElement("canvas");
+                    panCtx = panCanvas.getContext("2d");
+                }
+                panCanvas.width = canvas.width;
+                panCanvas.height = canvas.height;
+                panCtx.drawImage(OSC, 0, 0);   // snapshot to translate live
+                dragbox = panBox;
             }
+            lastX = x;
+            lastY = y;
+            // translate the snapshot into OSG with gray surround (as touch pan does)
+            OSG.fillStyle = "#BBBBBB";
+            OSG.fillRect(0, 0, canvas.width, canvas.height);
+            OSG.drawImage(panCanvas, x - startX, y - startY);
+            graphics.drawImage(OSC, 0, 0);
+            return;
+        }
+        if (dragbox == null) {
             dragbox = new DragBox(startX,startY);
         }
         dragbox.setCorner(x,y);
         doDraw();
     }
     function endDrag() {
+        if (panning) {
+            if (dragbox != null) {          // pan actually moved: commit it
+                dragbox = null;
+                doZoomInOnRect(startX - lastX, startY - lastY,
+                    canvas.width, canvas.height, true, "Move", true);
+                startJob(true);   // dontClear: repaint over the translated image, as touch pan does
+            }
+            panning = false;
+            return;
+        }
         if (dragbox != null) {
             doDraw();
             dragbox.zoom(zoomin);
             dragbox = null;
+            suppressMenu = true;   // this right gesture was a drag: eat the menu
         }
     }
     function doMouseDoubleClick(evt) {
@@ -1499,6 +1562,23 @@ function setUpDragging() {  // for image canvas
         const y = evt.clientY - (r.top + r.bottom - canvas.height)/2;
         const zoomFactor = evt.shiftKey ? 2 : 0.5;
         zoom(x,y,zoomFactor,!evt.altKey && !evt.ctrlKey, true);
+    }
+    // Wheel zoom at the cursor: a gentle 7/8 step per notch, anchored so the
+    // point under the cursor stays put (recenter=false). Undo is one item per
+    // view-change burst via recordViewBurst, shared with the pan/zoom keys so
+    // interleaving wheel and keys still yields a single undo step.
+    function doMouseWheel(evt) {
+        evt.preventDefault();   // keep the page from scrolling
+        if (dragbox || evt.deltaY === 0) {
+            return;             // mid-drag or horizontal scroll: ignore
+        }
+        const r = canvas.getBoundingClientRect();
+        // account for canvas border margin
+        const x = evt.clientX - (r.left + r.right - canvas.width)/2;
+        const y = evt.clientY - (r.top + r.bottom - canvas.height)/2;
+        const zoomFactor = evt.deltaY < 0 ? 7/8 : 8/7;   // up = in
+        recordViewBurst("Wheel Zoom");
+        zoom(x, y, zoomFactor, false, false);
     }
 }
 
@@ -1949,6 +2029,10 @@ function applyUndoItem(name, value) {
          mainPaletteOffsetSlider.setValue(value*100);
          doPaletteOffset();
          break;
+      case "Wheel Zoom":     // one wheel burst = one limits restore
+      case "Key Pan":        // one arrow-key burst
+      case "Key Zoom":       // one PageUp/PageDown burst
+      case "Pan/Zoom":       // burst mixing wheel and/or pan/zoom keys
       case "Change Limits":
          stopJob();
          setLimits(value[0],value[1],value[2],value[3],false);
@@ -3674,30 +3758,36 @@ function fullscreenChange() {
     }
 }
 
-let panZoomKeyTimeout = null, panKeyOldValue, panZoomKeyCurrentAction;
-function doPanZoomKey(name, x, y, w, h) {
-    if (panZoomKeyTimeout) {
-        clearTimeout(panZoomKeyTimeout);
-        panZoomKeyTimeout = null;
+// One undo item per view-change BURST, shared by the wheel and the pan/zoom
+// keys: the first event snapshots the view limits, each further event within
+// 500ms extends the same burst (even mixing wheel and keys -- separate trackers
+// produced two overlapping undo items, the second a near-no-op), and one
+// limits-restore undo item is recorded when the burst goes quiet. Call BEFORE
+// applying the view change. Replaces the old rect-offset accumulator, which
+// only handled Pan and could not compose zooms or mixtures.
+let viewBurstTimeout = null, viewBurstLimits = null, viewBurstLabel = null;
+function recordViewBurst(label) {
+    if (viewBurstTimeout) {
+        clearTimeout(viewBurstTimeout);
+        if (label !== viewBurstLabel) {
+            viewBurstLabel = "Pan/Zoom";   // mixed burst
+        }
     } else {
-        panZoomKeyCurrentAction = name;
-        panKeyOldValue = [0, 0];
+        viewBurstLimits = [xmin, xmax, ymin, ymax];   // BigDecimals: immutable, safe to hold
+        viewBurstLabel = label;
     }
-    if (name === "Pan" && panZoomKeyCurrentAction === name) {
-        panKeyOldValue[0] += x;
-        panKeyOldValue[1] += y;
-        panZoomKeyTimeout = setTimeout(() => {
-            addUndoItem("Move",
-                [ZOOMOUTRECT, panKeyOldValue[0], panKeyOldValue[1], w, h],
-                [ZOOMINRECT, panKeyOldValue[0], panKeyOldValue[1], w, h]);
-            panZoomKeyTimeout = null;
-        }, 500);
-    // } else {///??? finish for zoom
-    //     addUndoItem("Move",
-    //         [ZOOMOUTRECT, panKeyOldValue[0], panKeyOldValue[1], w, h],
-    //         [ZOOMINRECT, panKeyOldValue[0], panKeyOldValue[1], w, h]);
-    }
+    viewBurstTimeout = setTimeout(function() {
+        viewBurstTimeout = null;
+        if (viewBurstLimits[0].compareTo(xmin) == 0 && viewBurstLimits[1].compareTo(xmax) == 0
+                && viewBurstLimits[2].compareTo(ymin) == 0 && viewBurstLimits[3].compareTo(ymax) == 0) {
+            return;   // burst changed nothing (e.g. zoom-out refused at the cap): no undo item
+        }
+        addUndoItem(viewBurstLabel, viewBurstLimits, [xmin, xmax, ymin, ymax]);
+    }, 500);
+}
 
+function doPanZoomKey(name, x, y, w, h) {
+    recordViewBurst(name === "Pan" ? "Key Pan" : "Key Zoom");
     doZoomInOnRect(x, y, w, h, false);
 }
 let canvasKeyTimeout;
