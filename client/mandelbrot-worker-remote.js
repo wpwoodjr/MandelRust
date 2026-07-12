@@ -138,7 +138,15 @@ let threadCount = 2;
 const url = "mb-compute";
 onmessage = function(msg) {
     let data = msg.data;
-    if ( data[0] == "setup" ) {
+    if ( data[0] == "stop" ) {
+        // Stop pressed: kill the in-flight HP2 stream so the server abandons the
+        // remaining strips instead of computing the whole image for nobody.
+        if (streamAbort) {
+            streamAbort.abort();
+            streamAbort = null;
+        }
+        jobNumber = -1;   // drop any strips already decoded but not yet posted
+    } else if ( data[0] == "setup" ) {
         if (jobNumber !== data[1] && streamAbort) {
             streamAbort.abort();   // new job: abandon any in-flight HP2 stream
             streamAbort = null;
