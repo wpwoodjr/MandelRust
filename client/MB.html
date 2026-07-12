@@ -298,10 +298,10 @@
   </style>
 </style>
 
-<script src="BigDecimal-all-last.min.js?v=849ebc6375"></script>
-<script src="slider.js?v=849ebc6375"></script>
-<script src="touch.js?v=849ebc6375"></script>
-<script src="percentage-complete.js?v=849ebc6375"></script>
+<script src="BigDecimal-all-last.min.js?v=81bf5a7557"></script>
+<script src="slider.js?v=81bf5a7557"></script>
+<script src="touch.js?v=81bf5a7557"></script>
+<script src="percentage-complete.js?v=81bf5a7557"></script>
 <script>
 
 "use strict";
@@ -453,7 +453,7 @@ var log2of10 = Math.log(10)/Math.log(2);
 // URLs is what stops a cached worker from outliving the binary it drives.
 // Stamped from the assets' contents by stamp-assets.sh at build time -- do not
 // edit by hand. Distinct from EXPECTED_WASM_VERSION, which pins the wasm ABI.
-const ASSET_VERSION = "849ebc6375";
+const ASSET_VERSION = "81bf5a7557";
 
 let compute_mandelbrot;
 WebAssembly
@@ -803,11 +803,12 @@ function startJob(dontClear) {
         convert(dxArray,dx,chunks+1);
         convert(dyArray, dy, chunks+1);
 
-        // Orbit sharing (local workers only -- the remote worker reads job.yVal
-        // as its strip top, so it must keep per-strip yVals): all jobs carry the
-        // BASIS (image) coords; the worker offsets by job.row against the shared
-        // reference. This pass IS the basis grid, so (ox, oy) = (0, 0).
-        let sharingLocal = USE_ORBIT_SHARING && document.getElementById("local").checked;
+        // Orbit sharing (both tiers): all jobs carry the BASIS (image) coords.
+        // A local worker offsets by job.row against its cached orbit; the remote
+        // worker forwards basis + offsets so the SERVER's orbit cache can key on
+        // them (pass 2 reuses pass 1's orbit there too). This pass IS the basis
+        // grid, so (ox, oy) = (0, 0).
+        let sharingLocal = USE_ORBIT_SHARING;
         let imageId = 0, yValImageArray = null;
         if (sharingLocal) {
             imageId = ++hpOrbitId;
@@ -1059,8 +1060,7 @@ function startSecondPass() {
         // pixels (xStart = xmin - dx/2, yVal = ymax + dy/2). Jobs carry the
         // BASIS (pass-1) coords so a worker that missed pass 1 can still build
         // the identical orbit. Same imageId => workers keep their cache.
-        let sharingLocal = USE_ORBIT_SHARING && document.getElementById("local").checked
-            && hpBasis != null;
+        let sharingLocal = USE_ORBIT_SHARING && hpBasis != null;
         let rowsPerJobHP = rowsPerJobLocalHP(rows);
         for (let row = 0; row < rows; row += rowsPerJobHP) {
             let jobYVal;

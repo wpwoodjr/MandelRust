@@ -33,12 +33,14 @@ cd mb-rust-server && cargo build --release
 ```bash
 mb-rust-server [URL] [OPTIONS]
   URL               # Defaults to localhost:8000
-  -r, --rayon N     # Rayon threads per request (default: 2)
-  --no-perturb      # Disable the perturbation engine (default: ON — one
-                    # full-precision reference orbit per band of rows, cheap f64
-                    # deltas per pixel via the glitch engine; deep-zoom fast)
-  --u32/--u64/--u128 # Legacy half-limb engines for HP calculations; these also
-                     # disable perturbation (full-precision default: u64 limbs)
+  --orbit-cache N   # Reference-orbit cache budget in MB (default 128, 0 = off).
+                    # Keyed by view coords; pass 2 / re-renders skip the orbit
+                    # build. Real bound: max(N, largest single orbit)
+  # Legacy options -- apply only to the old per-job /mb-computeHP endpoint
+  # (current clients use /mb-computeHP2 and pick their own thread count):
+  -r, --rayon N     # Rayon threads per legacy request (default: 2)
+  --no-perturb      # Disable the perturbation engine (legacy endpoint)
+  --u32/--u64/--u128 # Legacy half-limb engines; also disable perturbation
 ```
 
 ## Architecture
@@ -59,10 +61,15 @@ mb-rust-server [URL] [OPTIONS]
 - `POST /mb-computeHP` - High precision, legacy: one 32-row job per request,
   banded by `-r`, orbit rebuilt per band. Kept for old clients
 - `POST /mb-computeHP2` - High precision v2: ONE request per image/pass
-  (`threads` in the body, clamped server-side; `-r` does not apply). Builds the
-  reference orbit once, computes small strips in parallel, streams each strip as
-  an NDJSON line the moment it finishes (out of order; client paints by
-  firstRow). A dropped connection aborts remaining strips
+  (`threads` in the body, clamped server-side; `-r` does not apply). The body's
+  coords are the BASIS grid the orbit is built on, plus optional
+  `basisRows/basisColumns/ox/oy` when the sampling grid differs (pass 2 sends
+  pass 1's coords with offsets (-0.5, +0.5)). Orbits are cached by basis coords
+  (byte-budgeted LRU, `--orbit-cache`, Arc'd so eviction can't free an orbit an
+  in-flight request is grinding against), so pass 2 and repeated views skip the
+  ~0.5s build. Strips stream as NDJSON lines the moment they finish (out of
+  order; client paints by firstRow). A dropped connection aborts remaining
+  strips
 - `GET /remoteCanComputeMB` - Health check
 
 **Worker scripts in client/:**
@@ -252,9 +259,13 @@ Few builds AND fast lookups AND all-core scaling — what big bands only half-do
   (mandelbrot-worker-remote.js) streams via fetch, dedupes strips on retry, and
   falls back to the legacy endpoint on 404 (old servers). Validated vs the old
   endpoint and vs the wasm shared engine (u64 vs u32 limb orbits round to
-  identical f64s): <=6/25600 px, max delta <=4. The server does not cache orbits
-  across requests, so each pass rebuilds once (~0.5s) — cross-request caching is
-  possible future work.
+  identical f64s): <=6/25600 px, max delta <=4. Orbits are cached ACROSS requests
+  (byte-budgeted Arc'd LRU keyed by basis coords, `--orbit-cache`, default 128MB):
+  the client sends the pass-1 basis + (ox, oy) offsets with every HP job on both
+  tiers, so the server's pass 2, the deferred second pass, and re-renders of the
+  same view all skip the build (measured: first strip 384ms -> 61ms on a hit).
+  The 404 fallback to the legacy endpoint shifts the basis coords by (ox, oy) in
+  16-bit digit arithmetic to recover the pass's own sampling grid.
 - **Browser**: SHIPPED on this branch (wasm v9). Web workers have isolated
   memory, so worker 0 builds the orbit and the main thread relays the ~16MB f64
   buffer to the others (~3ms/worker; the ~40MB BLA table is NOT moved — rebuilt

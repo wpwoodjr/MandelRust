@@ -72,8 +72,10 @@ function doIterationCountsHP2(coords, thisJobNum, retryCount) {
         signal: controller.signal,
     }).then(async (response) => {
         if (response.status == 404) {
-            // old server without HP2: whole image in one blocking request
-            doIterationCounts(coords, url + "HP", 0, thisJobNum);
+            // old server without HP2: whole image in one blocking request. The
+            // legacy endpoint has no basis concept, so shift the basis coords by
+            // (ox, oy) to recover this pass's own sampling grid.
+            doIterationCounts(fallbackCoords(coords), url + "HP", 0, thisJobNum);
             return;
         }
         if (!response.ok) {
@@ -166,13 +168,27 @@ onmessage = function(msg) {
         let nrows = data[7];
 
         if (highPrecision) {
+            // Orbit sharing fields (undefined when USE_ORBIT_SHARING is off):
+            // xmin/ymax/etc above are then the BASIS grid coords, and this task's
+            // sampling grid sits (ox, oy) pixels from it. Forwarding them lets
+            // the server's orbit cache key on the basis, so pass 2 (and repeated
+            // renders of the same view) skip the orbit build.
+            let imageRows = data[8];
+            let imageCols = data[10];
+            let ox = data[11], oy = data[12];
+            let body = {
+                xmin: xmin, dx: dx, columns: columns, ymax: ymax, dy: dy,
+                firstRow: firstRow, rows: nrows, maxIterations: maxIterations,
+                threads: threadCount
+            };
+            if (imageRows !== undefined) {
+                body.basisRows = imageRows;
+                body.basisColumns = imageCols;
+                body.ox = ox;
+                body.oy = oy;
+            }
             rowsDone = new Uint8Array(nrows);
-            doIterationCountsHP2({
-                    xmin: xmin, dx: dx, columns: columns, ymax: ymax, dy: dy,
-                    firstRow: firstRow, rows: nrows, maxIterations: maxIterations,
-                    threads: threadCount
-                },
-                jobNumber, 0);
+            doIterationCountsHP2(body, jobNumber, 0);
         } else {
             doIterationCounts({
                     xmin: xmin, dx: dx, columns: columns, ymax: ymax, dy: dy, firstRow: firstRow, rows: nrows, maxIterations: maxIterations
@@ -189,6 +205,65 @@ function array_from(a) {
     for (let i = 0; i < len; i++)
         r[i] = a[i];
     return r;
+}
+
+// ---- 16-bit digit arithmetic for the legacy-endpoint fallback ----
+// (element 0 = signed integral part, rest fraction, two's complement -- same
+// format as the local worker)
+
+function incrDigits( /* int[] */ x, /* int[] */ d) {
+    let carry = 0;
+    for (let i = x.length - 1; i >= 0; i--) {
+        x[i] += d[i] + carry;
+        carry = x[i] >>> 16;
+        x[i] &= 0xFFFF;
+    }
+}
+
+function negateDigits( /* int[] */ x) {
+    let len = x.length;
+    for (let i = 0; i < len; i++)
+        x[i] = 0xFFFF - x[i];
+    ++x[len-1];
+    for (let i = len-1; i > 0 && (x[i] & 0x10000) != 0; i--) {
+        x[i] &= 0xFFFF;
+        ++x[i-1];
+    }
+    x[0] &= 0xFFFF;
+}
+
+// halve a POSITIVE digit array (dx/dy pixel steps): right-shift one bit
+function halveDigits( /* int[] */ x) {
+    let out = x.slice();
+    let carry = 0;
+    for (let i = 0; i < out.length; i++) {
+        let lsb = out[i] & 1;
+        out[i] = (out[i] >> 1) | (carry << 15);
+        carry = lsb;
+    }
+    return out;
+}
+
+// The legacy endpoint has no basis concept: shift the basis coords by this
+// pass's (ox, oy) pixel offset to recover its own sampling grid. Only the
+// half-pixel second-pass offsets occur. The one-bit halving truncation is
+// ~2^-16*len of a pixel -- far below anything visible.
+function fallbackCoords(c) {
+    if (!c.ox && !c.oy) {
+        return c;
+    }
+    let xmin = c.xmin.slice();
+    let ymax = c.ymax.slice();
+    if (c.ox === -0.5) {
+        let half = halveDigits(c.dx);
+        negateDigits(half);
+        incrDigits(xmin, half);     // xmin - dx/2
+    }
+    if (c.oy === 0.5) {
+        incrDigits(ymax, halveDigits(c.dy));   // ymax + dy/2
+    }
+    return { xmin: xmin, dx: c.dx, columns: c.columns, ymax: ymax, dy: c.dy,
+             firstRow: c.firstRow, rows: c.rows, maxIterations: c.maxIterations };
 }
 
 function array_fill(a, f) {

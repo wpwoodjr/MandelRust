@@ -18,6 +18,8 @@ static mut U_TYPE: usize = 0;
 // perturbation engine (default): one HP reference orbit per band of rows,
 // f64 deltas per pixel
 static mut PERTURB: bool = true;
+// reference-orbit cache budget for /mb-computeHP2 (--orbit-cache, in MB)
+static mut ORBIT_CACHE_BYTES: usize = 128 * 1024 * 1024;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -27,23 +29,33 @@ fn main() {
 Usage: mb-rust [OPTIONS] [args]
 
 Arguments:
-  URL            URL to serve Mandelbrot on; defaults to localhost:8000
+  URL              URL to serve Mandelbrot on; defaults to localhost:8000
 
 Options:
-  -h, --help     Show this help message and exit
-  -r, --rayon    Number of Rayon threads for each Javascript "worker"; only affects high precision images;
-                 defaults to 2
-  --no-perturb   Disable the perturbation engine and compute every pixel at full
-                 precision with the full-width 64 bit limb engine (slower, exact)
-  --u32          Use legacy 32 bit engine for high precision calculations (slowest)
-  --u64          Use legacy 64 bit engine for high precision calculations
-  --u128         Use legacy 128 bit engine for high precision calculations
-                 these also disable the perturbation engine
+  -h, --help       Show this help message and exit
+  --orbit-cache N  Reference-orbit cache budget in MB (default 128). Orbits are
+                   cached by view coordinates so a repeated view -- notably the
+                   second pass of a two-pass render -- skips the orbit build.
+                   The newest orbit is always cached, so the real bound is
+                   max(N, largest single orbit). 0 disables caching.
 
-  High precision images default to perturbation theory with BLA acceleration:
-  one full-precision reference orbit per band of rows, cheap f64 deltas per
-  pixel, and a composed-skip table that skips most iterations at deep zoom.
-  f64 deltas are usable down to ~1e-300 pixel scale."#;
+Legacy options (apply only to the old per-job /mb-computeHP endpoint, used by
+old clients; the current client sends one streaming /mb-computeHP2 request per
+image and picks its own thread count):
+  -r, --rayon      Rayon threads per /mb-computeHP request; defaults to 2
+  --no-perturb     Disable the perturbation engine and compute every pixel at
+                   full precision with the full-width 64 bit limb engine
+                   (slower, exact)
+  --u32            Use legacy 32 bit engine for high precision (slowest)
+  --u64            Use legacy 64 bit engine for high precision
+  --u128           Use legacy 128 bit engine for high precision
+                   these also disable the perturbation engine
+
+  High precision uses perturbation theory with BLA acceleration: one
+  full-precision reference orbit per image (shared across strips, cached across
+  requests), cheap f64 deltas per pixel, and a composed-skip table that skips
+  most iterations at deep zoom. f64 deltas are usable down to ~1e-300 pixel
+  scale."#;
 
     let mut i = 1;
     while i < args.len() {
@@ -58,6 +70,21 @@ Options:
                     }
                 } else {
                     println!("missing value for --rayon!");
+                    exit(1);
+                }
+            }
+            "--orbit-cache" => {
+                if i + 1 < args.len() {
+                    i += 1;
+                    match args[i].parse::<usize>() {
+                        Ok(mb) => unsafe { ORBIT_CACHE_BYTES = mb * 1024 * 1024 },
+                        Err(_) => {
+                            println!("--orbit-cache expects a size in MB!");
+                            exit(1);
+                        }
+                    }
+                } else {
+                    println!("missing value for --orbit-cache!");
                     exit(1);
                 }
             }
@@ -90,7 +117,13 @@ Options:
         i += 1;
     }
 
-    println!("Mandelbrot server running on URL {url} with {} Rayon thread(s), and the {} engine for high precision calculations.",
+    let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+    println!("Mandelbrot server running on URL {url}");
+    println!("  high precision: perturbation + BLA, shared reference orbit, streamed strips");
+    println!("                  ({cores} cores available; thread count chosen per request by the client)");
+    println!("  orbit cache:    {} MB (--orbit-cache to change; 0 disables)",
+        unsafe { ORBIT_CACHE_BYTES } / (1024*1024));
+    println!("  legacy /mb-computeHP: {} Rayon thread(s) per request, {} engine",
         unsafe { NUM_THREADS },
         if unsafe { PERTURB } {
             "perturbation + BLA (full-width u64 reference)".to_string()
@@ -262,6 +295,15 @@ async fn compute_mandelbrot_hp(mandelbrot_coords_hp: web::Json<MandelbrotCoordsH
 
 
 // *** high precision v2: whole image per request, orbit shared, streamed *** //
+//
+// xmin/dx/ymax/dy are the BASIS grid coordinates -- the grid the reference
+// orbit is built on. Normally that's the request's own sampling grid; for a
+// second pass the client sends PASS 1's coords here plus the half-pixel (ox,
+// oy) offset of its sampling grid, so both passes key to (and reuse) one
+// cached orbit. basisRows/basisColumns are the basis grid's dimensions when
+// they differ from the sampling grid's (pass 2 is one row/column bigger);
+// 0 = same as rows/columns. All new fields default so old-format requests
+// (plain pass-1 renders) parse unchanged.
 #[derive(Deserialize)]
 #[allow(non_snake_case)]
 struct MandelbrotCoordsHP2 {
@@ -273,6 +315,63 @@ struct MandelbrotCoordsHP2 {
     dy: Vec<u32>,
     maxIterations: i32,
     threads: usize,
+    #[serde(default)]
+    basisRows: usize,
+    #[serde(default)]
+    basisColumns: usize,
+    #[serde(default)]
+    ox: f64,
+    #[serde(default)]
+    oy: f64,
+}
+
+// Reference-orbit cache: a byte-budgeted LRU keyed by the basis coordinates
+// (which fully determine the orbit, so entries can never be stale). Entries are
+// Arc'd so eviction can't free an orbit an in-flight request is still grinding
+// against: eviction drops the cache's reference, the request keeps its own, and
+// the memory dies with the last holder. The newest orbit is always admitted
+// (it was just built for a live request and pass 2 is the most predictable
+// upcoming request), so the true memory bound is max(budget, largest orbit).
+struct CachedOrbit {
+    orbit: Vec<(f64, f64)>,
+    dx_f: f64,
+    dy_f: f64,
+    dcx0: f64,
+    row_ref: usize,
+}
+
+type OrbitKey = (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>, usize, usize, i32);
+
+// most-recently-used last; sizes tracked per entry
+static ORBIT_CACHE: std::sync::Mutex<Vec<(OrbitKey, std::sync::Arc<CachedOrbit>, usize)>> =
+    std::sync::Mutex::new(Vec::new());
+
+fn orbit_cache_lookup(key: &OrbitKey) -> Option<std::sync::Arc<CachedOrbit>> {
+    let mut cache = ORBIT_CACHE.lock().unwrap();
+    if let Some(pos) = cache.iter().position(|(k, _, _)| k == key) {
+        let entry = cache.remove(pos);
+        let arc = entry.1.clone();
+        cache.push(entry);   // move to most-recently-used
+        Some(arc)
+    } else {
+        None
+    }
+}
+
+fn orbit_cache_insert(key: OrbitKey, orbit: std::sync::Arc<CachedOrbit>) {
+    let budget = unsafe { ORBIT_CACHE_BYTES };
+    if budget == 0 {
+        return;
+    }
+    let bytes = orbit.orbit.len() * std::mem::size_of::<(f64, f64)>();
+    let mut cache = ORBIT_CACHE.lock().unwrap();
+    cache.retain(|(k, _, _)| k != &key);   // replace, don't duplicate
+    let mut total: usize = cache.iter().map(|(_, _, b)| b).sum();
+    // evict least-recently-used until the newcomer fits; always admit it
+    while !cache.is_empty() && total + bytes > budget {
+        total -= cache.remove(0).2;
+    }
+    cache.push((key, orbit, bytes));
 }
 
 // One request = one whole image (or one pass). The reference orbit is built ONCE
@@ -290,15 +389,12 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
     let (tx, rx) = tokio::sync::mpsc::channel::<std::result::Result<web::Bytes, std::convert::Infallible>>(64);
 
     std::thread::spawn(move || {
-        let u32_chunks = coords.xmin.len();
-        let chunks = 1 + (u32_chunks - 1 + 3)/4;
-        let xmin = u32_to_limbs64(&coords.xmin);
-        let dx = u32_to_limbs64(&coords.dx);
-        let ymax = u32_to_limbs64(&coords.ymax);
-        let dy = u32_to_limbs64(&coords.dy);
         let rows = coords.rows;
         let columns = coords.columns;
         let max_iter = coords.maxIterations;
+        // the grid the orbit is built on; defaults to the sampling grid
+        let basis_rows = if coords.basisRows > 0 { coords.basisRows } else { rows };
+        let basis_columns = if coords.basisColumns > 0 { coords.basisColumns } else { columns };
 
         let max_threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
         let threads = coords.threads.clamp(1, max_threads);
@@ -306,8 +402,27 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
         // (same reasoning as the browser's adaptive formula).
         let strip = rows.div_ceil(4*threads).clamp(4, 32);
 
-        let (orbit, dx_f, dy_f, dcx0, _col_ref, row_ref) =
-            perturb_setup64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter);
+        let key: OrbitKey = (coords.xmin.clone(), coords.dx.clone(), coords.ymax.clone(),
+            coords.dy.clone(), basis_rows, basis_columns, max_iter);
+        let cached = match orbit_cache_lookup(&key) {
+            Some(c) => c,
+            None => {
+                let u32_chunks = coords.xmin.len();
+                let chunks = 1 + (u32_chunks - 1 + 3)/4;
+                let xmin = u32_to_limbs64(&coords.xmin);
+                let dx = u32_to_limbs64(&coords.dx);
+                let ymax = u32_to_limbs64(&coords.ymax);
+                let dy = u32_to_limbs64(&coords.dy);
+                let (orbit, dx_f, dy_f, dcx0, _col_ref, row_ref) =
+                    perturb_setup64(&xmin, &dx, &ymax, &dy, chunks, basis_rows, basis_columns, max_iter);
+                let c = std::sync::Arc::new(CachedOrbit { orbit, dx_f, dy_f, dcx0, row_ref });
+                orbit_cache_insert(key, c.clone());
+                c
+            }
+        };
+        // this request's sampling grid, offset (ox, oy) pixels from the basis
+        let dcx0_eff = cached.dcx0 + coords.ox * cached.dx_f;
+        let dcy_off = coords.oy * cached.dy_f;
 
         let pool = match rayon::ThreadPoolBuilder::new().num_threads(threads).build() {
             Ok(p) => p,
@@ -322,7 +437,8 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                 }
                 let h = strip.min(rows - r0);
                 let mut out = vec![0i32; h*columns];
-                bla_strip(&orbit, dx_f, dy_f, dcx0, 0.0, row_ref, r0, h, columns, max_iter, &mut out);
+                bla_strip(&cached.orbit, cached.dx_f, cached.dy_f, dcx0_eff, dcy_off,
+                    cached.row_ref, r0, h, columns, max_iter, &mut out);
                 let counts: Vec<&[i32]> = out.chunks(columns).collect();
                 let line = format!(
                     "{{\"firstRow\":{},\"nrows\":{},\"iterationCounts\":{}}}\n",
