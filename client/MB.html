@@ -298,10 +298,10 @@
   </style>
 </style>
 
-<script src="BigDecimal-all-last.min.js?v=81bf5a7557"></script>
-<script src="slider.js?v=81bf5a7557"></script>
-<script src="touch.js?v=81bf5a7557"></script>
-<script src="percentage-complete.js?v=81bf5a7557"></script>
+<script src="BigDecimal-all-last.min.js?v=bf28092b98"></script>
+<script src="slider.js?v=bf28092b98"></script>
+<script src="touch.js?v=bf28092b98"></script>
+<script src="percentage-complete.js?v=bf28092b98"></script>
 <script>
 
 "use strict";
@@ -415,8 +415,9 @@ const progressCircle = {
 
 let currentImageSize;
 var palette;
-var fixedPaletteLength;
-var paletteLength;
+var fixedPaletteLength;   // the SEMANTIC palette length (can be up to 2*maxIter)
+var paletteLength;        // the ALLOCATED length (capped at 1M entries)
+var paletteScale = 1;     // fixedPaletteLength / paletteLength
 var paletteColors;
 
 var savedIterationCounts;
@@ -453,7 +454,7 @@ var log2of10 = Math.log(10)/Math.log(2);
 // URLs is what stops a cached worker from outliving the binary it drives.
 // Stamped from the assets' contents by stamp-assets.sh at build time -- do not
 // edit by hand. Distinct from EXPECTED_WASM_VERSION, which pins the wasm ABI.
-const ASSET_VERSION = "81bf5a7557";
+const ASSET_VERSION = "bf28092b98";
 
 let compute_mandelbrot;
 WebAssembly
@@ -1140,9 +1141,9 @@ function putRow(row) {
     var ct;
     if (average) {
        ct = above[0];
-       var c1 = ct < 0 ? [0,0,0] : paletteColors[ ct%paletteLength ];
+       var c1 = ct < 0 ? [0,0,0] : paletteColorFor(ct);
        ct = below[0];
-       var c2 = ct < 0 ? [0,0,0] : paletteColors[ ct%paletteLength ];
+       var c2 = ct < 0 ? [0,0,0] : paletteColorFor(ct);
        secondPassColor = [c1[0]+c2[0],c1[1]+c2[1],c1[2]+c2[2]];
     }
     var columns = canvas.width;
@@ -1153,14 +1154,13 @@ function putRow(row) {
           color = [0,0,0];
        }
        else {
-          var paletteIndex = iterationCounts[i] % paletteLength;
-          color = paletteColors[paletteIndex];
+          color = paletteColorFor(iterationCounts[i]);
        }
        if (average) {
            ct = above[i+1];
-           var c1 = ct < 0 ? [0,0,0] : paletteColors[ ct%paletteLength ];
+           var c1 = ct < 0 ? [0,0,0] : paletteColorFor(ct);
            ct = below[i+1];
-           var c2 = ct < 0 ? [0,0,0] : paletteColors[ ct%paletteLength ];
+           var c2 = ct < 0 ? [0,0,0] : paletteColorFor(ct);
            var secondPassColor2 = [c1[0]+c2[0],c1[1]+c2[1],c1[2]+c2[2]];
            color = [ // had a bug where I modified the color that was still in the palette array!
                ( 4*color[0] + secondPassColor[0] + secondPassColor2[0] ) / 8,
@@ -1218,10 +1218,24 @@ function remapColors() {
 }
 
 function createPaletteColors(newPaletteOffset) {
-    paletteLength = fixedPaletteLength;
+    // Allocate at most 1M color entries; longer SEMANTIC lengths (pinned to a
+    // large MaxIter, or set via the editor up to 2*maxIter) map through
+    // paletteScale in paletteColorFor, so the gradient genuinely stretches over
+    // the full semantic range instead of cycling at the allocation cap. 1M
+    // gradient steps is far beyond what displays or eyes resolve, so the
+    // quantization is invisible. All lookups go through paletteColorFor(ct).
+    paletteLength = Math.min(fixedPaletteLength, 1000000);
+    paletteScale = fixedPaletteLength / paletteLength;   // 1 while uncapped
     let offset = typeof newPaletteOffset === "number" ? newPaletteOffset/100 : mainPaletteOffsetSlider.value/100;
     offset = Math.round(offset * paletteLength);
     paletteColors = palette.makeRGBs(paletteLength,offset);
+}
+
+// Color for an iteration count: cycle at the SEMANTIC length, then scale into
+// the allocated array. Reduces to paletteColors[ct % paletteLength] while the
+// palette is uncapped (paletteScale == 1).
+function paletteColorFor(ct) {
+    return paletteColors[Math.floor((ct % fixedPaletteLength) / paletteScale)];
 }
 
 const ZOOM = 1;
@@ -3092,7 +3106,7 @@ SliderAndInput.prototype.draw = function() {
 //-------------------------------------------------------------------------------------------
 
 function currentExampletoXML() {
-    const offset = Math.round(mainPaletteOffsetSlider.value/100 * paletteLength);
+    const offset = Math.round(mainPaletteOffsetSlider.value/100 * fixedPaletteLength);
     const xml = 
             "<?xml version='1.0'?>\n<mandelbrot_settings_2>\n" +
             "<image_size width='" + currentImageSize[0] + "' height='" + currentImageSize[1] + "'/>\n" +
@@ -3101,7 +3115,7 @@ function currentExampletoXML() {
             "   <ymin>" + ymin_requested.toString() + "</ymin>\n" +
             "   <ymax>" + ymax_requested.toString() + "</ymax>\n</limits>\n" +
             palette.toXMLString() +
-            "<palette_mapping length='" + paletteLength + "' offset='" + offset + "'/>\n" +
+            "<palette_mapping length='" + fixedPaletteLength + "' offset='" + offset + "'/>\n" +
             "<max_iterations value='" + maxIterSlider.value + "'/>\n" +
             "</mandelbrot_settings_2>\n";
 
@@ -3541,8 +3555,9 @@ function createSliders() {
         "maxIterSlider", {
         label: "Max Iterations:",
         title: "How many steps in the Mandelbrot iteration before giving up and coloring the pixel black.",
-        logarithmic: true, initialValue: 1000, minValue: 1, maxValue:999999, textLength: 6,
-        stickyVals: [3,5,10,25,50,75,100,250,500,750,1000,2500,5000,7500,10000,25000,50000,75000,100000]
+        logarithmic: true, initialValue: 1000, minValue: 1, maxValue:2000000, textLength: 7,
+        stickyVals: [3,5,10,25,50,75,100,250,500,750,1000,2500,5000,7500,10000,25000,50000,75000,100000,
+                     250000,500000,1000000]
         });
     maxIterSlider.onInput = function (interimMaxIters, lastInterimMaxIters) {
         // console.log("i:",this.id,interimMaxIters);
@@ -3569,8 +3584,9 @@ function createSliders() {
         "mainPaletteLengthSlider", {
         label: "Palette Length:",
         title: "Size of the color palette for pixels outside the Mandebrot set. Drag all the way to the right to pin it to max iterations.",
-        logarithmic: true, initialValue: 250, minValue: 2, maxValue: 999999, textLength: 6,
-        stickyVals: [2,3,4,5,6,7,8,9,10,12,15,20,25,35,50,75,100,175,250,375,500,750,1000,1750,2500,3750,5000,7500,10000],
+        logarithmic: true, initialValue: 250, minValue: 2, maxValue: 999999, textLength: 7,
+        stickyVals: [2,3,4,5,6,7,8,9,10,12,15,20,25,35,50,75,100,175,250,375,500,750,1000,1750,2500,3750,5000,7500,10000,
+                     25000,50000,100000,250000,500000,1000000,2500000],
         textFormat: function (value) { return this.atMax() ? "MaxIter" : value; },
         notifyOnlyOnDifference: false,///??? why did I do this
         data: { lastPaletteLength: NaN }

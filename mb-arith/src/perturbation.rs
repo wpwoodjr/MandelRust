@@ -720,8 +720,30 @@ pub fn $limbs_to_f64(x: &[$limb]) -> f64 {
 /// (|Z|^2 >= 8) or `max_iterations` is reached. The returned vector always has at
 /// least two entries (Z_0 and Z_1) for max_iterations >= 1.
 ///
+/// The stored orbit is CAPPED at 2M points regardless of max_iterations: memory
+/// is 16 bytes/point and the per-strip BLA table another ~80, so an uncapped
+/// orbit at huge maxIterations would be a multi-GB allocation (wasm32 dies at
+/// 4GB). The UI caps maxIterations at 2M so this is normally not binding and
+/// every UI-reachable view computes with a full-coverage orbit.
+///
+/// KNOWN LIMIT for max_iterations > 2M (reachable only via raw API requests):
+/// when the cap truncates a NON-escaped reference, pixels that outlive it wrap
+/// (m == last -> rebase to index 0) with an order-1 delta, and at deep zoom the
+/// per-pixel dc (e.g. 1e-244) is annihilated against that delta's f64 ulp --
+/// adjacent pixels collapse onto one shared trajectory and return IDENTICAL
+/// counts (measured: a 289-digit view at maxIter 5e8 returned 2001017 for every
+/// center pixel = cap + 1017; renders as a flat blob). Wrapping is only sound
+/// for ESCAPED references (pixels die soon after; validated vs the exact
+/// engine) and for interior pixels (reference re-converges; wraps measured
+/// free). Deep counts beyond the cap need an orbit that covers them: runtime
+/// orbit budget (browser: budget/workers, wasm32 ceiling ~150M pts; server:
+/// one shared orbit, RAM-bound, threads free) + truncation-returns-black --
+/// see CLAUDE.md next steps.
+///
 /// `cx` / `cy` are the reference coordinate as limbs, each the same length.
 pub fn $reference_orbit(cx: &[$limb], cy: &[$limb], max_iterations: i32) -> Vec<(f64, f64)> {
+    const MAX_REF_ORBIT_POINTS: i32 = 2_000_000;
+    let max_iterations = max_iterations.min(MAX_REF_ORBIT_POINTS);
     let n = cx.len();
     let mut zx = vec![0 as $limb; n];
     let mut zy = vec![0 as $limb; n];

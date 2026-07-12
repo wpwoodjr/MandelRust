@@ -210,15 +210,26 @@ engines; the `BLA` branch (this work) adds BLA on top — both shipped as defaul
 work.
 
 Next steps (after the `BLA` branch):
-1. **floatexp deltas** (f64 mantissa + i64 exponent) to push perturbation past
-   the ~1e-300 pixel-scale f64 underflow floor (~300 decimal digits) — now the
-   only depth limit.
-2. Merge `BLA` -> `perturbation` -> `master` once soaked.
-3. **Orbit sharing** — build the reference orbit once and reuse it across a
-   worker's strips (see below). NOTE: an earlier note here called this "a few %
-   of HP setup per job" — that is WRONG at depth. On a 270-digit view the
-   per-strip orbit rebuild is 90%+ of the work; this is the dominant HP lever,
-   not smaller fry. Being prototyped on the `BLA-orbit-sharing` branch.
+1. **Deep iteration counts (maxIter > 2M)**: the UI caps maxIterations at 2M
+   because the reference orbit caps at 2M points, and a cap-truncated
+   (non-escaped) reference is UNSOUND for pixels that outlive it: the
+   end-of-orbit wrap gives them an order-1 delta that annihilates their
+   ~1e-24x dc in f64, collapsing adjacent pixels onto one trajectory with
+   IDENTICAL counts (measured: 289-digit view at maxIter 5e8 -> flat blob, all
+   center pixels = 2001017 = cap+1017). Wraps are sound only for escaped refs
+   (validated) and interior pixels (measured free: reference re-converges, 31
+   wraps cost ~0). The fix when revisited: runtime orbit budget instead of the
+   2M const (orbit must COVER pixel counts; 16B/pt), truncation-returns-black
+   beyond it, BLA table built over a ~2M-point prefix (rebasing keeps m low, so
+   the 80B/pt table need not follow the orbit up). Budgets: browser =
+   budget/workerCount (fewer workers -> deeper; wasm32 hard ceiling ~150M pts),
+   server = one SHARED orbit per request so threads are free and RAM is the
+   only bound (--orbit-points flag; 5e8 counts = 8GB orbit, feasible on a big
+   box; remote mode is the natural home for ultra-deep counts). Broadcast
+   crossover: at big orbits, per-worker builds may beat relaying 100s of MB.
+2. **floatexp deltas** (f64 mantissa + i64 exponent) to push perturbation past
+   the ~1e-300 pixel-scale f64 underflow floor (~300 decimal digits).
+3. Merge `BLA-orbit-sharing` -> `BLA` -> `perturbation` -> `master` once soaked.
 4. Revisit within-pixel SIMD only on x86 hardware (AVX2 shuffles are cheaper —
    measure, don't assume).
 
