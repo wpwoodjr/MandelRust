@@ -1,19 +1,27 @@
-BLA
-Implement V3 glitch engine in server
+Implement V3 glitch engine in server ???
 Try SIMD on x86: 2× f64x2 vectors = 4 lanes — SIMD width and two independent chains wasm on x86?
 FP issues at 300 digits
 One heads-up from GitHub: it reports 4 moderate vulnerabilities in dependencies on the master branch (dependabot alerts — likely old actix/serde versions in Cargo.lock). Not urgent for a
   local-use server, worth a cargo update pass someday.
-One loose end worth naming for the record: the ~2.7x wasm penalty on the BLA loop is characterized but not explained — I've ruled out the scan direction and the table indirection, so it's
-  something deeper in how V8 compiles that branchy, latency-bound loop (register spilling across the probe loop is my remaining guess). The hybrid sidesteps it; if we ever want the full
-  BLA win in the browser at mid depths, that's a focused investigation for another session. Also on the shelf: tightening the 16-digit crossover with a ~60-70-digit test view.
-Middle wheel zooms at cursor
-Bump maxiter - now is 999999
-Why different band sizes on server than client
+Always use HP?
+Show zoom level
+Strips share one table per band (server only?)
+Bump maxiter - now is 2M
+Undo zoom is wrong if change window size between zoom and undo zoom
+Use GPU for BLA FP stuff
+
+>BLA
+>Middle wheel zooms at cursor
+>left click/drag pans, right click does rectangle
+>Why different band sizes on server than client
+  In the browser each strip also costs a postMessage dispatch, a
+  structured-clone of the results back to the main thread, the JS↔wasm boundary crossings, and per-row Array.from
+  conversions.
+>Why mention -r when not using it due to orbit caching
+
 -------------------------------------
 Is there a way to use emulated double-click with Chrome on ios, without haveing to call touch.handleTouchCancel()?
 Maybe need to kill workers to increase responsiveness to touch on mobile with "default" settings
-Undo zoom is wrong if change window size between zoom and undo zoom
 re-eval 2nd pass not drawing until complete.  less clear than orig?
 When tap to hide controls, if text editing, cursor remains in the control
 Check touch warn events
