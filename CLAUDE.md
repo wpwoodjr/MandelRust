@@ -33,6 +33,9 @@ cd mb-rust-server && cargo build --release
 ```bash
 mb-rust-server [URL] [OPTIONS]
   URL               # Defaults to localhost:8000
+  -v, --verbose     # Log one line per HP request: grid, basis, offsets, orbit
+                    # cache hit/miss, cache occupancy (diagnostic for "why isn't
+                    # the cache hitting" -- e.g. a stale client sending no basis)
   --orbit-cache N   # Reference-orbit cache budget in MB (default 128, 0 = off).
                     # Keyed by view coords; pass 2 / re-renders skip the orbit
                     # build. Real bound: max(N, largest single orbit)

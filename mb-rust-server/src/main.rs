@@ -20,6 +20,8 @@ static mut U_TYPE: usize = 0;
 static mut PERTURB: bool = true;
 // reference-orbit cache budget for /mb-computeHP2 (--orbit-cache, in MB)
 static mut ORBIT_CACHE_BYTES: usize = 128 * 1024 * 1024;
+// log one line per HP2 request (--verbose)
+static mut VERBOSE: bool = false;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -33,6 +35,8 @@ Arguments:
 
 Options:
   -h, --help       Show this help message and exit
+  -v, --verbose    Log one line per high-precision request: grid, basis,
+                   offsets, orbit cache hit/miss, and cache occupancy
   --orbit-cache N  Reference-orbit cache budget in MB (default 128). Orbits are
                    cached by view coordinates so a repeated view -- notably the
                    second pass of a two-pass render -- skips the orbit build.
@@ -58,9 +62,11 @@ image and picks its own thread count):
   scale."#;
 
     let mut i = 1;
+    let mut legacy_configured = false;
     while i < args.len() {
         match args[i].as_str() {
             "-r" | "--rayon" => {
+                legacy_configured = true;
                 if i + 1 < args.len() {
                     i += 1;
                     unsafe { NUM_THREADS = args[i].parse().unwrap() };
@@ -88,22 +94,30 @@ image and picks its own thread count):
                     exit(1);
                 }
             }
+            "-v" | "--verbose" => unsafe {
+                VERBOSE = true;
+            }
             "--u32" => unsafe {
+                legacy_configured = true;
                 U_TYPE = 32;
                 PERTURB = false;
             }
             "--u64" => unsafe {
+                legacy_configured = true;
                 U_TYPE = 64;
                 PERTURB = false;
             }
             "--u128" => unsafe {
+                legacy_configured = true;
                 U_TYPE = 128;
                 PERTURB = false;
             }
             "--perturb" => unsafe {
+                legacy_configured = true;
                 PERTURB = true;
             }
             "--no-perturb" => unsafe {
+                legacy_configured = true;
                 PERTURB = false;
             }
             "-h" | "--help" => {
@@ -123,7 +137,7 @@ image and picks its own thread count):
     println!("                  ({cores} cores available; thread count chosen per request by the client)");
     println!("  orbit cache:    {} MB (--orbit-cache to change; 0 disables)",
         unsafe { ORBIT_CACHE_BYTES } / (1024*1024));
-    println!("  legacy /mb-computeHP: {} Rayon thread(s) per request, {} engine",
+    if legacy_configured { println!("  legacy /mb-computeHP: {} Rayon thread(s) per request, {} engine",
         unsafe { NUM_THREADS },
         if unsafe { PERTURB } {
             "perturbation + BLA (full-width u64 reference)".to_string()
@@ -133,7 +147,7 @@ image and picks its own thread count):
                 u => format!("legacy u{u}"),
             }
         },
-    );
+    ); }
     web_server(&url);
 }
 
@@ -404,8 +418,8 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
 
         let key: OrbitKey = (coords.xmin.clone(), coords.dx.clone(), coords.ymax.clone(),
             coords.dy.clone(), basis_rows, basis_columns, max_iter);
-        let cached = match orbit_cache_lookup(&key) {
-            Some(c) => c,
+        let (cached, hit) = match orbit_cache_lookup(&key) {
+            Some(c) => (c, true),
             None => {
                 let u32_chunks = coords.xmin.len();
                 let chunks = 1 + (u32_chunks - 1 + 3)/4;
@@ -417,9 +431,19 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                     perturb_setup64(&xmin, &dx, &ymax, &dy, chunks, basis_rows, basis_columns, max_iter);
                 let c = std::sync::Arc::new(CachedOrbit { orbit, dx_f, dy_f, dcx0, row_ref });
                 orbit_cache_insert(key, c.clone());
-                c
+                (c, false)
             }
         };
+        if unsafe { VERBOSE } {
+            // one line per HP2 request: enough to see at a glance whether the
+            // client is sending basis+offsets and whether the cache is hitting
+            let cache = ORBIT_CACHE.lock().unwrap();
+            let total_mb = cache.iter().map(|(_, _, b)| b).sum::<usize>() as f64 / (1024.0*1024.0);
+            println!("HP2 {}x{} basis {}x{} off ({},{}) threads {}: orbit {} ({} pts) | cache {} entries, {:.0} MB",
+                columns, rows, basis_columns, basis_rows, coords.ox, coords.oy, threads,
+                if hit { "cache HIT" } else { "built" }, cached.orbit.len(),
+                cache.len(), total_mb);
+        }
         // this request's sampling grid, offset (ox, oy) pixels from the basis
         let dcx0_eff = cached.dcx0 + coords.ox * cached.dx_f;
         let dcy_off = coords.oy * cached.dy_f;

@@ -358,3 +358,18 @@ BMarks
     caching keyed on the view coords -- the server-side analog of the browser's
     cross-pass reuse. Predicted ~550 rows/sec grind-only at 32t on 640x480, and
     a free second pass.
+
+  Server orbit cache (--orbit-cache, default 128MB; --verbose logs hit/miss)
+    HP2 requests carry the pass-1 BASIS coords + (ox, oy) offsets; the server
+    caches orbits by basis coords (byte-budgeted Arc'd LRU), so pass 2, the
+    deferred second pass, and re-renders of the same view skip the ~0.6s build.
+    Browser-verified via --verbose (pass 2 logs "off (-0.5,0.5) ... cache HIT"):
+
+    640x480 remote, 32t: single pass 289-293 (build included, unavoidable once);
+      two-pass checked 361 effective (+23% -- back-solves to build 0.62s +
+      grind 1.02s/pass, i.e. pass 2 is pure grind);
+      deferred second pass 289 -> 329 (HIT confirmed; the readout lags the
+      immediate case because changeSecondPass reconstructs elapsed time from the
+      rounded rows/sec, so deferred cumulative figures are approximate);
+      re-render of a cached view: build-free (tall image measured 585 vs 512).
+    node timing on the 200x128 crop: first strip 384ms (build) -> 61ms (hit).
