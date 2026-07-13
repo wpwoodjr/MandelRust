@@ -298,10 +298,10 @@
   </style>
 </style>
 
-<script src="BigDecimal-all-last.min.js?v=bf28092b98"></script>
-<script src="slider.js?v=bf28092b98"></script>
-<script src="touch.js?v=bf28092b98"></script>
-<script src="percentage-complete.js?v=bf28092b98"></script>
+<script src="BigDecimal-all-last.min.js?v=44a0d645cc"></script>
+<script src="slider.js?v=44a0d645cc"></script>
+<script src="touch.js?v=44a0d645cc"></script>
+<script src="percentage-complete.js?v=44a0d645cc"></script>
 <script>
 
 "use strict";
@@ -454,7 +454,7 @@ var log2of10 = Math.log(10)/Math.log(2);
 // URLs is what stops a cached worker from outliving the binary it drives.
 // Stamped from the assets' contents by stamp-assets.sh at build time -- do not
 // edit by hand. Distinct from EXPECTED_WASM_VERSION, which pins the wasm ABI.
-const ASSET_VERSION = "bf28092b98";
+const ASSET_VERSION = "44a0d645cc";
 
 let compute_mandelbrot;
 WebAssembly
@@ -3555,9 +3555,9 @@ function createSliders() {
         "maxIterSlider", {
         label: "Max Iterations:",
         title: "How many steps in the Mandelbrot iteration before giving up and coloring the pixel black.",
-        logarithmic: true, initialValue: 1000, minValue: 1, maxValue:2000000, textLength: 7,
+        logarithmic: true, initialValue: 1000, minValue: 1, maxValue:4000000, textLength: 7,
         stickyVals: [3,5,10,25,50,75,100,250,500,750,1000,2500,5000,7500,10000,25000,50000,75000,100000,
-                     250000,500000,1000000,2000000]
+                     250000,500000,1000000,2000000,4000000]
         });
     maxIterSlider.onInput = function (interimMaxIters, lastInterimMaxIters) {
         // console.log("i:",this.id,interimMaxIters);

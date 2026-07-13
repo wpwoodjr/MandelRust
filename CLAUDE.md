@@ -210,13 +210,15 @@ engines; the `BLA` branch (this work) adds BLA on top — both shipped as defaul
 work.
 
 Next steps (after the `BLA` branch):
-1. **Deep iteration counts (maxIter > 2M)**: the UI caps maxIterations at 2M
-   because the reference orbit caps at 2M points, and a cap-truncated
+1. **Deep iteration counts (maxIter > 4M)**: the UI caps maxIterations at 4M
+   because the reference orbit caps at 4M points (64MB orbit; the ~80B/pt BLA
+   table is the real scaling cost: ~320MB per in-flight strip, so small-RAM
+   devices want fewer workers), and a cap-truncated
    (non-escaped) reference is UNSOUND for pixels that outlive it: the
    end-of-orbit wrap gives them an order-1 delta that annihilates their
    ~1e-24x dc in f64, collapsing adjacent pixels onto one trajectory with
-   IDENTICAL counts (measured: 289-digit view at maxIter 5e8 -> flat blob, all
-   center pixels = 2001017 = cap+1017). Wraps are sound only for escaped refs
+   IDENTICAL counts (measured with the cap at 2M: 289-digit view at maxIter 5e8 -> flat blob,
+   all center pixels = 2001017 = cap+1017). Wraps are sound only for escaped refs
    (validated) and interior pixels (measured free: reference re-converges, 31
    wraps cost ~0). The fix when revisited: runtime orbit budget instead of the
    2M const (orbit must COVER pixel counts; 16B/pt), truncation-returns-black

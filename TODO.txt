@@ -6,7 +6,7 @@ One heads-up from GitHub: it reports 4 moderate vulnerabilities in dependencies 
 Always use HP?
 Show zoom level
 Strips share one table per band (server only?)
-Bump maxiter - now is 2M
+Bump maxiter - now is 4M
 Undo zoom is wrong if change window size between zoom and undo zoom
 Use GPU for BLA FP stuff
 
