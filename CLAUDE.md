@@ -304,7 +304,15 @@ Few builds AND fast lookups AND all-core scaling — what big bands only half-do
   shortens BLA skips (~10% on a 2048-row span, isolated in bmarks.txt); known
   ceiling: per-worker BLA tables still contend for memory bandwidth at high
   worker counts — a shared read-only table needs SharedArrayBuffer (COOP/COEP
-  headers Pages can't set), deferred.
+  headers Pages can't set), deferred. WORKER-COUNT GUIDANCE (measured): on
+  many-thread x86, deep HP views peak below hardwareConcurrency — Beast: 8w 312
+  beats 32w 294 on the 270-digit view (bigger strips → fewer per-strip BLA
+  tables, less bandwidth churn). On the 8-core Chromebook, clean 8w wins (a
+  session suggesting otherwise was contaminated by a busy Crostini VM — on
+  big.LITTLE, quiesce background VMs and trust repeated runs, not single ones).
+  On 8GB machines, 4M-maxIter views at 8 workers page (~3GB of per-strip
+  tables; 3.6-5x slowdown instead of the work-scaling 2x) — halve workers
+  there, or wait for the prefix-table item.
 
 ## x86 Evaluation Playbook (BLA branch)
 

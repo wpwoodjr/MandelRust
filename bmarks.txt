@@ -373,3 +373,34 @@ BMarks
       rounded rows/sec, so deferred cumulative figures are approximate);
       re-render of a cached view: build-free (tall image measured 585 vs 512).
     node timing on the 200x128 crop: first strip 384ms (build) -> 61ms (hit).
+
+  ARM validation (Lenovo Chromebook, MediaTek Kompanio 8-core big.LITTLE;
+  BLA-orbit-sharing branch, wasm v9; "server" = native server under Crostini)
+    Shallow continuity (vs the BLA-era Chromebook rows above): 35-digit 1w 305
+      (was 303); 126-full 8w 1520 (was 1440). Builds are tiny at these depths so
+      sharing changes little -- and nothing regressed.
+    Deep payoff (the branch's design target): 270-digit view (999999) 8w,
+      CLEAN runs: plain BLA ~50 rows/s, orbit sharing 248-255 -> ~5x.
+      (The measurement history is its own lesson: a contaminated session --
+      most likely the Crostini server VM active during interleaved server
+      benchmarks -- produced plain-BLA runs ramping 15 -> 30 as the load
+      drained, sharing runs of 138-185 with +/-16% noise, and a stable 4w
+      198-201 that briefly read as "fewer workers wins". Clean re-runs beat
+      every contaminated number. ARM BENCHMARK HYGIENE: quiesce the VM, repeat
+      runs, trust ranges over single numbers.)
+      360-digit boundary view (2.5M iters): sharing 165 browser / 161 server vs
+      plain BLA 31.5 -> 13.4x. The gain scales with build cost and big.LITTLE
+      benefits MORE than x86 (Beast browser equivalent ~3.7x), as designed.
+    WORKER COUNT (Beast): 8w 312 vs 32w 294 on the 270-digit view -- bigger
+      strips = fewer per-strip BLA tables + less memory-bandwidth churn, so
+      past ~8-16 threads extra workers cost a little on deep views. On the CB,
+      clean 8w beats 4w (248-255 vs 198-201): use all cores on a quiet machine.
+    Memory ceiling (8GB): 2M-iters view, maxIter 2M -> 4M costs <= 2x in work,
+      but measured 3.6x slower browser / 4.2-5.4x server at 8 workers (~3GB of
+      per-strip 320MB BLA tables -> paging; the +/-25% run-to-run variance is
+      the thrash signature; Beast scales a clean 1.9x on both tiers). Guidance:
+      halve workers for 4M views on small-RAM machines until the prefix-table
+      roadmap item lands (the table need not follow the orbit above ~2M pts).
+    Parity notes: CB browser 1520 ~ Beast server 1600 at 8 threads (126-full);
+      CB 8w ~250 = 80% of Beast's best (8w 312) on the 270-digit view; boundary
+      view browser 165 ~ server 161 (the wasm/native gap compresses at depth).

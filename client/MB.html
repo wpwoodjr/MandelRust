@@ -1590,7 +1590,20 @@ function setUpDragging() {  // for image canvas
         // account for canvas border margin
         const x = evt.clientX - (r.left + r.right - canvas.width)/2;
         const y = evt.clientY - (r.top + r.bottom - canvas.height)/2;
-        const zoomFactor = evt.deltaY < 0 ? 7/8 : 8/7;   // up = in
+        // Scale the step by scroll magnitude: a physical wheel notch (|deltaY|
+        // ~100) gets the full 7/8 step -- unchanged feel -- while a trackpad's
+        // stream of small deltas gets proportionally gentler steps, so a
+        // two-finger swipe no longer fires dozens of full notches. deltaMode
+        // normalizes line/page-scrolling browsers; the clamp bounds any single
+        // event to three notches.
+        let dy = evt.deltaY;
+        if (evt.deltaMode === 1) {
+            dy *= 33;           // lines -> ~pixels
+        } else if (evt.deltaMode === 2) {
+            dy *= 400;          // pages -> ~pixels
+        }
+        dy = Math.max(-300, Math.min(300, dy));
+        const zoomFactor = Math.pow(7/8, -dy/100);   // scroll up (dy<0) = zoom in
         recordViewBurst("Wheel Zoom");
         zoom(x, y, zoomFactor, false, false);
     }
