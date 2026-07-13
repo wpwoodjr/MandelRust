@@ -388,9 +388,15 @@ BMarks
       198-201 that briefly read as "fewer workers wins". Clean re-runs beat
       every contaminated number. ARM BENCHMARK HYGIENE: quiesce the VM, repeat
       runs, trust ranges over single numbers.)
-      360-digit boundary view (2.5M iters): sharing 165 browser / 161 server vs
-      plain BLA 31.5 -> 13.4x. The gain scales with build cost and big.LITTLE
-      benefits MORE than x86 (Beast browser equivalent ~3.7x), as designed.
+      360-digit boundary view: at 999999 (all black, pure build+skip): plain
+      BLA 30.9-31.5 vs sharing 422-429 -> 13.9x, CLEAN (baseline reproduced
+      across sessions; the ~70s all-black runs ride out background noise that
+      poisoned shorter runs). At 2.5M (structured): sharing 165 browser / 161
+      server. Gain = build fraction: at quantum-scale dx every pixel shadows
+      the reference and BLA mega-skips the grind, so the per-strip build is
+      ~all of plain BLA's cost -> sharing removes ~all of it; the 270-digit
+      view keeps real grind, capping its gain at ~5x. big.LITTLE benefits MORE
+      than x86 (Beast browser equivalent ~3.7x), as designed.
     WORKER COUNT (Beast): 8w 312 vs 32w 294 on the 270-digit view -- bigger
       strips = fewer per-strip BLA tables + less memory-bandwidth churn, so
       past ~8-16 threads extra workers cost a little on deep views. On the CB,
