@@ -230,7 +230,13 @@ Next steps (after the `BLA` branch):
    box; remote mode is the natural home for ultra-deep counts). Broadcast
    crossover: at big orbits, per-worker builds may beat relaying 100s of MB.
 2. **floatexp deltas** (f64 mantissa + i64 exponent) to push perturbation past
-   the ~1e-300 pixel-scale f64 underflow floor (~300 decimal digits).
+   f64's pixel-scale floor. With the mag_to_f64 fix the engine is exact to the
+   TRUE f64 limits: full precision to 2.2e-308 pixel scale (~308 digits),
+   graceful subnormal degradation to the 4.9e-324 quantum (~323 digits: see
+   mb-rust-server/360-digits-boundary.xml, which sits AT the floor -- its pixel
+   step is below one quantum, so it renders at ~1.9x wrong scale and cannot
+   zoom deeper). The fixed conversion (first nonzero limb -> mantissa +
+   explicit exponent) is the seed of floatexp's own conversion routine.
 3. Merge `BLA-orbit-sharing` -> `BLA` -> `perturbation` -> `master` once soaked.
 4. Revisit within-pixel SIMD only on x86 hardware (AVX2 shuffles are cheaper —
    measure, don't assume).

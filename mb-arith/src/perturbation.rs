@@ -681,19 +681,40 @@ macro_rules! perturb_engine {
 
 /// Convert a magnitude (non-negative limb value: limb0 = integral part, limbs 1..
 /// = fractional limbs, most significant first) to f64.
+///
+/// Scales ONCE from the first nonzero limb rather than walking a running scale
+/// down limb by limb: the old loop's running scale underflowed to 0.0 partway
+/// down (at limb weight 2^-1088 for u64 limbs), silently dropping every limb
+/// past it -- values below 2^-1024 converted to 0.0 (the server rendered deep
+/// views as one flat color) and values just above the cliff kept only their top
+/// few bits (26% error at 2^-1023.4). The u32 engine had the same flaw ~2^32
+/// deeper (browser views degraded to ~16-bit precision below ~1e-294). Three
+/// limbs from the first nonzero give >= 96 bits of mantissa, and the two-step
+/// scaling stays correct through f64's subnormal range to the true ~2^-1074
+/// floor.
 #[inline]
 fn $mag_to_f64(m: &[$limb]) -> f64 {
-    let step = 2.0f64.powi(-(<$limb>::BITS as i32));
-    let mut v = m[0] as f64;
-    let mut scale = step;
-    for &limb in &m[1..] {
-        if scale == 0.0 {
-            break; // remaining limbs are below f64's smallest subnormal
-        }
-        v += limb as f64 * scale;
-        scale *= step;
+    const B: i32 = <$limb>::BITS as i32;
+    let k = match m.iter().position(|&l| l != 0) {
+        Some(k) => k,
+        None => return 0.0,
+    };
+    let step = 2.0f64.powi(-B);
+    let mut mant = m[k] as f64;
+    let mut lo = step;
+    let end = core::cmp::min(k + 3, m.len());
+    for i in (k + 1)..end {
+        mant += m[i] as f64 * lo;
+        lo *= step;
     }
-    v
+    let e = -B * (k as i32);
+    if e >= -1022 {
+        mant * 2.0f64.powi(e)
+    } else {
+        // split the scaling so the intermediate stays normal; the final multiply
+        // correctly rounds into (or below) the subnormal range
+        (mant * 2.0f64.powi(-1022)) * 2.0f64.powi(e + 1022)
+    }
 }
 
 /// Convert a two's-complement limb value (limb0 = signed integral part, limbs 1..
