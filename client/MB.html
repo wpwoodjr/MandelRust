@@ -1607,7 +1607,7 @@ function setUpDragging() {  // for image canvas
         // convention -- the default it replaces was page zoom, which we
         // preventDefault away). Pinch deltas are small and continuous, so they
         // get a stronger response than scroll ticks.
-        const divisor = evt.ctrlKey ? 30 : 100;
+        const divisor = evt.ctrlKey ? 5 : 50;
         const zoomFactor = Math.pow(7/8, -dy/divisor);   // scroll up / pinch out = zoom in
         recordViewBurst("Wheel Zoom");
         zoom(x, y, zoomFactor, false, false);
