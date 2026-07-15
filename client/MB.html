@@ -1577,10 +1577,13 @@ function setUpDragging() {  // for image canvas
         const zoomFactor = evt.shiftKey ? 2 : 0.5;
         zoom(x,y,zoomFactor,!evt.altKey && !evt.ctrlKey, true);
     }
-    // Wheel zoom at the cursor: a gentle 7/8 step per notch, anchored so the
-    // point under the cursor stays put (recenter=false). Undo is one item per
-    // view-change burst via recordViewBurst, shared with the pan/zoom keys so
-    // interleaving wheel and keys still yields a single undo step.
+    // Wheel/pinch zoom at the cursor, anchored so the point under the cursor
+    // stays put (recenter=false). The step scales with input magnitude (see the
+    // divisor below): a mouse wheel notch is ~(7/8)^2 per click, trackpad
+    // scroll ticks are proportionally gentler, and pinch is stronger still.
+    // Undo is one item per view-change burst via recordViewBurst, shared with
+    // the pan/zoom keys so interleaving wheel and keys still yields a single
+    // undo step.
     function doMouseWheel(evt) {
         evt.preventDefault();   // keep the page from scrolling
         if (dragbox || evt.deltaY === 0) {
@@ -1590,12 +1593,13 @@ function setUpDragging() {  // for image canvas
         // account for canvas border margin
         const x = evt.clientX - (r.left + r.right - canvas.width)/2;
         const y = evt.clientY - (r.top + r.bottom - canvas.height)/2;
-        // Scale the step by scroll magnitude: a physical wheel notch (|deltaY|
-        // ~100) gets the full 7/8 step -- unchanged feel -- while a trackpad's
-        // stream of small deltas gets proportionally gentler steps, so a
-        // two-finger swipe no longer fires dozens of full notches. deltaMode
-        // normalizes line/page-scrolling browsers; the clamp bounds any single
-        // event to three notches.
+        // Scale the step by scroll magnitude: zoomFactor = (7/8)^(|dy|/divisor),
+        // so a physical wheel notch (|deltaY| ~100, divisor 50) gives ~(7/8)^2
+        // per click while a trackpad's stream of small deltas gives
+        // proportionally gentler steps -- a two-finger swipe no longer fires
+        // dozens of full notches. deltaMode normalizes line/page-scrolling
+        // browsers; the clamp bounds any single event (~6 wheel notches'
+        // worth). Divisors tuned by feel on a Chromebook trackpad + mouse.
         let dy = evt.deltaY;
         if (evt.deltaMode === 1) {
             dy *= 33;           // lines -> ~pixels
@@ -1605,8 +1609,9 @@ function setUpDragging() {  // for image canvas
         dy = Math.max(-300, Math.min(300, dy));
         // Trackpad pinch arrives as a wheel event with ctrlKey set (browser
         // convention -- the default it replaces was page zoom, which we
-        // preventDefault away). Pinch deltas are small and continuous, so they
-        // get a stronger response than scroll ticks.
+        // preventDefault away). Pinch deltas are small and continuous, so pinch
+        // gets a 10x stronger divisor than scroll ticks. (Side effect:
+        // ctrl+mouse-wheel also zooms the fractal, fast.)
         const divisor = evt.ctrlKey ? 5 : 50;
         const zoomFactor = Math.pow(7/8, -dy/divisor);   // scroll up / pinch out = zoom in
         recordViewBurst("Wheel Zoom");
