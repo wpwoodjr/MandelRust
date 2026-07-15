@@ -1603,7 +1603,12 @@ function setUpDragging() {  // for image canvas
             dy *= 400;          // pages -> ~pixels
         }
         dy = Math.max(-300, Math.min(300, dy));
-        const zoomFactor = Math.pow(7/8, -dy/100);   // scroll up (dy<0) = zoom in
+        // Trackpad pinch arrives as a wheel event with ctrlKey set (browser
+        // convention -- the default it replaces was page zoom, which we
+        // preventDefault away). Pinch deltas are small and continuous, so they
+        // get a stronger response than scroll ticks.
+        const divisor = evt.ctrlKey ? 30 : 100;
+        const zoomFactor = Math.pow(7/8, -dy/divisor);   // scroll up / pinch out = zoom in
         recordViewBurst("Wheel Zoom");
         zoom(x, y, zoomFactor, false, false);
     }
