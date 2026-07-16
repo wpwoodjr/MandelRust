@@ -237,8 +237,24 @@ Next steps (after the `BLA` branch):
    step is below one quantum, so it renders at ~1.9x wrong scale and cannot
    zoom deeper). The fixed conversion (first nonzero limb -> mantissa +
    explicit exponent) is the seed of floatexp's own conversion routine.
-3. Merge `BLA-orbit-sharing` -> `BLA` -> `perturbation` -> `master` once soaked.
-4. Revisit within-pixel SIMD only on x86 hardware (AVX2 shuffles are cheaper —
+3. **Reference selection** — `perturb_setup` picks the image CENTER as the
+   reference, blindly. When the center escapes EARLIER than other pixels
+   (shallow views centered on fast-escaping territory), every pixel that
+   outlives it wraps the dead orbit, its delta goes order-1, and BLA skips
+   never re-engage: exact steps to the finish. Measured on
+   `mb-rust-server/40-digits-slow.xml` (the acceptance test): center escapes
+   at 58,153 while 44% of the frame needs up to 75,000 — that 44% loses all
+   skips (correctness intact, brute-verified; only speed suffers). Orbit
+   sharing GLOBALIZED this: the old per-strip refs localized a bad center to
+   its own strip. Fix: parameterize the reference position (col_ref/row_ref as
+   arguments through perturb_setup + the FFI + basis metadata), then select it
+   — build the center ref, coarse pre-pass (~48x36 samples, ~300ms), and if a
+   meaningful fraction outlives the ref, rebuild at the max-count sample.
+   Workaround meanwhile: pan so the view center sits on high-count structure.
+   Same law as item 1: the reference must cover its pixels — item 1 in length,
+   this in lifetime.
+4. Merge `BLA-orbit-sharing` -> `BLA` -> `perturbation` -> `master` once soaked.
+5. Revisit within-pixel SIMD only on x86 hardware (AVX2 shuffles are cheaper —
    measure, don't assume).
 
 ## Orbit-Rebuild Bottleneck / Orbit Sharing (BLA-orbit-sharing branch)
