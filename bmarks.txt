@@ -478,3 +478,11 @@ BMarks
     Probe threshold sizing: measured starved-iters fraction per view (120-px
     sample, plain loop): 40-digit 82.8% of all work, 54-digit 44.2%, 126-digit
     6.0%, 360-boundary 0.1% -- 1024-run probes cleanly separate these.
+    Browser confirmation (post-push hard-reloads):
+      Beast: 40-digits-slow 161 -> 646 rows/s = 4.0x (matches the 4.1x pinned
+        single-thread prediction); 270-digit 301 @ 32w / 316 @ 16w vs
+        pre-change 294 @ 32w / 312 @ 8w = parity.
+      CB (8w): 270-digit 267 (baseline 248-255) and 360-boundary black-at-
+        999999 447 (baseline 422-429) -- parity or a shade better, so the
+        strict path is clean on ARM too; 40-digits-slow 101 (no pre-change CB
+        baseline was ever taken for this view).
