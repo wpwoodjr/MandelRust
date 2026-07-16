@@ -416,3 +416,31 @@ BMarks
     Parity notes: CB browser 1520 ~ Beast server 1600 at 8 threads (126-full);
       CB 8w ~250 = 80% of Beast's best (8w 312) on the 270-digit view; boundary
       view browser 165 ~ server 161 (the wasm/native gap compresses at depth).
+
+16 Jul 2026 - reference selection: implemented, benchmarked, REJECTED (reverted;
+    diff saved as reference-selection.patch in the session scratchpad).
+    Selection = probe grid (24x18 BLA samples on the center orbit) + rebuild at
+    the longest-lived sample; wasm v10 4-entry meta [dx,dy,dcx0,row_ref]. It did
+    what it promised and it never paid:
+    40-digits-slow (640x480, 75k): ref 58,154 -> 66,220 (coverage 57% -> 99.8%),
+      brute-exact, and the frame went 48.3 -> 49.3 s single-thread wasm (SLOWER
+      by the probe+rebuild). Browser 8w: 161 -> 155 rows/s. The old "44% loses
+      all skips to dead-orbit wraps" diagnosis was WRONG.
+    True cause (measured): low-Lyapunov region. Reference |Z| ~ 0.5 for 90% of
+      the orbit (|2Z| ~= 1), lambda ~= 0.0005/iter; a traced pixel's |d| crossed
+      the BLA ceiling (4.5e-13) at iter 8,189 of 58,130 -> the last ~50k iters
+      single-step under ANY reference: 50k x 2.8 ns = 140 us/px = the measured
+      160 us/px. BLA_EPS sim (exact table/loop in JS): 2^-24 -> 2.1x, 2^-16 ->
+      3.9x, 2^-12 -> 7.2x. Counts there are ill-conditioned anyway (worst
+      differing px vs brute: BOTH old and new engines off by 1000s at 2^-40);
+      structure intact. -> roadmap item 3 (adaptive eps keyed to lambda).
+    Dead refs HEAL (the kill test): 270-digit view panned 640px right, center
+      dies at 709,681 of 999,999, ~50% of every band outlives it. Center ref
+      82-85 rows/s vs selected full-coverage ref 60-81 on ALL bands (selected =
+      1M-pt orbit -> 2x table, ref at row 2034 -> far from strips, shorter
+      skips), output identical to speckle (maxd <= 78 on ~3/5120 px). Rebasing
+      re-engages skips after a wrap (d := z at the next close approach); an
+      escaped reference never needs replacing. 126-digit bench view: its center
+      dies at 7,687 of 50k and 99.1% of the frame dies sooner -- selection
+      correctly no-ops (identical px, +8 ms probe). Coverage still matters for
+      CAP-TRUNCATED (non-escaped) refs -- that's roadmap item 1, unchanged.

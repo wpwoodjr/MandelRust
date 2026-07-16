@@ -237,22 +237,41 @@ Next steps (after the `BLA` branch):
    step is below one quantum, so it renders at ~1.9x wrong scale and cannot
    zoom deeper). The fixed conversion (first nonzero limb -> mantissa +
    explicit exponent) is the seed of floatexp's own conversion routine.
-3. **Reference selection** — `perturb_setup` picks the image CENTER as the
-   reference, blindly. When the center escapes EARLIER than other pixels
-   (shallow views centered on fast-escaping territory), every pixel that
-   outlives it wraps the dead orbit, its delta goes order-1, and BLA skips
-   never re-engage: exact steps to the finish. Measured on
-   `mb-rust-server/40-digits-slow.xml` (the acceptance test): center escapes
-   at 58,153 while 44% of the frame needs up to 75,000 — that 44% loses all
-   skips (correctness intact, brute-verified; only speed suffers). Orbit
-   sharing GLOBALIZED this: the old per-strip refs localized a bad center to
-   its own strip. Fix: parameterize the reference position (col_ref/row_ref as
-   arguments through perturb_setup + the FFI + basis metadata), then select it
-   — build the center ref, coarse pre-pass (~48x36 samples, ~300ms), and if a
-   meaningful fraction outlives the ref, rebuild at the max-count sample.
-   Workaround meanwhile: pan so the view center sits on high-count structure.
-   Same law as item 1: the reference must cover its pixels — item 1 in length,
-   this in lifetime.
+3. **Adaptive BLA_EPS for low-Lyapunov views** — the real fix for
+   `mb-rust-server/40-digits-slow.xml` (the acceptance test). The old
+   diagnosis ("center ref escapes at 58,153, the 44% of the frame that
+   outlives it wraps the dead orbit and loses all BLA skips") was tested and
+   REFUTED: reference SELECTION was fully implemented (probe grid + relocated
+   ref, orbit 58,154 -> 66,220 covering 99.8% of px, brute-exact) and the
+   frame was NOT faster (48.3 -> 49.3 s single-thread). It was then reverted
+   -- diff saved as reference-selection.patch in the 2026-07 session
+   scratchpad. Two lessons, both measured:
+   - Dead references HEAL. A pixel that outlives the reference wraps with an
+     order-1 delta, but the Zhuoran rebase (d := z at the next close approach)
+     shrinks it again and skips re-engage. A/B on the 270-digit view panned so
+     its center dies at 709,681 of 999,999 (half of every band outliving it):
+     the dead center ref beat the full-coverage selected ref on every band
+     (82-85 vs 60-81 rows/s -- the selected orbit is longer = bigger BLA table,
+     and farther from most strips = bigger per-strip dc_max, shorter skips),
+     identical output. Selection never won on any view; "pan so the center
+     sits on high-count structure" is a placebo. Note the coverage LAW still
+     holds for item 1 (a CAP-truncated non-escaped ref is unsound); escaped
+     refs wrap soundly and cheaply.
+   - 40-digits-slow is slow because it is a LOW-LYAPUNOV (near-parabolic)
+     region: reference |Z| hovers at ~0.5 (|2Z| ~= 1), deltas grow at only
+     lambda ~= 0.0005/iter, so |d| crosses the BLA validity ceiling
+     (BLA_EPS*|Z| ~= 4.5e-13) at iter ~8k of ~58k and the remaining ~50k
+     iters/px can never skip, under ANY reference (measured 2.8 ns/iter =
+     raw delta stepping). The lever is BLA_EPS: JS sim of the exact
+     table/loop gave 2.1x at 2^-24, 3.9x at 2^-16, 7.2x at 2^-12. Tolerance
+     analysis says eps does NOT need to track zoom depth (pixel spacing and
+     deltas shrink together; the sub-pixel criterion is the scale-free ratio
+     dx/|dc| ~ 1/320) -- the right adaptive key is lambda itself, computable
+     FREE during the table build (mean ln|2Z| over the orbit): raise eps only
+     when lambda is small, which is exactly when counts are smooth/speckle-
+     dominated and tolerate it (boundary counts there are already off by
+     1000s vs brute at 2^-40 -- both engines; ill-conditioned, structure
+     intact). Validate any eps change by image comparison, not exact counts.
 4. Merge `BLA-orbit-sharing` -> `BLA` -> `perturbation` -> `master` once soaked.
 5. Revisit within-pixel SIMD only on x86 hardware (AVX2 shuffles are cheaper —
    measure, don't assume).
