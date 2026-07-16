@@ -444,3 +444,37 @@ BMarks
       dies at 7,687 of 50k and 99.1% of the frame dies sooner -- selection
       correctly no-ops (identical px, +8 ms probe). Coverage still matters for
       CAP-TRUNCATED (non-escaped) refs -- that's roadmap item 1, unchanged.
+
+16 Jul 2026 - adaptive BLA_EPS SHIPPED (wasm v10 + server): two-tier radii with
+    per-strip starvation probes. Each strip probes 8 pixels with an
+    instrumented loop; a probe taking >1024 consecutive exact steps flips the
+    strip to BLA_EPS_RELAXED = 2^-16 radii (built lazily per table); otherwise
+    the strip runs the untouched strict 2^-40 loop.
+    Pinned single-thread wasm, Beast (taskset -c 0, 4 reps, v9 -> v10):
+      40-digits-slow full frame: 50.9 s -> 12.5 s = 4.1x (9.4 -> 38 rows/s)
+      54-digits:      253 -> 611 rows/s = 2.4x   (44% of its work was starved)
+      360-boundary:    22 -> 38 rows/s  = 1.7x
+      126-digits:     514 -> 512 rows/s = parity, BIT-IDENTICAL
+      270-digits:      65 -> 66 rows/s  = parity, BIT-IDENTICAL
+    Count changes only in the ill-conditioned boundary speckle (40-digit:
+    20.5% of px differ vs v9 but so did v9 vs brute by 1000s there; image
+    comparison through the saved palette shows structure intact -- artifact
+    claude.ai/code/artifact/1abbd158-7d84-47a1-94bb-4ef00974f317).
+    THE HARD PART was not regressing clean views -- three designs failed first,
+    all measured on 126/270-digit strips (the V8 hot-loop sensitivity law
+    again, this time in the probe/tier plumbing):
+      r2 moved out of BlaEntry into flat arrays: -7 to -19% (a taken skip now
+        touches two cache lines; deep views take a skip almost every iter);
+      per-pixel run counter + loop-end starvation check: -6 to -21% (V8 wasm
+        is brutal about ANY addition to the hot loop -- same law as the |d|^2
+        PERF NOTE), and letting the relaxed loop copy inline beside the strict
+        one cost similarly (I-cache);
+      DETECT-off diagnostic proved the closure/Result STRUCTURE itself is free
+        -- LLVM deletes the dead relaxed copy, parity with v9.
+    Final shape: detection lives only in 8 cold probe pixels per strip; each
+    tier is its own monomorphized detection-free loop (bla_grid/bla_grid_loop);
+    table build byte-identical to v9. A starved pixel the probes miss runs
+    strict and slow, exactly as before -- safe failure mode.
+    Probe threshold sizing: measured starved-iters fraction per view (120-px
+    sample, plain loop): 40-digit 82.8% of all work, 54-digit 44.2%, 126-digit
+    6.0%, 360-boundary 0.1% -- 1024-run probes cleanly separate these.

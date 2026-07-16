@@ -113,9 +113,26 @@ code):
   reference zeros. `BLA_EPS` (2^-40) holds results at the f64 noise floor of
   the method itself. Skips ~90-99% of iterations at deep zoom: measured 7-11x
   over the glitch engine at 126 decimal digits, 1.1-2x at 35 digits.
+  TWO-TIER ADAPTIVE EPS (wasm v10, server): LOW-LYAPUNOV views (reference
+  |2Z| ~= 1, e.g. 40-digits-slow.xml at lambda ~5e-4/iter) starve BLA -- |d|
+  outgrows the strict ceiling at ~iter 8k of 58k and the rest single-steps, 83%
+  of that view's work, under ANY reference (reference choice was tested and
+  refuted first, see bmarks). Fix: each strip probes 8 pixels; a probe taking
+  >BLA_RELAX_RUN (1024) consecutive exact steps flips the strip to
+  BLA_EPS_RELAXED (2^-16) radii, built lazily per table. Measured single-thread
+  wasm (Beast): 40-digits-slow 4.1x, 54-digits 2.4x, 360-boundary 1.7x -- count
+  changes are confined to the already-ill-conditioned boundary speckle (adjacent-pixel
+  count spacing ~1/(320*lambda); image-validated, structure intact); strips
+  whose probes never starve (126/270-digit) are BIT-IDENTICAL and at speed
+  parity. Lambda alone cannot pick the tier (270-digit has LOWER lambda but
+  dc ~1e-270 never reaches the ceiling) -- hence probes, not a formula.
   PERF NOTE: |d|^2 is carried across loop iterations, NOT recomputed — a
   redundant multiply-add in the serial dependency chain cost wasm ~2.7x (native
-  OoO hid it, V8 didn't) and native ~1.2x.
+  OoO hid it, V8 didn't) and native ~1.2x. Same law, second sighting: ANY
+  addition to the hot loop is suspect under V8 — a per-iteration starvation
+  counter cost 6-21%, and letting the relaxed loop copy inline beside the
+  strict one cost the same again (I-cache); hence detection lives in cold probe
+  pixels and each tier is its own monomorphized detection-free loop.
 - `mandelbrot_perturb_glitch64/32()` - previous default. Shared-index engine:
   all pixels walk the reference at the same index, batched 4 per loop through
   `perturb_lanes_shared::<4>` (branchless lock-step; ~1.3-4x from
@@ -148,7 +165,7 @@ kernel isolation), `bench-strips.rs` (strip-height sweep). For wasm numbers, run
 predicts browser single-worker rows/sec within ~1%. Use it before trusting any
 wasm perf theory (browser pipeline noise is not the wasm engine).
 
-Measured on the dev machine (800x600, 126-digit view, rows/sec, see bmarks.txt):
+Measured on the Beast (800x600, 126-digit view, rows/sec, see bmarks.txt):
 browser 8-worker 101 -> 1440 and single-worker 17 -> 281 across the perturbation
 + BLA work; server 8-worker ~1600-1900. A 4-row strip that takes exact HP ~2.1 s
 computes in ~9 ms, bit-identical on a server strip test (BLA differs from the
@@ -237,44 +254,28 @@ Next steps (after the `BLA` branch):
    step is below one quantum, so it renders at ~1.9x wrong scale and cannot
    zoom deeper). The fixed conversion (first nonzero limb -> mantissa +
    explicit exponent) is the seed of floatexp's own conversion routine.
-3. **Adaptive BLA_EPS for low-Lyapunov views** — the real fix for
-   `mb-rust-server/40-digits-slow.xml` (the acceptance test). The old
-   diagnosis ("center ref escapes at 58,153, the 44% of the frame that
-   outlives it wraps the dead orbit and loses all BLA skips") was tested and
-   REFUTED: reference SELECTION was fully implemented (probe grid + relocated
-   ref, orbit 58,154 -> 66,220 covering 99.8% of px, brute-exact) and the
-   frame was NOT faster (48.3 -> 49.3 s single-thread). It was then reverted
-   -- diff saved as reference-selection.patch in the 2026-07 session
-   scratchpad. Two lessons, both measured:
-   - Dead references HEAL. A pixel that outlives the reference wraps with an
-     order-1 delta, but the Zhuoran rebase (d := z at the next close approach)
-     shrinks it again and skips re-engage. A/B on the 270-digit view panned so
-     its center dies at 709,681 of 999,999 (half of every band outliving it):
-     the dead center ref beat the full-coverage selected ref on every band
-     (82-85 vs 60-81 rows/s -- the selected orbit is longer = bigger BLA table,
-     and farther from most strips = bigger per-strip dc_max, shorter skips),
-     identical output. Selection never won on any view; "pan so the center
-     sits on high-count structure" is a placebo. Note the coverage LAW still
-     holds for item 1 (a CAP-truncated non-escaped ref is unsound); escaped
-     refs wrap soundly and cheaply.
-   - 40-digits-slow is slow because it is a LOW-LYAPUNOV (near-parabolic)
-     region: reference |Z| hovers at ~0.5 (|2Z| ~= 1), deltas grow at only
-     lambda ~= 0.0005/iter, so |d| crosses the BLA validity ceiling
-     (BLA_EPS*|Z| ~= 4.5e-13) at iter ~8k of ~58k and the remaining ~50k
-     iters/px can never skip, under ANY reference (measured 2.8 ns/iter =
-     raw delta stepping). The lever is BLA_EPS: JS sim of the exact
-     table/loop gave 2.1x at 2^-24, 3.9x at 2^-16, 7.2x at 2^-12. Tolerance
-     analysis says eps does NOT need to track zoom depth (pixel spacing and
-     deltas shrink together; the sub-pixel criterion is the scale-free ratio
-     dx/|dc| ~ 1/320) -- the right adaptive key is lambda itself, computable
-     FREE during the table build (mean ln|2Z| over the orbit): raise eps only
-     when lambda is small, which is exactly when counts are smooth/speckle-
-     dominated and tolerate it (boundary counts there are already off by
-     1000s vs brute at 2^-40 -- both engines; ill-conditioned, structure
-     intact). Validate any eps change by image comparison, not exact counts.
-4. Merge `BLA-orbit-sharing` -> `BLA` -> `perturbation` -> `master` once soaked.
-5. Revisit within-pixel SIMD only on x86 hardware (AVX2 shuffles are cheaper —
+3. Merge `BLA-orbit-sharing` -> `BLA` -> `perturbation` -> `master` once soaked.
+4. Revisit within-pixel SIMD only on x86 hardware (AVX2 shuffles are cheaper —
    measure, don't assume).
+
+SHIPPED from this list (wasm v10): **two-tier adaptive BLA_EPS** for
+low-Lyapunov views — the fix for `mb-rust-server/40-digits-slow.xml` (see the
+engine section above for the mechanism and numbers). Two hard-won findings
+from its investigation, both measured (details in bmarks.txt, 16 Jul 2026):
+- Dead references HEAL: reference SELECTION (probe + relocate when the center
+  escapes early) was fully implemented first, produced NO speedup anywhere
+  (the Zhuoran rebase re-engages skips after a wrap; a dead center ref even
+  BEAT a full-coverage selected ref — shorter orbit, nearer reference), and
+  was reverted (diff: reference-selection.patch, 2026-07 session scratchpad).
+  "Pan so the center sits on high-count structure" is a placebo. The coverage
+  LAW still holds for item 1: a CAP-truncated non-escaped ref is unsound;
+  escaped refs wrap soundly and cheaply.
+- Eps tolerance is scale-free (pixel spacing and deltas shrink together, so
+  the sub-pixel criterion is dx/|dc| ~ 1/320 at every depth) and lambda alone
+  cannot pick the tier (270-digit has lower lambda than 40-digits-slow yet
+  never starves — its dc ~1e-270 keeps |d| under the ceiling for a pixel's
+  whole life). Starvation must be MEASURED, hence probe pixels. Validate any
+  eps change by image comparison, not exact counts.
 
 ## Orbit-Rebuild Bottleneck / Orbit Sharing (BLA-orbit-sharing branch)
 
@@ -351,9 +352,15 @@ Few builds AND fast lookups AND all-core scaling — what big bands only half-do
 
 ## x86 Evaluation Playbook (BLA branch)
 
-All perf numbers above are from an aarch64 big.LITTLE dev machine
-(1x Cortex-X925 + 3x X4 + 4x A720 — heterogeneity repeatedly produced
-misleading unpinned benchmarks). On an x86 box, measure in this order:
+Machine attribution: the perturbation engines and the initial BLA
+implementation were developed on an aarch64 big.LITTLE machine (1x Cortex-X925
++ 3x X4 + 4x A720 — heterogeneity repeatedly produced misleading unpinned
+benchmarks); that machine supplied the NEON-kernel and lane-width findings
+below. Development moved to the x86 Beast (i9-13900KF under WSL2) at the start
+of the orbit-rebuild investigation and has stayed there (orbit sharing, HP2,
+adaptive eps). "CB" numbers are the 8-core ARM Chromebook (MediaTek Kompanio),
+used for cross-arch validation throughout. Items worth re-measuring natively
+on x86:
 
 1. `cd mb-arith && cargo run --release --example bench-real` (and
    `bench-real35`) — native engine comparison on the two saved views:

@@ -118,6 +118,27 @@ pub fn perturb_row(
 // on an iteration-count boundary; validated against brute HP in tests.
 pub const BLA_EPS: f64 = 9.094_947_017_729_282e-13; // 2^-40
 
+// Relaxed second tier for STARVED grids (see bla_grid). In a low-Lyapunov
+// region (reference |2Z| ~= 1, e.g. 40-digits-slow.xml: lambda ~= 0.0005/iter)
+// a pixel's |d| outgrows BLA_EPS*|Z| tens of thousands of iterations before it
+// escapes, and every one of those is an exact step -- 83% of that view's total
+// work. Raising eps trades count accuracy for skips, and the trade is only
+// good exactly where counts are already ill-conditioned (adjacent-pixel count
+// spacing ~ 1/(320*lambda) blows up as lambda drops), so the relaxed radii are
+// used ONLY where starvation is proven: a probe pixel that takes more than
+// BLA_RELAX_RUN consecutive exact steps (a healthy pixel's exact runs -- near
+// escapes and reference zeros -- are far shorter) flips its whole strip to the
+// relaxed tier. Escape/rebase detection stays sound at any eps << 1 (a miss
+// needs |d| ~ |Z|); only count accuracy in the (already-speckled) starved zone
+// is spent. Measured (640-wide views, single thread, wasm): 40-digits-slow
+// 4.1x, 54-digits 2.4x, 360-boundary 1.7x, count deltas <= ~300 confined to
+// the speckle zone; views whose probes never starve (126/270-digit) are
+// bit-identical. Lambda alone canNOT decide the tier (270-digit has LOWER
+// lambda than 40-digits-slow but dc ~ 1e-270 keeps |d| under the ceiling for
+// its whole life) -- hence measured probes, not a formula.
+pub const BLA_EPS_RELAXED: f64 = 1.525_878_906_25e-5; // 2^-16
+pub const BLA_RELAX_RUN: u32 = 1024;
+
 #[derive(Clone, Copy)]
 pub struct BlaEntry {
     // d' = A*d + B*dc (complex), valid while |d|^2 < r2
@@ -133,8 +154,13 @@ pub struct BlaEntry {
 /// the linearized single step; each level above merges pairs from the one below.
 /// Stored flat (one allocation, levels back to back) so a probe is a single
 /// computed-index load -- wasm engines don't hoist nested-Vec indirections.
+/// The BLA_EPS_RELAXED radius tier (flat f64s parallel to `entries`) is built
+/// LAZILY on the first starved pixel (`relax_radii`): strips whose pixels
+/// never starve pay nothing for it, in build time or memory.
 pub struct BlaTable {
     pub entries: Vec<BlaEntry>,
+    relax_r2: std::cell::OnceCell<Vec<f64>>, // BLA_EPS_RELAXED tier, on demand
+    dc_max: f64,
     pub level_off: Vec<u32>, // start of level k within entries
 }
 
@@ -157,6 +183,45 @@ fn bla_merge(x: &BlaEntry, y: &BlaEntry, dc_max: f64) -> BlaEntry {
         rx
     };
     BlaEntry { ax, ay, bx, by, r2: r * r }
+}
+
+impl BlaTable {
+    /// The BLA_EPS_RELAXED radius tier, built on first use (only starved
+    /// pixels ever ask for it). Same merge rule as the strict build, seeded
+    /// with the bigger eps; |Z| and the child magnitudes are recovered from
+    /// the stored entries (level-0 entry is (A, B) = (2Z, 1), so |Z| = |A|/2).
+    pub fn relax_radii(&self) -> &[f64] {
+        self.relax_r2.get_or_init(|| {
+            let entries = &self.entries;
+            let steps = self.level_off.get(1).map_or(entries.len(), |&o| o as usize);
+            let mut r = Vec::with_capacity(entries.len());
+            for e in &entries[..steps] {
+                r.push(BLA_EPS_RELAXED * 0.5 * (e.ax * e.ax + e.ay * e.ay).sqrt());
+            }
+            let (mut off, mut len) = (0usize, steps);
+            while len >= 2 {
+                for j in 0..len / 2 {
+                    let i = off + 2 * j;
+                    let x = &entries[i];
+                    let ax_mag = (x.ax * x.ax + x.ay * x.ay).sqrt();
+                    let bx_mag = (x.bx * x.bx + x.by * x.by).sqrt();
+                    let merged = if ax_mag > 0.0 {
+                        r[i].min(((r[i + 1] - bx_mag * self.dc_max) / ax_mag).max(0.0))
+                    } else {
+                        r[i]
+                    };
+                    r.push(merged);
+                }
+                off += len;
+                len /= 2;
+            }
+            debug_assert_eq!(r.len(), entries.len());
+            for v in r.iter_mut() {
+                *v = *v * *v;
+            }
+            r
+        })
+    }
 }
 
 /// Build the BLA table for `orbit`. `dc_max` must bound |dc| over every pixel the
@@ -183,32 +248,40 @@ pub fn build_bla_table(orbit: &[(f64, f64)], dc_max: f64) -> BlaTable {
         off = *level_off.last().unwrap() as usize;
         len /= 2;
     }
-    BlaTable { entries, level_off }
+    BlaTable { entries, relax_r2: std::cell::OnceCell::new(), dc_max, level_off }
 }
 
-/// Like `perturb_point` (same rebasing, same count conventions -- see that fn),
-/// but consults the BLA table each iteration and replaces up to 2^k exact steps
-/// with one composed multiply-add when the current |d| is inside a skip's radius.
-#[inline]
-pub fn perturb_point_bla(
+// In-flight pixel state handed from the strict phase to the relaxed phase.
+struct BlaState {
+    dr: f64,
+    di: f64,
+    d2: f64,
+    m: usize,
+    n: i32,
+}
+
+// The BLA iteration loop, monomorphized per radius tier: `r2_at(idx)` yields
+// the validity radius^2 of table entry idx. DETECT=true counts consecutive
+// exact steps and returns Err(state) when the pixel proves it is starving
+// (BLA_RELAX_RUN in a row); DETECT=false runs to completion. Keeping the tier
+// a compile-time parameter (instead of a branch or a swapped slice in the
+// loop) is what keeps the strict path's codegen identical to the pre-tier
+// engine -- measured, not hypothetical: both alternatives cost 6-19% on deep
+// views.
+#[inline(always)]
+fn bla_drive<const DETECT: bool>(
     orbit: &[(f64, f64)],
     bla: &BlaTable,
+    r2_at: impl Fn(usize) -> f64,
     dcx: f64,
     dcy: f64,
     max_iterations: i32,
-) -> i32 {
-    let ref_len = orbit.len();
-    if ref_len < 2 {
-        return -1;
-    }
-    let last = ref_len - 1;
+    st: BlaState,
+) -> Result<i32, BlaState> {
+    let last = orbit.len() - 1;
     let n_levels = bla.level_off.len();
-
-    let mut dr = 0.0f64;
-    let mut di = 0.0f64;
-    let mut d2 = 0.0f64; // |d|^2, maintained across iterations
-    let mut m = 0usize; // reference index
-    let mut n = 0i32; // crate-standard iteration counter
+    let BlaState { mut dr, mut di, mut d2, mut m, mut n } = st;
+    let mut run = 0u32; // consecutive exact steps (starvation detector)
 
     while n < max_iterations {
         // Longest power-of-two skip aligned at m whose radius admits |d|. Radii
@@ -227,11 +300,7 @@ pub fn perturb_point_bla(
             if m + s > last || (n as usize + s) > max_iterations as usize {
                 break;
             }
-            let r2 = unsafe {
-                bla.entries
-                    .get_unchecked(*bla.level_off.get_unchecked(k) as usize + (m >> k))
-                    .r2
-            };
+            let r2 = r2_at(unsafe { *bla.level_off.get_unchecked(k) as usize } + (m >> k));
             if d2 >= r2 {
                 break;
             }
@@ -239,6 +308,9 @@ pub fn perturb_point_bla(
             k += 1;
         }
         if best_k > 0 {
+            if DETECT {
+                run = 0;
+            }
             let e = unsafe {
                 bla.entries
                     .get_unchecked(*bla.level_off.get_unchecked(best_k) as usize + (m >> best_k))
@@ -250,6 +322,17 @@ pub fn perturb_point_bla(
             m += 1usize << best_k;
             n += (1usize << best_k) as i32;
         } else {
+            // A long unbroken run of exact steps means this pixel is starved
+            // (|d| parked above the strict ceiling): hand it to the relaxed
+            // tier BEFORE taking the step -- the loop-top state is coherent,
+            // and keeping the check inside this branch keeps it off the skip
+            // path (a loop-end check measured 5-7% on skip-heavy deep views).
+            if DETECT {
+                run += 1;
+                if run > BLA_RELAX_RUN {
+                    return Err(BlaState { dr, di, d2, m, n });
+                }
+            }
             // exact step, identical to perturb_point
             let (zr, zi) = unsafe { *orbit.get_unchecked(m) };
             let new_dr = 2.0 * (zr * dr - zi * di) + (dr * dr - di * di) + dcx;
@@ -266,7 +349,7 @@ pub fn perturb_point_bla(
         let wi = zmi + di;
         let w2 = wr * wr + wi * wi;
         if w2 >= ESCAPE_R2 {
-            return n - 1;
+            return Ok(n - 1);
         }
         d2 = dr * dr + di * di;
         if w2 < d2 || m == last {
@@ -276,7 +359,141 @@ pub fn perturb_point_bla(
             m = 0;
         }
     }
-    -1
+    Ok(-1)
+}
+
+/// Like `perturb_point` (same rebasing, same count conventions -- see that fn),
+/// but consults the BLA table each iteration and replaces up to 2^k exact steps
+/// with one composed multiply-add when the current |d| is inside a skip's radius.
+///
+/// Two-tier adaptivity: every pixel starts on the strict BLA_EPS radii. A pixel
+/// that takes BLA_RELAX_RUN consecutive exact steps is starving (low-Lyapunov
+/// region: |d| sits above the strict ceiling for most of its life) and finishes
+/// on the BLA_EPS_RELAXED radii instead. Pixels that never starve are
+/// bit-identical to the strict-only engine; see the constants' comment.
+#[inline]
+pub fn perturb_point_bla(
+    orbit: &[(f64, f64)],
+    bla: &BlaTable,
+    dcx: f64,
+    dcy: f64,
+    max_iterations: i32,
+) -> i32 {
+    if orbit.len() < 2 {
+        return -1;
+    }
+    let st = BlaState { dr: 0.0, di: 0.0, d2: 0.0, m: 0, n: 0 };
+    let strict = |idx: usize| unsafe { bla.entries.get_unchecked(idx).r2 };
+    match bla_drive::<true>(orbit, bla, strict, dcx, dcy, max_iterations, st) {
+        Ok(count) => count,
+        Err(st) => bla_finish_relaxed(orbit, bla, dcx, dcy, max_iterations, st),
+    }
+}
+
+// The relaxed continuation for a starved pixel. never-inline keeps the hot
+// function down to ONE copy of the iteration loop: letting this second copy
+// inline next to the strict one measured 6-21% on skip-heavy deep views (pure
+// code-bloat/I-cache cost -- the loop itself never even ran there).
+#[cold]
+#[inline(never)]
+fn bla_finish_relaxed(
+    orbit: &[(f64, f64)],
+    bla: &BlaTable,
+    dcx: f64,
+    dcy: f64,
+    max_iterations: i32,
+    st: BlaState,
+) -> i32 {
+    let relax = bla.relax_radii();
+    let r2_at = |idx: usize| unsafe { *relax.get_unchecked(idx) };
+    match bla_drive::<false>(orbit, bla, r2_at, dcx, dcy, max_iterations, st) {
+        Ok(count) => count,
+        Err(_) => unreachable!(),
+    }
+}
+
+// Does this pixel starve under the strict radii? Cold: called for a handful of
+// probe pixels per grid to pick the grid's radius tier.
+#[cold]
+#[inline(never)]
+fn pixel_starves(
+    orbit: &[(f64, f64)],
+    bla: &BlaTable,
+    dcx: f64,
+    dcy: f64,
+    max_iterations: i32,
+) -> bool {
+    let strict = |idx: usize| unsafe { bla.entries.get_unchecked(idx).r2 };
+    let st = BlaState { dr: 0.0, di: 0.0, d2: 0.0, m: 0, n: 0 };
+    bla_drive::<true>(orbit, bla, strict, dcx, dcy, max_iterations, st).is_err()
+}
+
+// One radius tier's pixel loop over a grid; monomorphized per tier so each copy
+// is exactly the detection-free loop (see bla_drive's comment).
+#[allow(clippy::too_many_arguments)]
+fn bla_grid_loop(
+    orbit: &[(f64, f64)],
+    bla: &BlaTable,
+    r2_at: impl Fn(usize) -> f64 + Copy,
+    dcx0: f64,
+    dx_f: f64,
+    dcy_at: impl Fn(usize) -> f64,
+    rows: usize,
+    columns: usize,
+    max_iterations: i32,
+    out: &mut [i32],
+) {
+    for i in 0..rows {
+        let dcy = dcy_at(i);
+        for j in 0..columns {
+            let dcx = dcx0 + j as f64 * dx_f;
+            let st = BlaState { dr: 0.0, di: 0.0, d2: 0.0, m: 0, n: 0 };
+            out[i * columns + j] =
+                match bla_drive::<false>(orbit, bla, r2_at, dcx, dcy, max_iterations, st) {
+                    Ok(count) => count,
+                    Err(_) => unreachable!(),
+                };
+        }
+    }
+}
+
+// Probe a diagonal spread of pixels to pick the grid's radius tier, then run
+// the whole grid on that tier. Grids where no probe starves run the strict
+// tier -- bit-identical to the detection-free engine; a starved probe flips
+// the grid to BLA_EPS_RELAXED (starvation is regional -- a low-Lyapunov
+// reference makes the whole neighborhood starve -- so strip granularity fits;
+// a starved pixel the probes missed just computes strict and slow, exactly as
+// before, never wrong).
+#[allow(clippy::too_many_arguments)]
+fn bla_grid(
+    orbit: &[(f64, f64)],
+    bla: &BlaTable,
+    dcx0: f64,
+    dx_f: f64,
+    dcy_at: impl Fn(usize) -> f64 + Copy,
+    rows: usize,
+    columns: usize,
+    max_iterations: i32,
+    out: &mut [i32],
+) {
+    if orbit.len() < 2 {
+        out[..rows * columns].fill(-1);
+        return;
+    }
+    const PROBES: usize = 8;
+    let starved = (0..PROBES).any(|p| {
+        let i = rows * (2 * p + 1) / (2 * PROBES);
+        let j = columns * (2 * p + 1) / (2 * PROBES);
+        pixel_starves(orbit, bla, dcx0 + j as f64 * dx_f, dcy_at(i), max_iterations)
+    });
+    if starved {
+        let relax = bla.relax_radii();
+        let r2_at = |idx: usize| unsafe { *relax.get_unchecked(idx) };
+        bla_grid_loop(orbit, bla, r2_at, dcx0, dx_f, dcy_at, rows, columns, max_iterations, out);
+    } else {
+        let r2_at = |idx: usize| unsafe { bla.entries.get_unchecked(idx).r2 };
+        bla_grid_loop(orbit, bla, r2_at, dcx0, dx_f, dcy_at, rows, columns, max_iterations, out);
+    }
 }
 
 // bound |dc| over a rows x columns block and run the BLA pixel loop for it
@@ -298,13 +515,8 @@ fn bla_block(
     let dc_max = (mx * mx + my * my).sqrt();
     let bla = build_bla_table(orbit, dc_max);
 
-    for i in 0..rows {
-        let dcy = (row_ref as f64 - i as f64) * dy_f;
-        for j in 0..columns {
-            let dcx = dcx0 + j as f64 * dx_f;
-            out[i * columns + j] = perturb_point_bla(orbit, &bla, dcx, dcy, max_iterations);
-        }
-    }
+    let dcy_at = |i: usize| (row_ref as f64 - i as f64) * dy_f;
+    bla_grid(orbit, &bla, dcx0, dx_f, dcy_at, rows, columns, max_iterations, out);
 }
 
 /// Orbit-sharing strip grinder. Compute image rows `[strip_row0, strip_row0 +
@@ -344,14 +556,9 @@ pub fn bla_strip(
     let dc_max = (mx * mx + my * my).sqrt();
     let bla = build_bla_table(orbit, dc_max);
 
-    for i in 0..strip_rows {
-        let img_row = strip_row0 + i;
-        let dcy = (image_row_ref as f64 - img_row as f64) * dy_f + dcy_off;
-        for j in 0..columns {
-            let dcx = dcx0 + j as f64 * dx_f;
-            out[i * columns + j] = perturb_point_bla(orbit, &bla, dcx, dcy, max_iterations);
-        }
-    }
+    let dcy_at =
+        |i: usize| (image_row_ref as f64 - (strip_row0 + i) as f64) * dy_f + dcy_off;
+    bla_grid(orbit, &bla, dcx0, dx_f, dcy_at, strip_rows, columns, max_iterations, out);
 }
 
 // *** shared-index variant (SIMD-friendly) *** //

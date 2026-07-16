@@ -50,8 +50,12 @@ pub extern "C"  fn dalloc(ptr: *mut u8, size: u32) {
 // 9 = compute_strip_with_orbit takes dcy_off so one orbit serves both passes
 //     (the second pass's grid is half-pixel-shifted; the reference is not a grid
 //     point, so pass-2 samples are just different dc offsets).
+// 10 = two-tier BLA radii for low-Lyapunov views (40-digits-slow.xml et al):
+//      probe pixels detect starvation (> BLA_RELAX_RUN consecutive exact
+//      steps) and flip their strip to BLA_EPS_RELAXED radii. Strips whose
+//      probes never starve are bit-identical to v9.
 #[no_mangle]
-pub extern "C" fn mb_wasm_version() -> u32 { 9 }
+pub extern "C" fn mb_wasm_version() -> u32 { 10 }
 
 
 use mb_arith::*;

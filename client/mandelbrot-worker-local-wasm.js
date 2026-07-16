@@ -17,7 +17,7 @@ let hpMsAccum = 0, hpStripAccum = 0;
 // Must match mb_wasm_version() in mb-wasm/src/lib.rs. Bump both together, and
 // bump ASSET_VERSION in MB.html so caches can't pair a new worker with an old
 // binary (or vice versa).
-const EXPECTED_WASM_VERSION = 9;
+const EXPECTED_WASM_VERSION = 10;
 
 function wasmReady() {
     return compute_mandelbrot && compute_mandelbrot_hp && compute_mandelbrot_hp_perturb
