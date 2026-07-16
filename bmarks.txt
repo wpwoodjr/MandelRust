@@ -397,6 +397,12 @@ BMarks
       ~all of plain BLA's cost -> sharing removes ~all of it; the 270-digit
       view keeps real grind, capping its gain at ~5x. big.LITTLE benefits MORE
       than x86 (Beast browser equivalent ~3.7x), as designed.
+    BROADCAST vs PER-WORKER (the A/B closed 16 Jul): broadcast wins on ARM
+      too. CB 8w @999999: 270-digit view per-worker 215 vs broadcast 248-255
+      (+17%); boundary view per-worker 273 vs broadcast 422-429 (+56%). The
+      advantage tracks the build fraction (same law as everything else here);
+      the feared big.LITTLE single-core build lottery never materialized.
+      Broadcast is the right default on both architectures, now measured.
     WORKER COUNT (Beast): 8w 312 vs 32w 294 on the 270-digit view -- bigger
       strips = fewer per-strip BLA tables + less memory-bandwidth churn, so
       past ~8-16 threads extra workers cost a little on deep views. On the CB,
