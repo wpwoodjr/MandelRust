@@ -298,10 +298,10 @@
   </style>
 </style>
 
-<script src="BigDecimal-all-last.min.js?v=9eb9ccb57f"></script>
-<script src="slider.js?v=9eb9ccb57f"></script>
-<script src="touch.js?v=9eb9ccb57f"></script>
-<script src="percentage-complete.js?v=9eb9ccb57f"></script>
+<script src="BigDecimal-all-last.min.js?v=129d3a3356"></script>
+<script src="slider.js?v=129d3a3356"></script>
+<script src="touch.js?v=129d3a3356"></script>
+<script src="percentage-complete.js?v=129d3a3356"></script>
 <script>
 
 "use strict";
@@ -460,7 +460,7 @@ var log2of10 = Math.log(10)/Math.log(2);
 // URLs is what stops a cached worker from outliving the binary it drives.
 // Stamped from the assets' contents by stamp-assets.sh at build time -- do not
 // edit by hand. Distinct from EXPECTED_WASM_VERSION, which pins the wasm ABI.
-const ASSET_VERSION = "9eb9ccb57f";
+const ASSET_VERSION = "129d3a3356";
 
 let compute_mandelbrot;
 WebAssembly
@@ -663,7 +663,15 @@ function newWorkers(count) {
 }
 
 const MAX_SECONDS_PER_JOB = 4;
-function stopJob(dontUpdateStatusToIdle) {
+// `workersIdle`: pass true when the render COMPLETED (no worker is mid-strip).
+// A local worker grinding a long wasm call can only be interrupted by
+// termination, so an interrupting stop of a slow render recycles the workers
+// below -- but recycling also destroys the workers' cached reference orbits,
+// and doing it at normal completion of a slow deep view forced pass 2 to
+// rebuild the orbit in EVERY worker (no broadcast on pass 2; measured: a
+// 1195-digit view at 12.8 rows/s browser vs 102 server, ~20 s orbit rebuilt
+// per worker at the pass boundary). Completed renders keep their workers.
+function stopJob(dontUpdateStatusToIdle, workersIdle) {
     // console.log("stopJob", running, jobsPerSecond, workerCount/MAX_SECONDS_PER_JOB, "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1]);
     if (zoomTimeout) {
         clearInterval(zoomTimeout);
@@ -687,7 +695,7 @@ function stopJob(dontUpdateStatusToIdle) {
             repaintTimeout = null;
         }
         repaint(dontUpdateStatusToIdle);
-        if (jobsPerSecond < workerCount/MAX_SECONDS_PER_JOB) {
+        if (!workersIdle && jobsPerSecond < workerCount/MAX_SECONDS_PER_JOB) {
             // console.log("Making new workers:", jobsPerSecond, workerCount/MAX_SECONDS_PER_JOB);
             newWorkers(workerCount);
         }
@@ -730,7 +738,28 @@ let USE_ORBIT_SHARING = true;
 let USE_ORBIT_BROADCAST = true;
 // Identifies which view an orbit belongs to (bumped once per startJob; the
 // second pass reuses the same id, and so the same orbit).
-let hpOrbitId = 0;
+// Orbit identity is CONTENT-keyed (a hash of the basis coords + maxIter), so
+// re-rendering the same view -- second passes, palette changes, repeat visits
+// -- reuses the workers' cached reference orbit instead of rebuilding it
+// (at ~1200 digits a rebuild costs ~20 s per render; the server has cached by
+// coords all along, which is why it looked so much faster on deep views).
+// Two independent 32-bit FNV-1a hashes joined into a string keep the
+// wrong-orbit collision risk at the 2^-64 level.
+function basisId(xminA, dxA, yA, dyA, rows, cols, maxIter) {
+    let h1 = 0x811c9dc5, h2 = 0x1000193;
+    const mix = (v) => {
+        h1 ^= v & 0xffff; h1 = Math.imul(h1, 0x01000193);
+        h1 ^= v >>> 16;   h1 = Math.imul(h1, 0x01000193);
+        h2 = (Math.imul(h2, 31) + (v | 0)) | 0;
+    };
+    const arrs = [xminA, dxA, yA, dyA];
+    for (let a = 0; a < arrs.length; a++) {
+        mix(arrs[a].length);
+        for (let i = 0; i < arrs[a].length; i++) mix(arrs[a][i]);
+    }
+    mix(rows); mix(cols); mix(maxIter);
+    return (h1 >>> 0) + "-" + (h2 >>> 0);
+}
 // Basis grid the orbit is built on (pass 1's grid): coord arrays + dimensions.
 // Pass-2 jobs reference it with a half-pixel (ox, oy) offset.
 let hpBasis = null;
@@ -861,9 +890,10 @@ function startJob(dontClear) {
         let sharingLocal = USE_ORBIT_SHARING;
         let imageId = 0, yValImageArray = null;
         if (sharingLocal) {
-            imageId = ++hpOrbitId;
             yValImageArray = new ArrayType(chunks+1);
             convert(yValImageArray, yVal, chunks+1);
+            imageId = basisId(xminArray, dxArray, yValImageArray, dyArray,
+                              rows, columns, maxIterSlider.value);
             hpBasis = { id: imageId, xmin: xminArray, dx: dxArray, dy: dyArray,
                         yVal: yValImageArray, rows: rows, cols: columns };
         }
@@ -1059,10 +1089,10 @@ function jobFinished(msg) {
         if (rowsCompleted === ch) {
             state = DONE_FIRST_PASS;
             if (document.getElementById("secondpass").checked) {
-                stopJob(true);
+                stopJob(true, true);
                 startSecondPass();
             } else {
-                stopJob();
+                stopJob(false, true);
                 progressCircle.hide();
             }
         }
@@ -1074,7 +1104,7 @@ function jobFinished(msg) {
                 putRow(row);
             }
             state = IDLE;
-            stopJob();
+            stopJob(false, true);
             progressCircle.hide();
         }
     }

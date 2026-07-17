@@ -9,6 +9,11 @@ Strips share one table per band (server only?)
 Bump maxiter - now is 4M
 Undo zoom is wrong if change window size between zoom and undo zoom
 Use GPU for BLA FP stuff
+If the full-fe plateau ever becomes the thing you feel most, there are two known levers, both unimplemented: a "scaled f64"
+  variant of the head loop (iterate plain f64 mantissas under a batch exponent, rescaling periodically — Kalles Fraktaler's
+  trick, most of fe's range at f64 speed), or extending the handoff with a cheap tail re-entry check so it stays legal
+  deeper. Given ~311+ digit views are already exotic territory, I'd leave that until it bothers you in practice.
+Import / export of real: im:
 
 >BLA
 >Middle wheel zooms at cursor

@@ -89,7 +89,7 @@ function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows) {
     let lenPtr = malloc(4);
     let metaPtr = malloc_f64(6);
     let dipsPtrPtr = malloc(4), dipsLenPtr = malloc(4);
-    let _tb = DEBUG ? performance.now() : 0;
+    let _tb = performance.now();
     let orbitPtr = build_reference_orbit(xminPtr, dxPtr, ymaxPtr, dyPtr, len,
         basisCols, basisRows, maxIterations, lenPtr, metaPtr, dipsPtrPtr, dipsLenPtr);
     let orbitLen = new Uint32Array(wasmMemory.memory.buffer, lenPtr, 1)[0];
@@ -102,7 +102,9 @@ function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows) {
     cachedOrbit = { ptr: orbitPtr, len: orbitLen, meta: meta,
         dipsPtr: dipsPtr, dipsLen: dipsLen, rowRef: basisRows >>> 1 };
     cachedImageId = imageId;
-    if (DEBUG) console.log(`[w${workerNumber}] built orbit ${orbitLen} pts (${dipsLen} dips) for image ${imageId} in ${(performance.now()-_tb).toFixed(1)} ms`);
+    // always logged: builds are rare and expensive, and a build where a cache
+    // hit was expected is the first thing to look for when a view is slow
+    console.log(`[mb w${workerNumber}] built reference orbit: ${orbitLen} pts, ${dipsLen} dips, ${(performance.now()-_tb).toFixed(0)} ms (image ${imageId})`);
     dalloc(lenPtr, 4); free_f64(metaPtr, 6); dalloc(dipsPtrPtr, 4); dalloc(dipsLenPtr, 4);
     dalloc(dyPtr, len*4); dalloc(ymaxPtr, len*4); dalloc(dxPtr, len*4); dalloc(xminPtr, len*4);
 }
