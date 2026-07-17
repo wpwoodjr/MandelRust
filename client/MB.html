@@ -446,6 +446,12 @@ var interlaceOrder = (function() {
    })();
 
 var digits, chunks;
+// Precision carry: the deepest limit-scale this view lineage has needed (or
+// was imported with). checkAspect keeps the limits at this scale even when
+// zoomed far out, so zooming out and back in retraces the same path instead
+// of drifting off a rounded center; hpNeedScale is what the CURRENT depth
+// needs, and caps `digits` so compute cost never follows the carried scale.
+var precisionCarry = 0, hpNeedScale = 0;
 var /* BigDecimal */ twoTo16 = new BigDecimal("65536");
 var log2of10 = Math.log(10)/Math.log(2);
 
@@ -536,6 +542,16 @@ function checkAspect() {  // adjust requested x/y limits to match aspect ratio o
     if (precision < HP_CUTOFF_EXP)
         precision = HP_CUTOFF_EXP;
     var scale = precision + 5 + Math.floor((precision-10)/10);
+    // Deep-center preservation: keep any precision this lineage has earned
+    // (deepest zoom reached, or an imported location's digits) instead of
+    // truncating to the current depth's needs -- truncation here used to
+    // destroy a deep center on zoom-out, so zooming back in drifted off track
+    // once the view passed the rounded scale. The min() against the incoming
+    // scale clips per-step arithmetic scale creep to the earned carry.
+    hpNeedScale = scale;
+    precisionCarry = Math.max(precisionCarry, scale);
+    var incomingScale = Math.max(xmin.scale(), xmax.scale(), ymin.scale(), ymax.scale());
+    scale = Math.max(scale, Math.min(incomingScale, precisionCarry));
     xmin = xmin.setScale(scale,BigDecimal.ROUND_HALF_EVEN);
     xmax = xmax.setScale(scale,BigDecimal.ROUND_HALF_EVEN);
     ymin = ymin.setScale(scale,BigDecimal.ROUND_HALF_EVEN);
@@ -571,6 +587,38 @@ function doDraw() {
     }
 }
 
+// Current zoom factor as a short string, KF convention (zoom 1 = view height
+// 4): zoom = 4 / (ymax - ymin). Parsed from the BigDecimal's plain string so
+// it works at any depth (the height underflows f64 past ~1e-308).
+function zoomFactorText() {
+    const m = ymax.subtract(ymin).toString().match(/^0*(\d*)(?:\.(\d*))?$/);
+    if (!m) {
+        return "?";
+    }
+    const intPart = m[1] || "";
+    const frac = m[2] || "";
+    let sig, exp;
+    if (intPart.length > 0) {
+        sig = intPart + frac;
+        exp = intPart.length - 1;
+    } else {
+        const lead = frac.match(/^0*/)[0].length;
+        sig = frac.slice(lead);
+        exp = -lead - 1;
+    }
+    if (sig.length === 0) {
+        return "?";
+    }
+    const height = parseFloat(sig[0] + "." + sig.slice(1, 12)); // mantissa in [1, 10)
+    let zMant = 4/height;                               // in (0.4, 4]
+    let zExp = -exp;
+    if (zMant < 1) {
+        zMant *= 10;
+        zExp -= 1;
+    }
+    return "zoom " + zMant.toFixed(3) + (zExp !== 0 ? "e" + zExp : "");
+}
+
 function repaint(dontUpdateStatusToIdle) {
     // console.log("repaint from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], dontUpdateStatusToIdle);
     doDraw();
@@ -585,13 +633,14 @@ function repaint(dontUpdateStatusToIdle) {
             ch += 1;
             pass = "Pass 2, ";
         }
-        const prec = highPrecision ? digits + " digits precision" : "normal precision";
+        const prec = (highPrecision ? digits + " digits precision" : "normal precision")
+                    + ", " + zoomFactorText();
         statusText.statusMessage.updateText(pass + prec +
                     "... completed " + rc + " of " + ch + " rows at " + rpsText);
         statusText.statusHeader.updateText(pass + prec + ", " + (rc/ch*100).toFixed(0) + "%");
     } else if (dontUpdateStatusToIdle !== true) {
-        statusText.statusMessage.updateText("Idle (" + rpsText + ")");
-        statusText.statusHeader.updateText("Idle (" + rpsText + " " + canvas.width + "X" + canvas.height + ")");
+        statusText.statusMessage.updateText("Idle (" + rpsText + ", " + zoomFactorText() + ")");
+        statusText.statusHeader.updateText("Idle (" + rpsText + " " + canvas.width + "X" + canvas.height + ", " + zoomFactorText() + ")");
     }
 }
 
@@ -795,7 +844,7 @@ function startJob(dontClear) {
     // would reuse a basis from an OLDER view and composite the wrong image.
     hpBasis = null;
     if (highPrecision) {
-        digits = xmin.scale();
+        digits = Math.min(xmin.scale(), hpNeedScale);
         chunks = Math.floor((digits * log2of10)/16 + 2);
         xminArray = new ArrayType(chunks+1);
         dxArray = new ArrayType(chunks+1);
@@ -1046,7 +1095,7 @@ function startSecondPass() {
     var rows = canvas.height + 1;
     var columns = canvas.width + 1;
     if (highPrecision) {
-        digits = xmin.scale();
+        digits = Math.min(xmin.scale(), hpNeedScale);
         chunks = Math.floor((digits * log2of10)/16 + 2);
         xminArray = new ArrayType(chunks+1);
         dxArray = new ArrayType(chunks+1);
@@ -3149,9 +3198,12 @@ function currentExampletoXML() {
 // Convert a Kalles-Fraktaler-style location to a settings XML string, using the
 // current palette (and the current iteration count unless the text has an
 // Iterations: line). Returns null if the text isn't that format. Expected shape:
-//   Fractal: Mandelbrot (Power 2)     (optional; anything else is rejected)
+//   Fractal: Mandelbrot (Power 2)     (optional; the name must be Mandelbrot,
+//                                      and a "(Power N)" spec must have N = 2 --
+//                                      "Mandelbrot" alone is fine)
 //   Real: <decimal>
-//   Im: <decimal>
+//   Im: <decimal>                     ("Imaginary:" works too; labels are
+//                                      case-insensitive)
 //   Zoom: <mantissa>e<exponent>       (plain numbers work too)
 //   Iterations: <n>                   (optional)
 // KF frames by HEIGHT: zoom 1 = view height 4, so half-height = 2/zoom; the
@@ -3159,12 +3211,18 @@ function currentExampletoXML() {
 function kfLocationToXML(text) {
     if (/^\s*</.test(text)) return null;   // looks like XML, not a location
     const realM = text.match(/^\s*Real:\s*(-?[0-9.]+)\s*$/mi);
-    const imM = text.match(/^\s*Im:\s*(-?[0-9.]+)\s*$/mi);
+    const imM = text.match(/^\s*Im(?:aginary)?:\s*(-?[0-9.]+)\s*$/mi);
     const zoomM = text.match(/^\s*Zoom:\s*([0-9.]+)(?:[eE]\+?(-?[0-9]+))?\s*$/mi);
     if (!realM || !imM || !zoomM) return null;
     const fracM = text.match(/^\s*Fractal:\s*(.+?)\s*$/mi);
-    if (fracM && !/^mandelbrot\s*\(\s*power\s*2\s*\)$/i.test(fracM[1])) {
-        throw "Only Mandelbrot (Power 2) locations can be imported";
+    if (fracM) {
+        if (!/mandelbrot/i.test(fracM[1])) {
+            throw "Only Mandelbrot locations can be imported";
+        }
+        const powM = fracM[1].match(/power\s*([0-9]+)/i);
+        if (powM && Number(powM[1]) !== 2) {
+            throw "Only power-2 locations can be imported";
+        }
     }
     const zMant = parseFloat(zoomM[1]);
     const zExp = zoomM[2] ? parseInt(zoomM[2], 10) : 0;
@@ -3241,6 +3299,8 @@ function installExampleFromXML(xmlString, respectSize, dontShowError) {
       xmax = new BigDecimal(xmax);
       ymin = new BigDecimal(ymin);
       ymax = new BigDecimal(ymax);
+      // fresh view lineage: its precision carry starts from what it brought
+      precisionCarry = Math.max(xmin.scale(), xmax.scale(), ymin.scale(), ymax.scale());
       if (isNaN(length) || isNaN(offset) || isNaN(iterations)) {
           throw "Bad number.";
       }
