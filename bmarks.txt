@@ -536,3 +536,7 @@ BMarks
     on ill-conditioned views -- the +/-80 "speckle" was a real bug; forcing
     both engines onto the SAME view via a cutover override is the test that
     caught it.
+    Browser confirmation (Beast, 8w, 640x480): 360-digits-boundary at TRUE
+    scale 112 rows/s -- matches 13.6 single-thread x 8 (full-fe path scales
+    clean). The old 165 rows/s row for this view was the pre-floatexp engine
+    rendering a wrong-scale, wrong-count image; 112 is the honest number.
