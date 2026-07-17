@@ -542,3 +542,10 @@ BMarks
     rows/s (32w). The old 165 rows/s row for this view was the pre-floatexp
     engine rendering a wrong-scale, wrong-count image; these are the honest
     numbers.
+    ARM confirmation (CB, 8w, browser, before -> after floatexp):
+      270-digit 267 -> 265, 40-digits-slow 102 -> 101: parity, shallow
+      dispatch free on ARM V8 too.
+      360-boundary 2.5M iters: 201 -> 72.2 (2.8x, vs Beast's 2.5x single-
+      thread ratio); 999999 all-black: 446 -> 305 (1.46x). The "before"
+      numbers were the wrong-scale wrong-count engine; the fe cost ratios
+      match Beast, so the full-fe plateau is architecture-neutral.
