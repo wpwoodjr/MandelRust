@@ -168,7 +168,7 @@ fn main() {
     let (build_ms, grind_ms) = {
         let tb = Instant::now();
         let (orbit, dx_f, dy_f, dcx0, _col_ref, img_row_ref) =
-            perturb_setup64(&xmin, &dx, &ymax, &dy, chunks, ROWS, COLS, MAX_ITER);
+            perturb_setup64(&xmin, &dx, &ymax, &dy, chunks, ROWS, COLS, MAX_ITER, DEFAULT_ORBIT_BUDGET);
         let build_ms = tb.elapsed().as_secs_f64() * 1e3;
         let tg = Instant::now();
         let mut r0 = 0;

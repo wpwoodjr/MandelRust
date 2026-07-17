@@ -30,7 +30,7 @@ fn main() {
     for _ in 0..rows / 2 { incr64(&mut ymax, &dy); }
 
     let (orbit, dx_f, dy_f, dcx0, _cr, row_ref) =
-        perturb_setup64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter);
+        perturb_setup64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, DEFAULT_ORBIT_BUDGET);
     println!("view {rows}x{columns}, max_iter {max_iter}, ref orbit len {}", orbit.len());
 
     let dcx = |j: usize| dcx0 + j as f64 * dx_f;

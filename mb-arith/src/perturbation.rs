@@ -36,6 +36,12 @@ use crate::floatexp::{FloatExp, FE_ZERO};
 
 const ESCAPE_R2: f64 = 8.0;
 
+/// Default reference-orbit point budget (the pre-deep-iterations 4M cap).
+/// Orbits are 16 bytes/point; callers wanting deeper iteration counts pass a
+/// bigger budget and accept the memory (see reference_orbit's docs). Pixels
+/// that outlive a budget-TRUNCATED (non-escaped) reference render black.
+pub const DEFAULT_ORBIT_BUDGET: i32 = 4_000_000;
+
 /// Iterate one pixel by perturbation against the reference `orbit`. `dcx`/`dcy`
 /// are the pixel's offset from the reference coordinate (dc = c - C), in f64.
 /// Returns the crate-standard iteration count (index of the first escaping z with
@@ -74,12 +80,25 @@ pub fn perturb_point(orbit: &[(f64, f64)], dcx: f64, dcy: f64, max_iterations: i
 
         // rebase: keep the delta small, and wrap when the reference runs out.
         if w2 < dr * dr + di * di || m == last {
+            if m == last && !orbit_escaped(orbit) {
+                // budget-truncated reference: wrapping a non-escaped truncated
+                // orbit is unsound (the flat-blob failure) -- render black
+                return -1;
+            }
             dr = wr;
             di = wi;
             m = 0;
         }
     }
     -1
+}
+
+// did the reference orbit end because it escaped (wraps are sound) or because
+// it hit its point budget (wraps are NOT: pixels outliving it render black)?
+#[inline]
+fn orbit_escaped(orbit: &[(f64, f64)]) -> bool {
+    let (zr, zi) = orbit[orbit.len() - 1];
+    zr * zr + zi * zi >= ESCAPE_R2
 }
 
 /// Compute one pixel row by perturbation. `dcx0` is dc.x of column 0, `dcx_step`
@@ -354,6 +373,9 @@ fn bla_drive<const DETECT: bool>(
         }
         d2 = dr * dr + di * di;
         if w2 < d2 || m == last {
+            if m == last && !orbit_escaped(orbit) {
+                return Ok(-1); // budget-truncated reference: black
+            }
             dr = wr;
             di = wi;
             d2 = w2;
@@ -517,6 +539,9 @@ fn bla_drive_fe<const HANDOFF: bool>(
         }
         d2 = dr.mul(dr).add(di.mul(di));
         if w2.mag_lt(d2) || m == last {
+            if m == last && !orbit_escaped(orbit) {
+                return Ok(-1); // budget-truncated reference: black
+            }
             dr = wr;
             di = wi;
             d2 = w2;
@@ -1234,30 +1259,24 @@ pub fn $limbs_to_fe(x: &[$limb]) -> FloatExp {
 /// (|Z|^2 >= 8) or `max_iterations` is reached. The returned vector always has at
 /// least two entries (Z_0 and Z_1) for max_iterations >= 1.
 ///
-/// The stored orbit is CAPPED at 4M points regardless of max_iterations: memory
-/// is 16 bytes/point and the per-strip BLA table another ~80, so an uncapped
-/// orbit at huge maxIterations would be a multi-GB allocation (wasm32 dies at
-/// 4GB). The UI caps maxIterations at 4M so this is normally not binding and
-/// every UI-reachable view computes with a full-coverage orbit.
+/// The stored orbit is CAPPED at `max_points` (the orbit budget): memory is
+/// 16 bytes/point, so the caller chooses how much RAM to spend (browser:
+/// budget/workerCount with a wasm32 ceiling around 150M points/worker;
+/// server: one shared orbit, RAM-bound). DEFAULT_ORBIT_BUDGET (4M) preserves
+/// the old behavior.
 ///
-/// KNOWN LIMIT for max_iterations > 4M (reachable only via raw API requests):
-/// when the cap truncates a NON-escaped reference, pixels that outlive it wrap
-/// (m == last -> rebase to index 0) with an order-1 delta, and at deep zoom the
-/// per-pixel dc (e.g. 1e-244) is annihilated against that delta's f64 ulp --
-/// adjacent pixels collapse onto one shared trajectory and return IDENTICAL
-/// counts (measured: a 289-digit view at maxIter 5e8 returned 2001017 for every
-/// center pixel = cap + 1017; renders as a flat blob). Wrapping is only sound
-/// for ESCAPED references (pixels die soon after; validated vs the exact
-/// engine) and for interior pixels (reference re-converges; wraps measured
-/// free). Deep counts beyond the cap need an orbit that covers them: runtime
-/// orbit budget (browser: budget/workers, wasm32 ceiling ~150M pts; server:
-/// one shared orbit, RAM-bound, threads free) + truncation-returns-black --
-/// see CLAUDE.md next steps.
+/// When the budget truncates a NON-escaped reference, pixels that outlive it
+/// return -1 (black) instead of wrapping: wrapping a dead truncated orbit
+/// gives them an order-1 delta that annihilates their dc, collapsing adjacent
+/// pixels onto one shared trajectory with IDENTICAL counts (measured: a
+/// 289-digit view at maxIter 5e8 returned cap+1017 for every center pixel; a
+/// flat blob). Wraps remain sound for ESCAPED references (validated vs the
+/// exact engine). So: raising maxIterations beyond the budget resolves
+/// pixels up to the budget and renders the rest black -- never wrong.
 ///
 /// `cx` / `cy` are the reference coordinate as limbs, each the same length.
-pub fn $reference_orbit(cx: &[$limb], cy: &[$limb], max_iterations: i32) -> (Vec<(f64, f64)>, Vec<OrbitDip>) {
-    const MAX_REF_ORBIT_POINTS: i32 = 4_000_000;
-    let max_iterations = max_iterations.min(MAX_REF_ORBIT_POINTS);
+pub fn $reference_orbit(cx: &[$limb], cy: &[$limb], max_iterations: i32, max_points: i32) -> (Vec<(f64, f64)>, Vec<OrbitDip>) {
+    let max_iterations = max_iterations.min(max_points.max(2));
     let n = cx.len();
     let mut zx = vec![0 as $limb; n];
     let mut zy = vec![0 as $limb; n];
@@ -1327,6 +1346,7 @@ pub fn $perturb_setup(
     rows: usize,
     columns: usize,
     max_iterations: i32,
+    orbit_budget: i32,
 ) -> (Vec<(f64, f64)>, f64, f64, f64, usize, usize) {
     let col_ref = columns / 2;
     let row_ref = rows / 2;
@@ -1344,7 +1364,7 @@ pub fn $perturb_setup(
         $incr(&mut cy, &dy_neg);
     }
 
-    let (orbit, _dips) = $reference_orbit(&cx, &cy, max_iterations);
+    let (orbit, _dips) = $reference_orbit(&cx, &cy, max_iterations, orbit_budget);
 
     let dx_f = $limbs_to_f64(&dx[..chunks]);
     let dy_f = $limbs_to_f64(&dy[..chunks]);
@@ -1366,6 +1386,7 @@ pub fn $perturb_setup_fe(
     rows: usize,
     columns: usize,
     max_iterations: i32,
+    orbit_budget: i32,
 ) -> (Vec<(f64, f64)>, Vec<OrbitDip>, FloatExp, FloatExp, FloatExp, usize, usize) {
     let col_ref = columns / 2;
     let row_ref = rows / 2;
@@ -1381,7 +1402,7 @@ pub fn $perturb_setup_fe(
         $incr(&mut cy, &dy_neg);
     }
 
-    let (orbit, dips) = $reference_orbit(&cx, &cy, max_iterations);
+    let (orbit, dips) = $reference_orbit(&cx, &cy, max_iterations, orbit_budget);
 
     let dx_fe = $limbs_to_fe(&dx[..chunks]);
     let dy_fe = $limbs_to_fe(&dy[..chunks]);
@@ -1405,7 +1426,7 @@ pub fn $mandelbrot_perturb(
     out: &mut [i32],
 ) {
     let (orbit, dx_f, dy_f, dcx0, _col_ref, row_ref) =
-        $perturb_setup(xmin, dx, ymax, dy, chunks, rows, columns, max_iterations);
+        $perturb_setup(xmin, dx, ymax, dy, chunks, rows, columns, max_iterations, DEFAULT_ORBIT_BUDGET);
 
     for i in 0..rows {
         let dcy = (row_ref as f64 - i as f64) * dy_f;
@@ -1456,7 +1477,7 @@ pub fn $mandelbrot_perturb_glitch(
             break;
         }
         let (cx, cy) = coord_of(ref_r, ref_c);
-        let (orbit, _dips) = $reference_orbit(&cx, &cy, max_iterations);
+        let (orbit, _dips) = $reference_orbit(&cx, &cy, max_iterations, DEFAULT_ORBIT_BUDGET);
 
         // dc offset (from the reference) of pixel p
         let (rr, rc) = (ref_r, ref_c);
@@ -1554,7 +1575,7 @@ pub fn mandelbrot_perturb_bla64(
     max_iterations: i32, out: &mut [i32],
 ) {
     let (orbit, dips, dx_fe, dy_fe, dcx0, _col_ref, row_ref) =
-        perturb_setup_fe64(xmin, dx, ymax, dy, chunks, rows, columns, max_iterations);
+        perturb_setup_fe64(xmin, dx, ymax, dy, chunks, rows, columns, max_iterations, DEFAULT_ORBIT_BUDGET);
     bla_strip_fe(&orbit, &dips, dx_fe, dy_fe, dcx0, FE_ZERO, row_ref, 0, rows, columns, max_iterations, out);
 }
 
@@ -1566,7 +1587,7 @@ pub fn mandelbrot_perturb_bla32(
     max_iterations: i32, out: &mut [i32],
 ) {
     let (orbit, dips, dx_fe, dy_fe, dcx0, _col_ref, row_ref) =
-        perturb_setup_fe32(xmin, dx, ymax, dy, chunks, rows, columns, max_iterations);
+        perturb_setup_fe32(xmin, dx, ymax, dy, chunks, rows, columns, max_iterations, DEFAULT_ORBIT_BUDGET);
     bla_strip_fe(&orbit, &dips, dx_fe, dy_fe, dcx0, FE_ZERO, row_ref, 0, rows, columns, max_iterations, out);
 }
 
@@ -1795,6 +1816,68 @@ mod tests {
         fe_deep_view_body(false);
     }
 
+    // Budget-truncated reference: pixels that outlive the orbit must come back
+    // BLACK (-1), never with a wrong count -- and pixels the budget covers (or
+    // that resolve past it via rebases) must agree with the full-budget run.
+    #[test]
+    fn truncated_orbit_returns_black() {
+        // fe-depth Misiurewicz window (as fe_deep_view_body): dc ~ 2^-1280 and
+        // the (0,1) orbit never dips low, so pixels ride the reference without
+        // rebasing -- exactly the case where an outlived truncated orbit must
+        // return black. (At shallow high-lambda depths rebasing legitimately
+        // computes full counts from a short orbit, and nothing truncates.)
+        let n_digits = 81usize;
+        let frac0 = vec![0u32; n_digits];
+        let mut frac_dx = vec![0u32; n_digits];
+        frac_dx[79] = 1;
+        let xd = coord(0, &frac0);
+        let yd = coord(1, &frac0);
+        let dxd = coord(0, &frac_dx);
+        let dyd = coord(0, &frac_dx);
+        let (rows, columns, max_iter) = (32, 32, 8000);
+        let budget = 600i32;
+
+        let chunks = chunks32_for(xd.len());
+        let (dx, dy) = (u32_to_limbs32(&dxd), u32_to_limbs32(&dyd));
+        let mut xmin = u32_to_limbs32(&xd);
+        let mut dx_neg = vec![0u32; xmin.len()];
+        negate32(&dx, &mut dx_neg);
+        for _ in 0..columns / 2 { incr32(&mut xmin, &dx_neg); }
+        let mut ymax = u32_to_limbs32(&yd);
+        for _ in 0..rows / 2 { incr32(&mut ymax, &dy); }
+
+        let run = |orbit_budget: i32| -> Vec<i32> {
+            let (orbit, dips, dx_fe, dy_fe, dcx0, _c, row_ref) = perturb_setup_fe32(
+                &xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, orbit_budget);
+            let mut out = vec![0i32; rows * columns];
+            bla_strip_fe(&orbit, &dips, dx_fe, dy_fe, dcx0, FE_ZERO, row_ref,
+                0, rows, columns, max_iter, &mut out);
+            out
+        };
+        let full = run(DEFAULT_ORBIT_BUDGET);
+        let cut = run(budget);
+
+        let mut truncated = 0usize;
+        let mut wrong = 0usize;
+        for i in 0..full.len() {
+            if cut[i] == -1 && full[i] != -1 {
+                truncated += 1; // legitimately unresolved under the small budget
+            } else if cut[i] != full[i] {
+                wrong += 1; // must stay rare (BLA reference-length speckle only)
+            }
+        }
+        // the window has plenty of counts above 500: truncation must engage,
+        // and no pixel may come back with a fabricated count
+        assert!(truncated > 20, "budget never truncated anything: {truncated}");
+        assert!(wrong * 100 <= full.len(), "too many disagreements: {wrong}/{}", full.len());
+        // and pixels the budget covers agree exactly with the full run
+        let covered_mismatch = (0..full.len())
+            .filter(|&i| full[i] >= 0 && full[i] < 400 && cut[i] != full[i])
+            .count();
+        assert!(covered_mismatch * 200 <= full.len(),
+            "covered pixels disagree: {covered_mismatch}");
+    }
+
     fn count_stats(pert: &[i32], brute: &[Vec<i32>], rows: usize, columns: usize) -> (usize, usize, i32, usize) {
         let mut mismatches = 0usize;
         let mut vals: Vec<i32> = Vec::with_capacity(rows * columns);
@@ -1906,7 +1989,7 @@ mod tests {
         for _ in 0..rows / 2 { incr64(&mut ymax, &dy); }
 
         let (orbit, dx_f, dy_f, dcx0, _cr, row_ref) =
-            perturb_setup64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter);
+            perturb_setup64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, DEFAULT_ORBIT_BUDGET);
 
         // collect all pixels' (dcx, dcy)
         let mut dcxs = Vec::new();
@@ -1960,7 +2043,7 @@ mod tests {
         for _ in 0..rows / 2 { incr64(&mut ymax, &dy); }
 
         let (orbit, dx_f, dy_f, dcx0, _cr, row_ref) =
-            perturb_setup64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter);
+            perturb_setup64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, DEFAULT_ORBIT_BUDGET);
 
         for i in 0..rows {
             let dcy = (row_ref as f64 - i as f64) * dy_f;

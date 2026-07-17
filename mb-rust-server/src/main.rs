@@ -22,6 +22,14 @@ static mut PERTURB: bool = true;
 static mut ORBIT_CACHE_BYTES: usize = 128 * 1024 * 1024;
 // log one line per HP2 request (--verbose)
 static mut VERBOSE: bool = false;
+// reference-orbit point budget (--orbit-points, in millions of points).
+// 16 bytes/point: the deep-iterations lever -- maxIterations above the budget
+// resolves pixels up to it and renders the rest black (see reference_orbit).
+static mut ORBIT_BUDGET_POINTS: i32 = mb_arith::DEFAULT_ORBIT_BUDGET;
+
+fn orbit_budget() -> i32 {
+    unsafe { ORBIT_BUDGET_POINTS }
+}
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -42,6 +50,11 @@ Options:
                    second pass of a two-pass render -- skips the orbit build.
                    The newest orbit is always cached, so the real bound is
                    max(N, largest single orbit). 0 disables caching.
+  --orbit-points N Reference-orbit point budget in MILLIONS (default 4).
+                   16 bytes/point of RAM while a request is in flight (plus
+                   cache retention): 100 = 1.6 GB, 500 = 8 GB. maxIterations
+                   above the budget renders the pixels that outlive the orbit
+                   black instead of wrong -- raise this to resolve them.
 
 Legacy options (apply only to the old per-job /mb-computeHP endpoint, used by
 old clients; the current client sends one streaming /mb-computeHP2 request per
@@ -91,6 +104,21 @@ image and picks its own thread count):
                     }
                 } else {
                     println!("missing value for --orbit-cache!");
+                    exit(1);
+                }
+            }
+            "--orbit-points" => {
+                if i + 1 < args.len() {
+                    i += 1;
+                    match args[i].parse::<i32>() {
+                        Ok(m) if m >= 1 => unsafe { ORBIT_BUDGET_POINTS = m.saturating_mul(1_000_000) },
+                        _ => {
+                            println!("--orbit-points expects a positive size in millions of points!");
+                            exit(1);
+                        }
+                    }
+                } else {
+                    println!("missing value for --orbit-points!");
                     exit(1);
                 }
             }
@@ -360,7 +388,7 @@ struct CachedOrbit {
     row_ref: usize,
 }
 
-type OrbitKey = (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>, usize, usize, i32);
+type OrbitKey = (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>, usize, usize, i32, i32);
 
 // most-recently-used last; sizes tracked per entry
 static ORBIT_CACHE: std::sync::Mutex<Vec<(OrbitKey, std::sync::Arc<CachedOrbit>, usize)>> =
@@ -423,7 +451,7 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
         let strip = rows.div_ceil(4*threads).clamp(4, 32);
 
         let key: OrbitKey = (coords.xmin.clone(), coords.dx.clone(), coords.ymax.clone(),
-            coords.dy.clone(), basis_rows, basis_columns, max_iter);
+            coords.dy.clone(), basis_rows, basis_columns, max_iter, orbit_budget());
         let (cached, hit) = match orbit_cache_lookup(&key) {
             Some(c) => (c, true),
             None => {
@@ -434,7 +462,7 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                 let ymax = u32_to_limbs64(&coords.ymax);
                 let dy = u32_to_limbs64(&coords.dy);
                 let (orbit, dips, dx_fe, dy_fe, dcx0, _col_ref, row_ref) =
-                    perturb_setup_fe64(&xmin, &dx, &ymax, &dy, chunks, basis_rows, basis_columns, max_iter);
+                    perturb_setup_fe64(&xmin, &dx, &ymax, &dy, chunks, basis_rows, basis_columns, max_iter, orbit_budget());
                 let c = std::sync::Arc::new(CachedOrbit { orbit, dips, dx_fe, dy_fe, dcx0, row_ref });
                 orbit_cache_insert(key, c.clone());
                 (c, false)

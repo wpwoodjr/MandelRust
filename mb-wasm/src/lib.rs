@@ -206,6 +206,7 @@ pub extern "C" fn build_reference_orbit(
 
     let (orbit, dips, dx_fe, dy_fe, dcx0, _col_ref, _row_ref) = perturb_setup_fe32(
         &xmin, &dx, &ymax, &dy, chunks, image_rows as usize, columns as usize, max_iterations,
+        DEFAULT_ORBIT_BUDGET,
     );
 
     // dip side table as 5 f64 per entry: [index, zr_m, zr_e, zi_m, zi_e].

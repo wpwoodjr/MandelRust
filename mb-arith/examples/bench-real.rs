@@ -65,7 +65,7 @@ fn main() {
     // C. reference-orbit setup only (the per-strip fixed HP cost)
     let mut orbit_len_total = 0usize;
     let (t_setup, _) = run_strips(&mut |ymax, h, _out| {
-        let (orbit, ..) = perturb_setup32(&xmin, &dx, ymax, &dy, chunks, h, COLS, MAX_ITER);
+        let (orbit, ..) = perturb_setup32(&xmin, &dx, ymax, &dy, chunks, h, COLS, MAX_ITER, DEFAULT_ORBIT_BUDGET);
         orbit_len_total += orbit.len();
     });
     let n_strips = rows.div_ceil(STRIP);

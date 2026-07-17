@@ -44,7 +44,7 @@ fn main() {
     };
 
     // reference-orbit length at the first strip center (how early does it escape?)
-    let (orbit, ..) = perturb_setup64(&xmin, &dx, &ymax0, &dy, chunks64, STRIP, COLS, MAX_ITER);
+    let (orbit, ..) = perturb_setup64(&xmin, &dx, &ymax0, &dy, chunks64, STRIP, COLS, MAX_ITER, DEFAULT_ORBIT_BUDGET);
     println!("view {rows}x{COLS}, maxIter {MAX_ITER}, {} u64 limbs; first-strip ref orbit len {}", chunks64, orbit.len());
 
     let (t_rebase, out_r) = run64(false);
