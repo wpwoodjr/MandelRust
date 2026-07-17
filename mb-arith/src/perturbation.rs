@@ -177,12 +177,29 @@ pub struct BlaEntry {
 /// The BLA_EPS_RELAXED radius tier (flat f64s parallel to `entries`) is built
 /// LAZILY on the first starved pixel (`relax_radii`): strips whose pixels
 /// never starve pay nothing for it, in build time or memory.
+///
+/// PREFIX + SPARSE UPPER LEVELS (deep iterations): a full pyramid at ~80 B per
+/// orbit point cannot follow a 100M-point orbit (8 GB per strip), so full
+/// resolution -- levels 0..BLA_SPARSE_MIN_LEVEL-1 -- exists only over the
+/// first `prefix` steps (default 4M, matching the old whole-orbit tables
+/// bit for bit for orbits within it), and only levels >= BLA_SPARSE_MIN_LEVEL
+/// (skips of 64+) cover the full orbit, at ~40/32 = 1.25 B per point. Pixels
+/// beyond the prefix are there precisely because |d| is tiny (they never
+/// rebased), so big skips are all they need; after a rebase they're back in
+/// the prefix with full resolution.
 pub struct BlaTable {
     pub entries: Vec<BlaEntry>,
     relax_r2: std::cell::OnceCell<Vec<f64>>, // BLA_EPS_RELAXED tier, on demand
     dc_max: f64,
     pub level_off: Vec<u32>, // start of level k within entries
+    pub prefix: usize, // steps below this have full level resolution
 }
+
+/// Full-resolution horizon of the BLA table (power of two; 4M points matches
+/// the pre-deep-iterations whole-orbit tables exactly for orbits within it).
+pub const BLA_TABLE_PREFIX: usize = 1 << 22;
+/// First level that covers the whole orbit past the prefix (skips of 2^6).
+pub const BLA_SPARSE_MIN_LEVEL: usize = 6;
 
 // compose "x then y" into one linear step over both spans
 fn bla_merge(x: &BlaEntry, y: &BlaEntry, dc_max: f64) -> BlaEntry {
@@ -205,32 +222,75 @@ fn bla_merge(x: &BlaEntry, y: &BlaEntry, dc_max: f64) -> BlaEntry {
     BlaEntry { ax, ay, bx, by, r2: r * r }
 }
 
+// the linearized single step at orbit index i: (A, B) = (2Z_i, 1)
+#[inline]
+fn step_entry(orbit: &[(f64, f64)], i: usize, eps: f64) -> BlaEntry {
+    let (zx, zy) = orbit[i];
+    let r = eps * (zx * zx + zy * zy).sqrt();
+    BlaEntry { ax: 2.0 * zx, ay: 2.0 * zy, bx: 1.0, by: 0.0, r2: r * r }
+}
+
 impl BlaTable {
     /// The BLA_EPS_RELAXED radius tier, built on first use (only starved
-    /// pixels ever ask for it). Same merge rule as the strict build, seeded
-    /// with the bigger eps; |Z| and the child magnitudes are recovered from
-    /// the stored entries (level-0 entry is (A, B) = (2Z, 1), so |Z| = |A|/2).
-    pub fn relax_radii(&self) -> &[f64] {
+    /// pixels ever ask for it). Same merge rule and layout as the strict
+    /// build, seeded with the bigger eps; prefix radii recover |Z| from the
+    /// stored entries (level-0 entry is (A, B) = (2Z, 1), so |Z| = |A|/2),
+    /// and sparse-tail level-BLA_SPARSE_MIN_LEVEL radii re-fold from `orbit`.
+    pub fn relax_radii(&self, orbit: &[(f64, f64)]) -> &[f64] {
         self.relax_r2.get_or_init(|| {
             let entries = &self.entries;
-            let steps = self.level_off.get(1).map_or(entries.len(), |&o| o as usize);
+            let steps = orbit.len().saturating_sub(1);
+            let prefix = self.prefix;
             let mut r = Vec::with_capacity(entries.len());
-            for e in &entries[..steps] {
+            for e in &entries[..prefix] {
                 r.push(BLA_EPS_RELAXED * 0.5 * (e.ax * e.ax + e.ay * e.ay).sqrt());
             }
-            let (mut off, mut len) = (0usize, steps);
+            let merge_r = |x: &BlaEntry, rx: f64, ry: f64| -> f64 {
+                let ax_mag = (x.ax * x.ax + x.ay * x.ay).sqrt();
+                let bx_mag = (x.bx * x.bx + x.by * x.by).sqrt();
+                if ax_mag > 0.0 {
+                    rx.min(((ry - bx_mag * self.dc_max) / ax_mag).max(0.0))
+                } else {
+                    rx
+                }
+            };
+            let (mut off, mut len) = (0usize, prefix);
+            let mut k = 1usize;
+            while len >= 2 && k < BLA_SPARSE_MIN_LEVEL {
+                for j in 0..len / 2 {
+                    let i = off + 2 * j;
+                    r.push(merge_r(&entries[i], r[i], r[i + 1]));
+                }
+                off += len;
+                len /= 2;
+                k += 1;
+            }
+            if steps > prefix && len >= 2 {
+                // level BLA_SPARSE_MIN_LEVEL: prefix part merged, tail folded
+                let l6 = r.len();
+                for j in 0..len / 2 {
+                    let i = off + 2 * j;
+                    r.push(merge_r(&entries[i], r[i], r[i + 1]));
+                }
+                let block = 1usize << BLA_SPARSE_MIN_LEVEL;
+                for b in (prefix / block)..(steps / block) {
+                    let start = b * block;
+                    let mut acc = step_entry(orbit, start, BLA_EPS_RELAXED);
+                    let mut acc_r = acc.r2.sqrt();
+                    for i in start + 1..start + block {
+                        let e = step_entry(orbit, i, BLA_EPS_RELAXED);
+                        acc_r = merge_r(&acc, acc_r, e.r2.sqrt());
+                        acc = bla_merge(&acc, &e, self.dc_max);
+                    }
+                    r.push(acc_r);
+                }
+                off = l6;
+                len = steps >> BLA_SPARSE_MIN_LEVEL;
+            }
             while len >= 2 {
                 for j in 0..len / 2 {
                     let i = off + 2 * j;
-                    let x = &entries[i];
-                    let ax_mag = (x.ax * x.ax + x.ay * x.ay).sqrt();
-                    let bx_mag = (x.bx * x.bx + x.by * x.by).sqrt();
-                    let merged = if ax_mag > 0.0 {
-                        r[i].min(((r[i + 1] - bx_mag * self.dc_max) / ax_mag).max(0.0))
-                    } else {
-                        r[i]
-                    };
-                    r.push(merged);
+                    r.push(merge_r(&entries[i], r[i], r[i + 1]));
                 }
                 off += len;
                 len /= 2;
@@ -244,21 +304,63 @@ impl BlaTable {
     }
 }
 
-/// Build the BLA table for `orbit`. `dc_max` must bound |dc| over every pixel the
-/// table will serve; a bigger bound shrinks merged radii (slower, never wrong).
-/// Memory/build cost is ~2x the orbit length; build once per reference orbit.
+/// Build the BLA table for `orbit` with the default prefix. `dc_max` must
+/// bound |dc| over every pixel the table will serve; a bigger bound shrinks
+/// merged radii (slower, never wrong). Build once per reference orbit; cost
+/// and memory are ~2x the prefix plus ~1/32 of any tail beyond it.
 pub fn build_bla_table(orbit: &[(f64, f64)], dc_max: f64) -> BlaTable {
+    build_bla_table_cfg(orbit, dc_max, BLA_TABLE_PREFIX)
+}
+
+/// `build_bla_table` with a configurable prefix (power of two; exposed for
+/// tests and tuning). Orbits within the prefix get the classic whole-orbit
+/// pyramid, bit-identical to the pre-prefix tables.
+pub fn build_bla_table_cfg(orbit: &[(f64, f64)], dc_max: f64, prefix_cfg: usize) -> BlaTable {
+    debug_assert!(prefix_cfg.is_power_of_two());
     // step i maps d_i -> d_{i+1} using Z_i; the last usable step needs Z_{i+1}
     // to exist for the escape check, hence orbit.len()-1 steps.
     let steps = orbit.len().saturating_sub(1);
-    let mut entries = Vec::with_capacity(2 * steps + 8);
-    for i in 0..steps {
-        let (zx, zy) = orbit[i];
-        let r = BLA_EPS * (zx * zx + zy * zy).sqrt();
-        entries.push(BlaEntry { ax: 2.0 * zx, ay: 2.0 * zy, bx: 1.0, by: 0.0, r2: r * r });
+    let prefix = prefix_cfg.min(steps);
+    let mut entries = Vec::with_capacity(2 * prefix + steps / 32 + 16);
+    // level 0 over the prefix only; tail step entries are folded on the fly
+    // into the sparse upper levels and never stored (40 B/point saved)
+    for i in 0..prefix {
+        entries.push(step_entry(orbit, i, BLA_EPS));
     }
     let mut level_off = vec![0u32];
-    let (mut off, mut len) = (0usize, steps);
+    let (mut off, mut len) = (0usize, prefix);
+    let mut k = 1usize;
+    while len >= 2 && k < BLA_SPARSE_MIN_LEVEL {
+        level_off.push(entries.len() as u32);
+        for j in 0..len / 2 {
+            let merged = bla_merge(&entries[off + 2 * j], &entries[off + 2 * j + 1], dc_max);
+            entries.push(merged);
+        }
+        off = *level_off.last().unwrap() as usize;
+        len /= 2;
+        k += 1;
+    }
+    if steps > prefix && len >= 2 {
+        // level BLA_SPARSE_MIN_LEVEL: prefix part from pair merges, tail part
+        // folded from raw steps (left-fold radii are valid, just composed in a
+        // different order than the prefix's balanced merges)
+        level_off.push(entries.len() as u32);
+        for j in 0..len / 2 {
+            let merged = bla_merge(&entries[off + 2 * j], &entries[off + 2 * j + 1], dc_max);
+            entries.push(merged);
+        }
+        let block = 1usize << BLA_SPARSE_MIN_LEVEL;
+        for b in (prefix / block)..(steps / block) {
+            let start = b * block;
+            let mut acc = step_entry(orbit, start, BLA_EPS);
+            for i in start + 1..start + block {
+                acc = bla_merge(&acc, &step_entry(orbit, i, BLA_EPS), dc_max);
+            }
+            entries.push(acc);
+        }
+        off = *level_off.last().unwrap() as usize;
+        len = steps >> BLA_SPARSE_MIN_LEVEL;
+    }
     while len >= 2 {
         level_off.push(entries.len() as u32);
         for j in 0..len / 2 {
@@ -268,7 +370,7 @@ pub fn build_bla_table(orbit: &[(f64, f64)], dc_max: f64) -> BlaTable {
         off = *level_off.last().unwrap() as usize;
         len /= 2;
     }
-    BlaTable { entries, relax_r2: std::cell::OnceCell::new(), dc_max, level_off }
+    BlaTable { entries, relax_r2: std::cell::OnceCell::new(), dc_max, level_off, prefix }
 }
 
 // In-flight pixel state handed from the strict phase to the relaxed phase.
@@ -289,7 +391,7 @@ struct BlaState {
 // engine -- measured, not hypothetical: both alternatives cost 6-19% on deep
 // views.
 #[inline(always)]
-fn bla_drive<const DETECT: bool>(
+fn bla_drive<const DETECT: bool, const TAIL: bool>(
     orbit: &[(f64, f64)],
     bla: &BlaTable,
     r2_at: impl Fn(usize) -> f64,
@@ -300,6 +402,7 @@ fn bla_drive<const DETECT: bool>(
 ) -> Result<i32, BlaState> {
     let last = orbit.len() - 1;
     let n_levels = bla.level_off.len();
+    let prefix = bla.prefix;
     let BlaState { mut dr, mut di, mut d2, mut m, mut n } = st;
     let mut run = 0u32; // consecutive exact steps (starvation detector)
 
@@ -314,7 +417,17 @@ fn bla_drive<const DETECT: bool>(
         let k_align = if m == 0 { usize::MAX } else { m.trailing_zeros() as usize };
         let k_max = k_align.min(n_levels - 1);
         let mut best_k = 0usize;
-        let mut k = 1usize;
+        // Beyond the table's full-resolution prefix only the sparse upper
+        // levels exist (see BlaTable): start the scan there. TAIL is a const
+        // generic so tables without a tail (every orbit within the prefix --
+        // all pre-deep-iterations views) compile to the plain k = 1 loop:
+        // even a branchless runtime form of this check measured ~2% on
+        // scan-heavy views under V8 (the hot-loop law, third sighting).
+        let mut k = if TAIL {
+            1 + ((m >= prefix) as usize) * (BLA_SPARSE_MIN_LEVEL - 1)
+        } else {
+            1
+        };
         while k <= k_max {
             let s = 1usize << k;
             if m + s > last || (n as usize + s) > max_iterations as usize {
@@ -407,7 +520,7 @@ pub fn perturb_point_bla(
     }
     let st = BlaState { dr: 0.0, di: 0.0, d2: 0.0, m: 0, n: 0 };
     let strict = |idx: usize| unsafe { bla.entries.get_unchecked(idx).r2 };
-    match bla_drive::<true>(orbit, bla, strict, dcx, dcy, max_iterations, st) {
+    match bla_drive::<true, true>(orbit, bla, strict, dcx, dcy, max_iterations, st) {
         Ok(count) => count,
         Err(st) => bla_finish_relaxed(orbit, bla, dcx, dcy, max_iterations, st),
     }
@@ -491,7 +604,7 @@ fn bla_drive_fe<const HANDOFF: bool>(
         let k_align = if m == 0 { usize::MAX } else { m.trailing_zeros() as usize };
         let k_max = k_align.min(n_levels - 1);
         let mut best_k = 0usize;
-        let mut k = 1usize;
+        let mut k = if m < bla.prefix { 1 } else { BLA_SPARSE_MIN_LEVEL };
         while k <= k_max {
             let s = 1usize << k;
             if m + s > last || (n as usize + s) > max_iterations as usize {
@@ -594,7 +707,7 @@ pub fn perturb_point_bla_fe(
         Err(st) => {
             let (dcx64, dcy64) = (dcx.to_f64(), dcy.to_f64());
             let strict = |idx: usize| unsafe { bla.entries.get_unchecked(idx).r2 };
-            match bla_drive::<true>(orbit, bla, strict, dcx64, dcy64, max_iterations, st) {
+            match bla_drive::<true, true>(orbit, bla, strict, dcx64, dcy64, max_iterations, st) {
                 Ok(count) => count,
                 Err(st) => bla_finish_relaxed(orbit, bla, dcx64, dcy64, max_iterations, st),
             }
@@ -645,9 +758,9 @@ fn bla_finish_relaxed(
     max_iterations: i32,
     st: BlaState,
 ) -> i32 {
-    let relax = bla.relax_radii();
+    let relax = bla.relax_radii(orbit);
     let r2_at = |idx: usize| unsafe { *relax.get_unchecked(idx) };
-    match bla_drive::<false>(orbit, bla, r2_at, dcx, dcy, max_iterations, st) {
+    match bla_drive::<false, true>(orbit, bla, r2_at, dcx, dcy, max_iterations, st) {
         Ok(count) => count,
         Err(_) => unreachable!(),
     }
@@ -666,13 +779,13 @@ fn pixel_starves(
 ) -> bool {
     let strict = |idx: usize| unsafe { bla.entries.get_unchecked(idx).r2 };
     let st = BlaState { dr: 0.0, di: 0.0, d2: 0.0, m: 0, n: 0 };
-    bla_drive::<true>(orbit, bla, strict, dcx, dcy, max_iterations, st).is_err()
+    bla_drive::<true, true>(orbit, bla, strict, dcx, dcy, max_iterations, st).is_err()
 }
 
 // One radius tier's pixel loop over a grid; monomorphized per tier so each copy
 // is exactly the detection-free loop (see bla_drive's comment).
 #[allow(clippy::too_many_arguments)]
-fn bla_grid_loop(
+fn bla_grid_loop<const TAIL: bool>(
     orbit: &[(f64, f64)],
     bla: &BlaTable,
     r2_at: impl Fn(usize) -> f64 + Copy,
@@ -690,7 +803,7 @@ fn bla_grid_loop(
             let dcx = dcx0 + j as f64 * dx_f;
             let st = BlaState { dr: 0.0, di: 0.0, d2: 0.0, m: 0, n: 0 };
             out[i * columns + j] =
-                match bla_drive::<false>(orbit, bla, r2_at, dcx, dcy, max_iterations, st) {
+                match bla_drive::<false, TAIL>(orbit, bla, r2_at, dcx, dcy, max_iterations, st) {
                     Ok(count) => count,
                     Err(_) => unreachable!(),
                 };
@@ -721,6 +834,7 @@ fn bla_grid(
         out[..rows * columns].fill(-1);
         return;
     }
+    let no_tail = bla.prefix >= orbit.len() - 1;
     const PROBES: usize = 8;
     let starved = (0..PROBES).any(|p| {
         let i = rows * (2 * p + 1) / (2 * PROBES);
@@ -728,12 +842,20 @@ fn bla_grid(
         pixel_starves(orbit, bla, dcx0 + j as f64 * dx_f, dcy_at(i), max_iterations)
     });
     if starved {
-        let relax = bla.relax_radii();
+        let relax = bla.relax_radii(orbit);
         let r2_at = |idx: usize| unsafe { *relax.get_unchecked(idx) };
-        bla_grid_loop(orbit, bla, r2_at, dcx0, dx_f, dcy_at, rows, columns, max_iterations, out);
+        if no_tail {
+            bla_grid_loop::<false>(orbit, bla, r2_at, dcx0, dx_f, dcy_at, rows, columns, max_iterations, out);
+        } else {
+            bla_grid_loop::<true>(orbit, bla, r2_at, dcx0, dx_f, dcy_at, rows, columns, max_iterations, out);
+        }
     } else {
         let r2_at = |idx: usize| unsafe { bla.entries.get_unchecked(idx).r2 };
-        bla_grid_loop(orbit, bla, r2_at, dcx0, dx_f, dcy_at, rows, columns, max_iterations, out);
+        if no_tail {
+            bla_grid_loop::<false>(orbit, bla, r2_at, dcx0, dx_f, dcy_at, rows, columns, max_iterations, out);
+        } else {
+            bla_grid_loop::<true>(orbit, bla, r2_at, dcx0, dx_f, dcy_at, rows, columns, max_iterations, out);
+        }
     }
 }
 
@@ -1876,6 +1998,56 @@ mod tests {
             .count();
         assert!(covered_mismatch * 200 <= full.len(),
             "covered pixels disagree: {covered_mismatch}");
+    }
+
+    // Sparse upper levels beyond a small table prefix must produce the same
+    // counts as the full-resolution table: fe-depth pixels ride the reference
+    // to thousands of steps without rebasing, living entirely in the tail.
+    #[test]
+    fn sparse_tail_table_matches_full() {
+        let n_digits = 81usize;
+        let frac0 = vec![0u32; n_digits];
+        let mut frac_dx = vec![0u32; n_digits];
+        frac_dx[79] = 1;
+        let xd = coord(0, &frac0);
+        let yd = coord(1, &frac0);
+        let dxd = coord(0, &frac_dx);
+        let dyd = coord(0, &frac_dx);
+        let (rows, columns, max_iter) = (32, 32, 8000);
+
+        let chunks = chunks32_for(xd.len());
+        let (dx, dy) = (u32_to_limbs32(&dxd), u32_to_limbs32(&dyd));
+        let mut xmin = u32_to_limbs32(&xd);
+        let mut dx_neg = vec![0u32; xmin.len()];
+        negate32(&dx, &mut dx_neg);
+        for _ in 0..columns / 2 { incr32(&mut xmin, &dx_neg); }
+        let mut ymax = u32_to_limbs32(&yd);
+        for _ in 0..rows / 2 { incr32(&mut ymax, &dy); }
+
+        let (orbit, dips, dx_fe, dy_fe, dcx0, _c, row_ref) = perturb_setup_fe32(
+            &xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, DEFAULT_ORBIT_BUDGET);
+        assert!(orbit.len() > 4000, "orbit too short to exercise the tail");
+
+        let run = |prefix: usize| -> Vec<i32> {
+            let bla = build_bla_table_cfg(&orbit, 0.0, prefix);
+            let mut out = vec![0i32; rows * columns];
+            for i in 0..rows {
+                let dcy = dy_fe.mul_f64(row_ref as f64 - i as f64);
+                for j in 0..columns {
+                    let dcx = dcx0.add(dx_fe.mul_f64(j as f64));
+                    out[i * columns + j] =
+                        perturb_point_bla_fe(&orbit, &dips, &bla, dcx, dcy, max_iter);
+                }
+            }
+            out
+        };
+        let full = run(BLA_TABLE_PREFIX); // orbit fits: classic whole-orbit pyramid
+        let sparse = run(512);            // tail runs on sparse levels only
+
+        let wrong = (0..full.len()).filter(|&i| full[i] != sparse[i]).count();
+        assert!(wrong * 100 <= full.len(), "sparse-tail counts diverge: {wrong}/{}", full.len());
+        let distinct: std::collections::HashSet<i32> = sparse.iter().copied().collect();
+        assert!(distinct.len() >= 20, "degenerate test view: {} distinct", distinct.len());
     }
 
     fn count_stats(pert: &[i32], brute: &[Vec<i32>], rows: usize, columns: usize) -> (usize, usize, i32, usize) {
