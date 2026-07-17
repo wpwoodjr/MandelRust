@@ -21,7 +21,7 @@ let hpMsAccum = 0, hpStripAccum = 0;
 // Must match mb_wasm_version() in mb-wasm/src/lib.rs. Bump both together, and
 // bump ASSET_VERSION in MB.html so caches can't pair a new worker with an old
 // binary (or vice versa).
-const EXPECTED_WASM_VERSION = 11;
+const EXPECTED_WASM_VERSION = 12;
 
 function wasmReady() {
     return compute_mandelbrot && compute_mandelbrot_hp && compute_mandelbrot_hp_perturb
@@ -76,7 +76,11 @@ let wasmMemory;
 // Build the whole-image reference orbit from the basis grid coords and cache it.
 // Pointers are captured as numbers: the build grows wasm memory (detaching views).
 function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows) {
-    if (cachedOrbit) { free_f64(cachedOrbit.ptr, cachedOrbit.len * 2); cachedOrbit = null; }
+    if (cachedOrbit) {
+        free_f64(cachedOrbit.ptr, cachedOrbit.len * 2);
+        if (cachedOrbit.dipsLen > 0) free_f64(cachedOrbit.dipsPtr, cachedOrbit.dipsLen * 5);
+        cachedOrbit = null;
+    }
     let len = xmin.length;
     let xminPtr = wasmMemory.copyFromArrayU32(xmin).byteOffset;
     let dxPtr = wasmMemory.copyFromArrayU32(dx).byteOffset;
@@ -84,16 +88,22 @@ function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows) {
     let dyPtr = wasmMemory.copyFromArrayU32(dy).byteOffset;
     let lenPtr = malloc(4);
     let metaPtr = malloc_f64(6);
+    let dipsPtrPtr = malloc(4), dipsLenPtr = malloc(4);
     let _tb = DEBUG ? performance.now() : 0;
     let orbitPtr = build_reference_orbit(xminPtr, dxPtr, ymaxPtr, dyPtr, len,
-        basisCols, basisRows, maxIterations, lenPtr, metaPtr);
+        basisCols, basisRows, maxIterations, lenPtr, metaPtr, dipsPtrPtr, dipsLenPtr);
     let orbitLen = new Uint32Array(wasmMemory.memory.buffer, lenPtr, 1)[0];
     // copy the meta out of wasm memory (later allocations may grow/detach it)
     let meta = Float64Array.from(new Float64Array(wasmMemory.memory.buffer, metaPtr, 6));
-    cachedOrbit = { ptr: orbitPtr, len: orbitLen, meta: meta, rowRef: basisRows >>> 1 };
+    // dip side table: FloatExp values for orbit points below f64's floor
+    // (deep minibrot nuclei); stays in wasm memory alongside the orbit
+    let dipsPtr = new Uint32Array(wasmMemory.memory.buffer, dipsPtrPtr, 1)[0];
+    let dipsLen = new Uint32Array(wasmMemory.memory.buffer, dipsLenPtr, 1)[0];
+    cachedOrbit = { ptr: orbitPtr, len: orbitLen, meta: meta,
+        dipsPtr: dipsPtr, dipsLen: dipsLen, rowRef: basisRows >>> 1 };
     cachedImageId = imageId;
-    if (DEBUG) console.log(`[w${workerNumber}] built orbit ${orbitLen} pts for image ${imageId} in ${(performance.now()-_tb).toFixed(1)} ms`);
-    dalloc(lenPtr, 4); free_f64(metaPtr, 6);
+    if (DEBUG) console.log(`[w${workerNumber}] built orbit ${orbitLen} pts (${dipsLen} dips) for image ${imageId} in ${(performance.now()-_tb).toFixed(1)} ms`);
+    dalloc(lenPtr, 4); free_f64(metaPtr, 6); dalloc(dipsPtrPtr, 4); dalloc(dipsLenPtr, 4);
     dalloc(dyPtr, len*4); dalloc(ymaxPtr, len*4); dalloc(dxPtr, len*4); dalloc(xminPtr, len*4);
 }
 
@@ -142,7 +152,7 @@ onmessage = function(msg) {
                     let outLen = nrows*columnCount;
                     let outPtr = wasmMemory.newArrayI32(outLen).byteOffset;
                     let _t0 = DEBUG ? performance.now() : 0;
-                    compute_strip_with_orbit(o.ptr, o.len,
+                    compute_strip_with_orbit(o.ptr, o.len, o.dipsPtr, o.dipsLen,
                         o.meta[0], o.meta[1], o.meta[2], o.meta[3], o.meta[4], o.meta[5],
                         ox, oy, o.rowRef,
                         firstRow, nrows, columnCount, maxIterations, outPtr);
@@ -217,8 +227,11 @@ onmessage = function(msg) {
             // copy out of wasm memory (the view may not be transferred directly)
             let copy = new Float64Array(o.len * 2);
             copy.set(new Float64Array(wasmMemory.memory.buffer, o.ptr, o.len * 2));
+            let dipsCopy = o.dipsLen > 0
+                ? Array.from(new Float64Array(wasmMemory.memory.buffer, o.dipsPtr, o.dipsLen * 5))
+                : [];
             postMessage([ "orbit", imageId,
-                { len: o.len, meta: Array.from(o.meta), rowRef: o.rowRef },
+                { len: o.len, meta: Array.from(o.meta), dips: dipsCopy, rowRef: o.rowRef },
                 copy ], [ copy.buffer ]);
         });
     } else if (data[0] == "orbit") {
@@ -231,11 +244,22 @@ onmessage = function(msg) {
             if (cachedImageId === imageId) {
                 return; // the builder itself: already cached in wasm memory
             }
-            if (cachedOrbit) { free_f64(cachedOrbit.ptr, cachedOrbit.len * 2); cachedOrbit = null; }
+            if (cachedOrbit) {
+                free_f64(cachedOrbit.ptr, cachedOrbit.len * 2);
+                if (cachedOrbit.dipsLen > 0) free_f64(cachedOrbit.dipsPtr, cachedOrbit.dipsLen * 5);
+                cachedOrbit = null;
+            }
             let ptr = malloc_f64(arr.length);
             new Float64Array(wasmMemory.memory.buffer, ptr, arr.length).set(arr);
+            let dipsLen = meta.dips ? meta.dips.length / 5 : 0;
+            let dipsPtr = 0;
+            if (dipsLen > 0) {
+                dipsPtr = malloc_f64(meta.dips.length);
+                new Float64Array(wasmMemory.memory.buffer, dipsPtr, meta.dips.length).set(meta.dips);
+            }
             cachedOrbit = { ptr: ptr, len: meta.len,
-                meta: Float64Array.from(meta.meta), rowRef: meta.rowRef };
+                meta: Float64Array.from(meta.meta),
+                dipsPtr: dipsPtr, dipsLen: dipsLen, rowRef: meta.rowRef };
             cachedImageId = imageId;
             if (DEBUG) console.log(`[w${workerNumber}] adopted broadcast orbit ${meta.len} pts for image ${imageId}`);
         });

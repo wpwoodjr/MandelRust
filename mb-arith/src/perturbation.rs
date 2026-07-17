@@ -391,6 +391,42 @@ pub fn perturb_point_bla(
     }
 }
 
+// A reference-orbit point whose f64 image lost precision: at a deep minibrot
+// nucleus the reference passes within ~1e-30x..1e-100s of zero every period,
+// below f64's ~1e-308 floor, and stores as subnormal or 0.0. At fe pixel
+// scales (dc << 1e-308) the dropped 2*Z*d term at such a dip can be the
+// LARGEST term in the delta recurrence -- measured: interior minibrot pixels
+// falsely escaping with the reference's count (non-black, fuzzy minibrot at a
+// 1077-digit KF location; deltas wrong by hundreds of orders). The orbit
+// builder records the true FloatExp value of every degraded point in a small
+// side table (dozens of entries), and the fe engine consults it wherever it
+// reads orbit points exactly (exact steps and the escape/rebase check). BLA
+// skips never need it: blocks spanning a dip have validity radius 0.
+// At f64 pixel scales the table is unnecessary (the window where the dropped
+// term dominates, |d| in (dc/2|Z_dip|, 2|Z_dip|), is empty when dc > 1e-308).
+#[derive(Clone, Copy, Debug)]
+pub struct OrbitDip {
+    pub index: u32,
+    pub zr: FloatExp,
+    pub zi: FloatExp,
+}
+
+const MIN_NORMAL_F64: f64 = 2.2250738585072014e-308;
+
+// Orbit point m as FloatExp, using the dip side table where the stored f64
+// is degraded (subnormal/zero). A gate miss (true-zero component, e.g. a
+// real-axis orbit) falls back to the stored value, which is exact there.
+#[inline]
+fn fe_orbit_at(orbit: &[(f64, f64)], dips: &[OrbitDip], m: usize) -> (FloatExp, FloatExp) {
+    let (zr, zi) = orbit[m];
+    if zr.abs() < MIN_NORMAL_F64 || zi.abs() < MIN_NORMAL_F64 {
+        if let Ok(k) = dips.binary_search_by_key(&(m as u32), |d| d.index) {
+            return (dips[k].zr, dips[k].zi);
+        }
+    }
+    (FloatExp::from_f64(zr), FloatExp::from_f64(zi))
+}
+
 // *** floatexp head phase: perturbation past f64's ~1e-308 pixel-scale floor ***
 //
 // At pixel scales below ~2^-1000 the per-pixel dc underflows f64. A delta
@@ -413,6 +449,7 @@ const FE_HANDOFF_D2_E: i64 = -1600; // |d|^2 exponent at handoff (|d| ~ 2^-800)
 
 fn bla_drive_fe<const HANDOFF: bool>(
     orbit: &[(f64, f64)],
+    dips: &[OrbitDip],
     bla: &BlaTable,
     dcx: FloatExp,
     dcy: FloatExp,
@@ -459,8 +496,7 @@ fn bla_drive_fe<const HANDOFF: bool>(
             n += (1usize << best_k) as i32;
         } else {
             // exact step: d' = 2*Z*d + d^2 + dc
-            let (zr, zi) = orbit[m];
-            let (zr, zi) = (FloatExp::from_f64(zr), FloatExp::from_f64(zi));
+            let (zr, zi) = fe_orbit_at(orbit, dips, m);
             let lin_r = zr.mul(dr).sub(zi.mul(di)).mul_f64(2.0);
             let lin_i = zr.mul(di).add(zi.mul(dr)).mul_f64(2.0);
             let sq_r = dr.mul(dr).sub(di.mul(di));
@@ -472,9 +508,9 @@ fn bla_drive_fe<const HANDOFF: bool>(
         }
 
         // escape / rebase checks at the new position (count n-1, as bla_drive)
-        let (zmr, zmi) = orbit[m];
-        let wr = FloatExp::from_f64(zmr).add(dr);
-        let wi = FloatExp::from_f64(zmi).add(di);
+        let (zmr, zmi) = fe_orbit_at(orbit, dips, m);
+        let wr = zmr.add(dr);
+        let wi = zmi.add(di);
         let w2 = wr.mul(wr).add(wi.mul(wi));
         if !w2.mag_lt(escape) {
             return Ok(n - 1);
@@ -513,6 +549,7 @@ fn fe_handoff_ok(dcx: FloatExp, dcy: FloatExp) -> bool {
 /// relaxing per pixel if starved (mirrors perturb_point_bla's semantics).
 pub fn perturb_point_bla_fe(
     orbit: &[(f64, f64)],
+    dips: &[OrbitDip],
     bla: &BlaTable,
     dcx: FloatExp,
     dcy: FloatExp,
@@ -522,12 +559,12 @@ pub fn perturb_point_bla_fe(
         return -1;
     }
     if !fe_handoff_ok(dcx, dcy) {
-        return match bla_drive_fe::<false>(orbit, bla, dcx, dcy, max_iterations) {
+        return match bla_drive_fe::<false>(orbit, dips, bla, dcx, dcy, max_iterations) {
             Ok(count) => count,
             Err(_) => unreachable!(),
         };
     }
-    match bla_drive_fe::<true>(orbit, bla, dcx, dcy, max_iterations) {
+    match bla_drive_fe::<true>(orbit, dips, bla, dcx, dcy, max_iterations) {
         Ok(count) => count,
         Err(st) => {
             let (dcx64, dcy64) = (dcx.to_f64(), dcy.to_f64());
@@ -546,6 +583,7 @@ pub fn perturb_point_bla_fe(
 #[allow(clippy::too_many_arguments)]
 fn bla_grid_fe(
     orbit: &[(f64, f64)],
+    dips: &[OrbitDip],
     bla: &BlaTable,
     dcx0: FloatExp,
     dx: FloatExp,
@@ -563,7 +601,7 @@ fn bla_grid_fe(
         let dcy = dcy_at(i);
         for j in 0..columns {
             let dcx = dcx0.add(dx.mul_f64(j as f64));
-            out[i * columns + j] = perturb_point_bla_fe(orbit, bla, dcx, dcy, max_iterations);
+            out[i * columns + j] = perturb_point_bla_fe(orbit, dips, bla, dcx, dcy, max_iterations);
         }
     }
 }
@@ -731,6 +769,7 @@ const FE_CUTOVER_DX_E: i64 = -1000;
 #[allow(clippy::too_many_arguments)]
 pub fn bla_strip_fe(
     orbit: &[(f64, f64)],
+    dips: &[OrbitDip],
     dx: FloatExp,
     dy: FloatExp,
     dcx0: FloatExp,
@@ -765,7 +804,7 @@ pub fn bla_strip_fe(
     let dcy_at = |i: usize| {
         dy.mul_f64(image_row_ref as f64 - (strip_row0 + i) as f64).add(dcy_off)
     };
-    bla_grid_fe(orbit, &bla, dcx0, dx, dcy_at, strip_rows, columns, max_iterations, out);
+    bla_grid_fe(orbit, dips, &bla, dcx0, dx, dcy_at, strip_rows, columns, max_iterations, out);
 }
 
 // *** shared-index variant (SIMD-friendly) *** //
@@ -1216,7 +1255,7 @@ pub fn $limbs_to_fe(x: &[$limb]) -> FloatExp {
 /// see CLAUDE.md next steps.
 ///
 /// `cx` / `cy` are the reference coordinate as limbs, each the same length.
-pub fn $reference_orbit(cx: &[$limb], cy: &[$limb], max_iterations: i32) -> Vec<(f64, f64)> {
+pub fn $reference_orbit(cx: &[$limb], cy: &[$limb], max_iterations: i32) -> (Vec<(f64, f64)>, Vec<OrbitDip>) {
     const MAX_REF_ORBIT_POINTS: i32 = 4_000_000;
     let max_iterations = max_iterations.min(MAX_REF_ORBIT_POINTS);
     let n = cx.len();
@@ -1232,6 +1271,8 @@ pub fn $reference_orbit(cx: &[$limb], cy: &[$limb], max_iterations: i32) -> Vec<
 
     let mut orbit = Vec::with_capacity(max_iterations.max(0) as usize + 1);
     orbit.push((0.0, 0.0)); // Z_0 = 0
+    // side table of points whose f64 image lost precision (see OrbitDip)
+    let mut dips: Vec<OrbitDip> = Vec::new();
 
     for _ in 0..max_iterations {
         $sq(&zx, &mut w3, &mut w1); // w1 = zx^2
@@ -1250,12 +1291,23 @@ pub fn $reference_orbit(cx: &[$limb], cy: &[$limb], max_iterations: i32) -> Vec<
 
         let zr = $limbs_to_f64_scratch(&zx, &mut scratch);
         let zi = $limbs_to_f64_scratch(&zy, &mut scratch);
+        // a component that is subnormal/zero in f64 but nonzero in limbs has
+        // lost (or completely dropped) its value: record the true FloatExp
+        let zr_deg = zr.abs() < MIN_NORMAL_F64 && zx.iter().any(|&l| l != 0);
+        let zi_deg = zi.abs() < MIN_NORMAL_F64 && zy.iter().any(|&l| l != 0);
+        if zr_deg || zi_deg {
+            dips.push(OrbitDip {
+                index: (orbit.len()) as u32,
+                zr: $limbs_to_fe_scratch(&zx, &mut scratch),
+                zi: $limbs_to_fe_scratch(&zy, &mut scratch),
+            });
+        }
         orbit.push((zr, zi));
         if zr * zr + zi * zi >= ESCAPE_R2 {
             break;
         }
     }
-    orbit
+    (orbit, dips)
 }
 
 /// Build everything needed to perturb a block: the reference orbit (taken at the
@@ -1292,7 +1344,7 @@ pub fn $perturb_setup(
         $incr(&mut cy, &dy_neg);
     }
 
-    let orbit = $reference_orbit(&cx, &cy, max_iterations);
+    let (orbit, _dips) = $reference_orbit(&cx, &cy, max_iterations);
 
     let dx_f = $limbs_to_f64(&dx[..chunks]);
     let dy_f = $limbs_to_f64(&dy[..chunks]);
@@ -1314,7 +1366,7 @@ pub fn $perturb_setup_fe(
     rows: usize,
     columns: usize,
     max_iterations: i32,
-) -> (Vec<(f64, f64)>, FloatExp, FloatExp, FloatExp, usize, usize) {
+) -> (Vec<(f64, f64)>, Vec<OrbitDip>, FloatExp, FloatExp, FloatExp, usize, usize) {
     let col_ref = columns / 2;
     let row_ref = rows / 2;
 
@@ -1329,13 +1381,13 @@ pub fn $perturb_setup_fe(
         $incr(&mut cy, &dy_neg);
     }
 
-    let orbit = $reference_orbit(&cx, &cy, max_iterations);
+    let (orbit, dips) = $reference_orbit(&cx, &cy, max_iterations);
 
     let dx_fe = $limbs_to_fe(&dx[..chunks]);
     let dy_fe = $limbs_to_fe(&dy[..chunks]);
     let dcx0 = dx_fe.mul_f64(-(col_ref as f64));
 
-    (orbit, dx_fe, dy_fe, dcx0, col_ref, row_ref)
+    (orbit, dips, dx_fe, dy_fe, dcx0, col_ref, row_ref)
 }
 
 /// Compute a `rows` x `columns` block by perturbation, reference at block center.
@@ -1404,7 +1456,7 @@ pub fn $mandelbrot_perturb_glitch(
             break;
         }
         let (cx, cy) = coord_of(ref_r, ref_c);
-        let orbit = $reference_orbit(&cx, &cy, max_iterations);
+        let (orbit, _dips) = $reference_orbit(&cx, &cy, max_iterations);
 
         // dc offset (from the reference) of pixel p
         let (rr, rc) = (ref_r, ref_c);
@@ -1501,9 +1553,9 @@ pub fn mandelbrot_perturb_bla64(
     chunks: usize, rows: usize, columns: usize,
     max_iterations: i32, out: &mut [i32],
 ) {
-    let (orbit, dx_fe, dy_fe, dcx0, _col_ref, row_ref) =
+    let (orbit, dips, dx_fe, dy_fe, dcx0, _col_ref, row_ref) =
         perturb_setup_fe64(xmin, dx, ymax, dy, chunks, rows, columns, max_iterations);
-    bla_strip_fe(&orbit, dx_fe, dy_fe, dcx0, FE_ZERO, row_ref, 0, rows, columns, max_iterations, out);
+    bla_strip_fe(&orbit, &dips, dx_fe, dy_fe, dcx0, FE_ZERO, row_ref, 0, rows, columns, max_iterations, out);
 }
 
 /// u32-limb variant of mandelbrot_perturb_bla64 (the delta loop and BLA table
@@ -1513,9 +1565,9 @@ pub fn mandelbrot_perturb_bla32(
     chunks: usize, rows: usize, columns: usize,
     max_iterations: i32, out: &mut [i32],
 ) {
-    let (orbit, dx_fe, dy_fe, dcx0, _col_ref, row_ref) =
+    let (orbit, dips, dx_fe, dy_fe, dcx0, _col_ref, row_ref) =
         perturb_setup_fe32(xmin, dx, ymax, dy, chunks, rows, columns, max_iterations);
-    bla_strip_fe(&orbit, dx_fe, dy_fe, dcx0, FE_ZERO, row_ref, 0, rows, columns, max_iterations, out);
+    bla_strip_fe(&orbit, &dips, dx_fe, dy_fe, dcx0, FE_ZERO, row_ref, 0, rows, columns, max_iterations, out);
 }
 
 #[cfg(test)]

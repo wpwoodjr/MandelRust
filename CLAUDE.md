@@ -150,6 +150,20 @@ code):
   Brute-validated EXACT at spot checks on 2.5M-count pixels at 2^-1002,
   2^-1075, and 2^-1081 pixel scales, and <1% mismatch at 2^-1280 in
   `fe_deep_view_matches_brute_*`.
+  ORBIT DIP SIDE TABLE (wasm v12, server): at a deep minibrot nucleus the
+  reference passes below f64's ~1e-308 floor every period, and the STORED
+  orbit points go subnormal/zero -- at fe pixel scales the dropped 2*Z*d term
+  at such a dip can be the LARGEST term in the recurrence, so interior
+  minibrot pixels falsely escaped with the reference's count (non-black fuzzy
+  minibrot at a 1077-digit KF location, mb-rust-server/1077-digit-minibrot.xml
+  = the acceptance test; deltas were wrong by hundreds of orders). The orbit
+  builder records the true FloatExp value of every degraded point (OrbitDip;
+  ~a dozen entries) and the fe engine consults the table in exact steps and
+  the escape/rebase check (fe_orbit_at). BLA skips never need it: dip-spanning
+  blocks have validity radius 0. Benign at f64 depths (the window where the
+  dropped term dominates is empty when dc > 1e-308) -- shallow views
+  bit-identical. Fixed px vs brute: interior -1, outliving 1,790,922, edges
+  exact; 36 interior px/row where there were 0.
   PERF NOTE: |d|^2 is carried across loop iterations, NOT recomputed — a
   redundant multiply-add in the serial dependency chain cost wasm ~2.7x (native
   OoO hid it, V8 didn't) and native ~1.2x. Same law, second sighting: ANY

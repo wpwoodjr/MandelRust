@@ -566,3 +566,28 @@ BMarks
     slowdown actually shows.
     NOTE this view's counts run to 3,999,698 of the 4M cap -- the deep-iters
     cap is about to be the binding limit on this lineage.
+
+17 Jul 2026 - orbit dip side table (wasm v12 + server): fixed non-black fuzzy
+    minibrots at fe depths (user report: 1077-digit KF minibrot location,
+    banked as mb-rust-server/1077-digit-minibrot.xml). Root cause: the
+    reference orbit is STORED as f64 pairs, and at a minibrot nucleus it dips
+    below f64's ~1e-308 floor every period (this view: 12 dip points, true
+    values like 1.24*2^-1790, stored as 0.0/subnormal). The delta step then
+    drops its 2*Z*d term, which at fe pixel scales (dc ~ 1e-1080) is the
+    LARGEST term for |d| in (dc/2|Z_dip|, 2|Z_dip|) -- deltas wrong by
+    hundreds of orders, pixels never separate from the reference, and when it
+    escapes (1,626,181 here) they all get stamped with its count: a false
+    plateau instead of black interior + structured surround. Brute-verified
+    wrong: px(260,240) true -1 (interior!) vs engine 1,581,794; px(290,240)
+    true 1,790,922 vs plateau; px(200,240) off by 72k. Benign at f64 depths
+    (window empty when dc > 1e-308) -- which is why no pre-floatexp test ever
+    saw it, and the 2^-1280 Misiurewicz unit test (no deep dips) missed it.
+    Fix: reference_orbit records OrbitDip { index, FloatExp zr, zi } for every
+    point whose f64 image is subnormal/zero but limbs nonzero; the fe engine
+    reads orbit points through fe_orbit_at (side-table lookup gated on a
+    subnormal stored value); BLA tables need nothing (dip-spanning skips have
+    r = 0 already). FFI: build_reference_orbit returns the table
+    ([index, zr_m, zr_e, zi_m, zi_e] per entry), broadcast relays it.
+    After: all 4 brute-checked px EXACT, 36 interior px in row 240 (was 0),
+    21 rows/s single-thread (up from 18 -- no more false full-length rides).
+    Shallow regression: 40-slow/126/270/360-boundary bit-identical to v11.

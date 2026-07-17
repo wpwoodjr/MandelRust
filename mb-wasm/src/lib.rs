@@ -60,8 +60,14 @@ pub extern "C"  fn dalloc(ptr: *mut u8, size: u32) {
 //      pairs plus raw (ox, oy) -- the offset folding that JS used to do in f64
 //      now happens inside wasm at full range. Views above the floor are
 //      bit-identical to v10.
+// 12 = orbit dip side table: reference-orbit points that pass below f64's
+//      floor (deep minibrot nuclei) carry their true FloatExp values in a
+//      small side buffer ([index, zr_m, zr_e, zi_m, zi_e] per entry), built by
+//      build_reference_orbit and consumed by compute_strip_with_orbit --
+//      without it, interior minibrot pixels at fe depths falsely escape
+//      (non-black, fuzzy minibrots).
 #[no_mangle]
-pub extern "C" fn mb_wasm_version() -> u32 { 11 }
+pub extern "C" fn mb_wasm_version() -> u32 { 12 }
 
 
 use mb_arith::*;
@@ -184,6 +190,7 @@ pub extern "C" fn build_reference_orbit(
     xmin: *const u32, dx: *const u32, ymax: *const u32, dy: *const u32, len: u32,
     columns: u32, image_rows: u32, max_iterations: i32,
     out_len: *mut u32, out_meta: *mut f64,
+    out_dips_ptr: *mut u32, out_dips_len: *mut u32,
 ) -> *mut f64 {
     let len = len as usize;
     let xmin = unsafe { std::slice::from_raw_parts(xmin, len) };
@@ -197,9 +204,28 @@ pub extern "C" fn build_reference_orbit(
     let ymax = u32_to_limbs32(ymax);
     let dy = u32_to_limbs32(dy);
 
-    let (orbit, dx_fe, dy_fe, dcx0, _col_ref, _row_ref) = perturb_setup_fe32(
+    let (orbit, dips, dx_fe, dy_fe, dcx0, _col_ref, _row_ref) = perturb_setup_fe32(
         &xmin, &dx, &ymax, &dy, chunks, image_rows as usize, columns as usize, max_iterations,
     );
+
+    // dip side table as 5 f64 per entry: [index, zr_m, zr_e, zi_m, zi_e].
+    // Freed by JS with free_f64(ptr, 5*len); len 0 => ptr 0, nothing to free.
+    let n_dips = dips.len();
+    let dips_ptr = if n_dips == 0 {
+        std::ptr::null_mut()
+    } else {
+        let p = malloc_f64((n_dips * 5) as u32);
+        for (i, d) in dips.iter().enumerate() {
+            unsafe {
+                *p.add(i * 5) = d.index as f64;
+                *p.add(i * 5 + 1) = d.zr.m;
+                *p.add(i * 5 + 2) = d.zr.e as f64;
+                *p.add(i * 5 + 3) = d.zi.m;
+                *p.add(i * 5 + 4) = d.zi.e as f64;
+            }
+        }
+        p
+    };
 
     // into_boxed_slice shrinks capacity to len, so free_f64(ptr, 2*N) matches the
     // allocation exactly (N * (f64,f64) == 2N * f64, align 8).
@@ -215,6 +241,8 @@ pub extern "C" fn build_reference_orbit(
         *out_meta.add(3) = dy_fe.e as f64;
         *out_meta.add(4) = dcx0.m;
         *out_meta.add(5) = dcx0.e as f64;
+        *out_dips_ptr = dips_ptr as u32;
+        *out_dips_len = n_dips as u32;
     }
     ptr
 }
@@ -231,6 +259,7 @@ pub extern "C" fn build_reference_orbit(
 #[allow(clippy::too_many_arguments)]
 pub extern "C" fn compute_strip_with_orbit(
     orbit_ptr: *const f64, orbit_len: u32,
+    dips_ptr: *const f64, dips_len: u32,
     dx_m: f64, dx_e: f64, dy_m: f64, dy_e: f64, dcx0_m: f64, dcx0_e: f64,
     ox: f64, oy: f64, image_row_ref: u32,
     strip_row0: u32, strip_rows: u32, columns: u32,
@@ -244,12 +273,23 @@ pub extern "C" fn compute_strip_with_orbit(
     let strip_rows = strip_rows as usize;
     let columns = columns as usize;
     let out = unsafe { std::slice::from_raw_parts_mut(iteration_counts, strip_rows * columns) };
+    let mut dips: Vec<OrbitDip> = Vec::with_capacity(dips_len as usize);
+    if dips_len > 0 {
+        let raw = unsafe { std::slice::from_raw_parts(dips_ptr, dips_len as usize * 5) };
+        for c in raw.chunks_exact(5) {
+            dips.push(OrbitDip {
+                index: c[0] as u32,
+                zr: FloatExp::new(c[1], c[2] as i64),
+                zi: FloatExp::new(c[3], c[4] as i64),
+            });
+        }
+    }
     let dx = FloatExp::new(dx_m, dx_e as i64);
     let dy = FloatExp::new(dy_m, dy_e as i64);
     let dcx0 = FloatExp::new(dcx0_m, dcx0_e as i64).add(dx.mul_f64(ox));
     let dcy_off = dy.mul_f64(oy);
     bla_strip_fe(
-        orbit, dx, dy, dcx0, dcy_off, image_row_ref as usize,
+        orbit, &dips, dx, dy, dcx0, dcy_off, image_row_ref as usize,
         strip_row0 as usize, strip_rows, columns, max_iterations, out,
     );
 }
