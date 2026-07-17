@@ -130,18 +130,26 @@ code):
   represent -- dc underflows) run a FloatExp head phase (`floatexp.rs`: f64
   mantissa + i64 exponent; `bla_drive_fe`): the BLA loop on FloatExp deltas
   until |d| climbs past ~2^-800, then a mid-pixel BlaState handoff to the
-  UNTOUCHED f64 engine with dc dropped (sound: dc <= ~2^-950 is below the ulp
-  of |d| from there on). While |d| is fe-tiny every skip validates, so the
-  head phase mega-skips and the deep view costs about what a 300-digit view
-  costs (360-boundary at TRUE scale: 34 rows/s single-thread wasm). Dispatch
-  is by dx exponent (`bla_strip_fe`, cutover 2^-1000): views above it run the
-  identical f64 path -- validated bit-identical (126/270/40-slow) at speed
-  parity. The scale plumbing (perturb_setup_fe*, server orbit cache, wasm meta
-  = 6 mantissa/exponent entries, (ox,oy) folded inside wasm) carries FloatExp
-  end to end because a plain-f64 FFI would underflow the values in transit.
-  Brute-validated at 2^-1280 pixel scale in `fe_deep_view_matches_brute_*`
-  and to 2^-1081 on the 360-boundary view's descendants; counts agree to
-  boundary-speckle level (|delta| <= ~80 on 2.5M-count pixels).
+  UNTOUCHED f64 engine carrying the f64-converted dc. The handoff happens ONLY
+  when dc converts to a NORMAL f64 (`fe_handoff_ok`); otherwise the pixel runs
+  floatexp end to end. DO NOT drop dc at handoff, and do not assume |d| only
+  grows: that shipped first and is UNSOUND in near-neutral (low-lambda)
+  regions -- lambda is an average, |2Z| < 1 stretches meander |d| back DOWN,
+  it can retrace the ~190 doublings to dc scale, and the missing dc showed as
+  a systematic ~25-55-count bias (palette-band crawl exactly at the fe/f64
+  cutover, found via a forced-cutover A/B; with dc carried, forced-fe vs f64
+  is unbiased and brute checks went from |delta| <= 80 to EXACT). While |d| is
+  fe-tiny every skip validates, so the head phase mega-skips; deep views cost
+  ~32 rows/s single-thread wasm on the handoff path and ~13-15 rows/s on the
+  full-fe path (2.5M-iter 360-digit views). Dispatch is by dx exponent
+  (`bla_strip_fe`, cutover 2^-1000): views above it run the identical f64
+  path -- validated bit-identical (126/270/40-slow) at speed parity. The scale
+  plumbing (perturb_setup_fe*, server orbit cache, wasm meta = 6
+  mantissa/exponent entries, (ox,oy) folded inside wasm) carries FloatExp end
+  to end because a plain-f64 FFI would underflow the values in transit.
+  Brute-validated EXACT at spot checks on 2.5M-count pixels at 2^-1002,
+  2^-1075, and 2^-1081 pixel scales, and <1% mismatch at 2^-1280 in
+  `fe_deep_view_matches_brute_*`.
   PERF NOTE: |d|^2 is carried across loop iterations, NOT recomputed — a
   redundant multiply-add in the serial dependency chain cost wasm ~2.7x (native
   OoO hid it, V8 didn't) and native ~1.2x. Same law, second sighting: ANY

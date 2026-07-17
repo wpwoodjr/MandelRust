@@ -509,3 +509,30 @@ BMarks
     Native tests: fe_deep_view_matches_brute_u32/u64 at pixel step 2^-1280
       (~385 digits, Misiurewicz (0,1) window) vs brute HP: <1% mismatch,
       structure asserted. 23 tests green.
+
+17 Jul 2026 - floatexp handoff bug FOUND + FIXED (user report: "image shifts
+    slightly as I zoom" starting ~336 displayed digits = ~302 true = exactly
+    the fe cutover). Root cause: the handoff dropped dc, assuming |d| only
+    grows -- but lambda is an AVERAGE; in near-neutral regions |2Z| < 1
+    stretches meander |d| back down ~190 doublings to dc scale, where the
+    missing dc is order-1 relative. Diagnosis chain (all on the user's view
+    zoomed out 8x so dx = 2^-999 straddles the cutover, via a forced-cutover
+    -900 wasm build):
+      forced-fe vs f64: mean signed bias -54/-23/-26 counts (rows 120/240/360)
+      tier policy alignment: identical bias -> tier not the cause
+      handoff disabled (full-fe): mean 0.07 -> handoff was the cause
+      handoff carrying real dc: mean -0.13/0.04/0.24 -> FIXED
+    The bias moved palette bands (~50 counts on a 375-length palette = 13% of
+    a cycle) at the cutover crossing = the "shift". Fix shipped: handoff only
+    when dc converts to a NORMAL f64 (fe_handoff_ok), carrying dc into the
+    tail (the tail is then the native engine, meanders included); dc
+    subnormal/underflowing -> pixel runs floatexp end to end.
+    Payoff beyond the fix: brute spot checks went from |delta| <= 80
+    (misattributed to "speckle" at first ship) to EXACT -- at 2^-1002 (3/3 px,
+    31.9 rows/s, handoff path), 2^-1075 (2/2, 13.6 rows/s, full-fe; was 34
+    with the unsound handoff -- correctness costs 2.5x there), and 2^-1081
+    (1/1, 15.1 rows/s). Shallow views remain bit-identical to v10. Lesson for
+    the record: never validate a perturbation change by count-delta size alone
+    on ill-conditioned views -- the +/-80 "speckle" was a real bug; forcing
+    both engines onto the SAME view via a cutover override is the test that
+    caught it.

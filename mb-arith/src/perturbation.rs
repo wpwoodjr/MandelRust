@@ -393,17 +393,25 @@ pub fn perturb_point_bla(
 
 // *** floatexp head phase: perturbation past f64's ~1e-308 pixel-scale floor ***
 //
-// At pixel scales below ~2^-1000 the per-pixel dc underflows f64, but a delta
-// only GROWS from dc, so just the HEAD of each delta orbit needs extended
-// range: this driver runs the BLA loop on FloatExp deltas until |d| climbs
-// into comfortably-normal f64 range, then hands the pixel to the regular f64
-// engine via the same BlaState handoff the two-tier eps path uses. From the
-// handoff point on, dc (<= ~2^-950) is below the ulp of |d| (>= ~2^-800), so
-// the f64 tail legitimately runs with dc = 0. While |d| is fe-tiny every skip
-// radius admits it, so the head phase mega-skips and costs little.
+// At pixel scales below ~2^-1000 the per-pixel dc underflows f64. A delta
+// starts at dc, so the HEAD of each delta orbit needs extended range: this
+// driver runs the BLA loop on FloatExp deltas until |d| climbs into
+// comfortably-normal f64 range, then hands the pixel to the regular f64
+// engine via the same BlaState handoff the two-tier eps path uses -- WITH the
+// (f64-converted) dc, not dc = 0. Dropping dc at handoff was tried and is
+// UNSOUND in near-neutral (low-lambda) regions: |d| growth is only an
+// AVERAGE; locally |2Z| < 1 stretches make |d| meander back DOWN, and it can
+// retrace the ~190 doublings from the handoff point to dc scale, where the
+// missing dc is order-1 relative (measured: a systematic ~25-55-count bias on
+// 2.5M-count boundary pixels -- visible palette-band crawl right at the
+// fe/f64 cutover). Hence HANDOFF = true is only used when the caller proved
+// dc converts to a normal f64 (the tail is then exactly the native engine,
+// meanders included); otherwise the pixel runs floatexp end to end.
+// While |d| is fe-tiny every skip radius admits it, so the head phase
+// mega-skips and costs little either way.
 const FE_HANDOFF_D2_E: i64 = -1600; // |d|^2 exponent at handoff (|d| ~ 2^-800)
 
-fn bla_drive_fe(
+fn bla_drive_fe<const HANDOFF: bool>(
     orbit: &[(f64, f64)],
     bla: &BlaTable,
     dcx: FloatExp,
@@ -478,7 +486,7 @@ fn bla_drive_fe(
             d2 = w2;
             m = 0;
         }
-        if d2.m != 0.0 && d2.e >= FE_HANDOFF_D2_E {
+        if HANDOFF && d2.m != 0.0 && d2.e >= FE_HANDOFF_D2_E {
             return Err(BlaState {
                 dr: dr.to_f64(),
                 di: di.to_f64(),
@@ -491,9 +499,18 @@ fn bla_drive_fe(
     Ok(-1)
 }
 
-/// BLA pixel at floatexp depth: floatexp head phase, then the regular f64
-/// engine (strict, relaxing per pixel if starved) with dc dropped -- sound
-/// because dc is below the ulp of |d| from the handoff point on.
+// May this pixel hand off to the f64 tail? Only if its dc converts to f64
+// EXACTLY (normal f64 or true zero), so the tail -- which keeps dc -- is the
+// native engine on the true value. Subnormal/underflowing dc means the pixel
+// must stay in floatexp for its whole life (see bla_drive_fe's comment).
+#[inline]
+fn fe_handoff_ok(dcx: FloatExp, dcy: FloatExp) -> bool {
+    (dcx.m == 0.0 || dcx.e >= -1022) && (dcy.m == 0.0 || dcy.e >= -1022)
+}
+
+/// BLA pixel at floatexp depth: floatexp head phase, then (when dc is
+/// f64-representable) the regular f64 engine with the real dc -- strict,
+/// relaxing per pixel if starved (mirrors perturb_point_bla's semantics).
 pub fn perturb_point_bla_fe(
     orbit: &[(f64, f64)],
     bla: &BlaTable,
@@ -504,22 +521,28 @@ pub fn perturb_point_bla_fe(
     if orbit.len() < 2 {
         return -1;
     }
-    match bla_drive_fe(orbit, bla, dcx, dcy, max_iterations) {
+    if !fe_handoff_ok(dcx, dcy) {
+        return match bla_drive_fe::<false>(orbit, bla, dcx, dcy, max_iterations) {
+            Ok(count) => count,
+            Err(_) => unreachable!(),
+        };
+    }
+    match bla_drive_fe::<true>(orbit, bla, dcx, dcy, max_iterations) {
         Ok(count) => count,
         Err(st) => {
+            let (dcx64, dcy64) = (dcx.to_f64(), dcy.to_f64());
             let strict = |idx: usize| unsafe { bla.entries.get_unchecked(idx).r2 };
-            match bla_drive::<true>(orbit, bla, strict, 0.0, 0.0, max_iterations, st) {
+            match bla_drive::<true>(orbit, bla, strict, dcx64, dcy64, max_iterations, st) {
                 Ok(count) => count,
-                Err(st) => bla_finish_relaxed(orbit, bla, 0.0, 0.0, max_iterations, st),
+                Err(st) => bla_finish_relaxed(orbit, bla, dcx64, dcy64, max_iterations, st),
             }
         }
     }
 }
 
 // floatexp grid: per-pixel dc computed in FloatExp, pixels via the fe head
-// phase. No strip-level tier probing here: the f64 tail already relaxes per
-// pixel when starved (fe-depth views are rare enough that the per-pixel
-// detection cost is acceptable).
+// phase. Tail tiering is per pixel (strict, relaxing on proven starvation),
+// matching perturb_point_bla_fe.
 #[allow(clippy::too_many_arguments)]
 fn bla_grid_fe(
     orbit: &[(f64, f64)],
