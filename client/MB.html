@@ -3146,10 +3146,65 @@ function currentExampletoXML() {
     return xml;
 }
 
+// Convert a Kalles-Fraktaler-style location to a settings XML string, using the
+// current palette (and the current iteration count unless the text has an
+// Iterations: line). Returns null if the text isn't that format. Expected shape:
+//   Fractal: Mandelbrot (Power 2)     (optional; anything else is rejected)
+//   Real: <decimal>
+//   Im: <decimal>
+//   Zoom: <mantissa>e<exponent>       (plain numbers work too)
+//   Iterations: <n>                   (optional)
+// KF frames by HEIGHT: zoom 1 = view height 4, so half-height = 2/zoom; the
+// width follows from the window aspect via checkAspect, matching KF's framing.
+function kfLocationToXML(text) {
+    if (/^\s*</.test(text)) return null;   // looks like XML, not a location
+    const realM = text.match(/^\s*Real:\s*(-?[0-9.]+)\s*$/mi);
+    const imM = text.match(/^\s*Im:\s*(-?[0-9.]+)\s*$/mi);
+    const zoomM = text.match(/^\s*Zoom:\s*([0-9.]+)(?:[eE]\+?(-?[0-9]+))?\s*$/mi);
+    if (!realM || !imM || !zoomM) return null;
+    const fracM = text.match(/^\s*Fractal:\s*(.+?)\s*$/mi);
+    if (fracM && !/^mandelbrot\s*\(\s*power\s*2\s*\)$/i.test(fracM[1])) {
+        throw "Only Mandelbrot (Power 2) locations can be imported";
+    }
+    const zMant = parseFloat(zoomM[1]);
+    const zExp = zoomM[2] ? parseInt(zoomM[2], 10) : 0;
+    if (!(zMant > 0)) {
+        throw "Bad Zoom value";
+    }
+    // half-height = 2/zoom as (f64 mantissa, decimal exponent), then BigDecimal
+    const parts = (2/zMant).toExponential(15).split("e");
+    const hExp = parseInt(parts[1], 10) - zExp;
+    let half = new BigDecimal(parts[0]);
+    if (hExp > 0) {
+        half = half.multiply(new BigDecimal("1" + "0".repeat(hExp)));
+    } else if (hExp < 0) {
+        half = half.divide(new BigDecimal("1" + "0".repeat(-hExp)), -hExp + 40, BigDecimal.ROUND_HALF_EVEN);
+    }
+    const re = new BigDecimal(realM[1]);
+    const im = new BigDecimal(imM[1]);
+    const iterM = text.match(/^\s*Iterations:\s*([0-9]+)\s*$/mi);
+    const iters = iterM ? Number(iterM[1]) : maxIterSlider.value;
+    const offset = Math.round(mainPaletteOffsetSlider.value/100 * fixedPaletteLength);
+    return "<?xml version='1.0'?>\n<mandelbrot_settings_2>\n" +
+        "<limits>\n   <xmin>" + re.subtract(half).toString() + "</xmin>\n" +
+        "   <xmax>" + re.add(half).toString() + "</xmax>\n" +
+        "   <ymin>" + im.subtract(half).toString() + "</ymin>\n" +
+        "   <ymax>" + im.add(half).toString() + "</ymax>\n</limits>\n" +
+        palette.toXMLString() +
+        "<palette_mapping length='" + fixedPaletteLength + "' offset='" + offset + "'/>\n" +
+        "<max_iterations value='" + iters + "'/>\n" +
+        "</mandelbrot_settings_2>\n";
+}
+
 function installExampleFromXML(xmlString, respectSize, dontShowError) {
     // console.log("installExampleFromXML:", "from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], currentXML, xmlString);
     stopJob();
     try {
+      // Kalles-Fraktaler-style location? Convert to settings XML first.
+      const kfXml = kfLocationToXML(xmlString);
+      if (kfXml !== null) {
+          xmlString = kfXml;
+      }
       var parser = new DOMParser();
       var doc = parser.parseFromString(xmlString,"text/xml").documentElement;
       var width,height,xmin,xmax,ymin,ymax,colors,length,offset,iterations;
