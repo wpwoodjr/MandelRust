@@ -558,9 +558,11 @@ BMarks
     rows/s, paging" measurement was likely VM/background contamination (same
     pattern as the earlier contaminated CB sessions). CORRECTION: the CB has
     16GB RAM, not 8 -- so ~3GB of tables never plausibly paged and the
-    original "memory ceiling (8GB)" diagnosis was wrong from the start, not
-    just contaminated. Guidance downgraded: halve workers only if a slowdown
-    actually shows; prefix tables remain the right architecture for the >4M
-    budgets item but are no longer an urgent CB fix.
+    original "memory ceiling (8GB)" diagnosis was wrong FOR THE CB, not just
+    contaminated. It remains plausible for genuinely 8GB devices (phones,
+    tablets: 4-8 workers x 305MB tables + browser overhead + tighter mobile
+    wasm heaps), so prefix tables keep real memory-relief value for the
+    low-RAM fleet -- just not as a CB fix. Guidance: halve workers only if a
+    slowdown actually shows.
     NOTE this view's counts run to 3,999,698 of the 4M cap -- the deep-iters
     cap is about to be the binding limit on this lineage.
