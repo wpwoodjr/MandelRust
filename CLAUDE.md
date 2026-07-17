@@ -375,10 +375,11 @@ Few builds AND fast lookups AND all-core scaling — what big bands only half-do
   session suggesting otherwise was contaminated by a busy Crostini VM — on
   big.LITTLE, quiesce background VMs and trust repeated runs, not single ones).
   An early "8GB machines page on 4M-maxIter views (halve workers)" finding was
-  RETRACTED 17 Jul 2026: the max-memory configuration (4M-pt orbit, ~305 MB
-  table per worker strip) later ran a clean 131 rows/s on the CB at 8w -- the
-  1.25 rows/s paging measurement was more likely VM contamination. Only halve
-  workers if a slowdown actually shows.
+  RETRACTED 17 Jul 2026: the CB actually has 16GB (the paging theory never had
+  footing -- ~3GB of tables can't page 16GB), and the max-memory configuration
+  (4M-pt orbit, ~305 MB table per worker strip) later ran a clean 131 rows/s
+  on the CB at 8w. The 1.25 rows/s measurement was contamination or another
+  unidentified transient. Only halve workers if a slowdown actually shows.
 
 ## x86 Evaluation Playbook (BLA branch)
 
