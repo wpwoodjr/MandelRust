@@ -3181,7 +3181,9 @@ function kfLocationToXML(text) {
         half = half.divide(new BigDecimal("1" + "0".repeat(-hExp)), -hExp + 40, BigDecimal.ROUND_HALF_EVEN);
     }
     const re = new BigDecimal(realM[1]);
-    const im = new BigDecimal(imM[1]);
+    // KF's imaginary axis is inverted relative to ours (verified empirically:
+    // importing Im as-is rendered locations mirrored about the real axis)
+    const im = new BigDecimal(imM[1]).negate();
     const iterM = text.match(/^\s*Iterations:\s*([0-9]+)\s*$/mi);
     const iters = iterM ? Number(iterM[1]) : maxIterSlider.value;
     const offset = Math.round(mainPaletteOffsetSlider.value/100 * fixedPaletteLength);
