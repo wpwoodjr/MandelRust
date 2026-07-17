@@ -591,3 +591,23 @@ BMarks
     After: all 4 brute-checked px EXACT, 36 interior px in row 240 (was 0),
     21 rows/s single-thread (up from 18 -- no more false full-length rides).
     Shallow regression: 40-slow/126/270/360-boundary bit-identical to v11.
+
+17 Jul 2026 - SIMD128 limb kernels extended past 64 limbs (MAX_LIMBS 64 ->
+    512): the cap was only the reversal-scratch array size, not an overflow
+    bound (split lo/hi column accumulators stay ~n*2^33 even with square's
+    doubling; n = 512 peaks ~2^42). Deep views (1100+ digits = 126 u32 limbs)
+    had been falling off the cap onto the SCALAR path exactly where orbit
+    builds hurt most -- and the user promptly rendered a 2600-digit view
+    (273 limbs), past a first bump to 256, hence 512 (~4930 digits).
+    Measured (node wasm, orbit build, bit-identical checksums both cases):
+      126 limbs (1077-digit minibrot, 1.63M pts): 19.7 s -> 9.3 s = 2.12x
+      273 limbs (padded synthetic, 100k pts):      5.5 s -> 2.4 s = 2.33x
+    Trip-to-infinity's 4M cold build drops ~48 s -> ~23 s. Native unaffected
+    (module is wasm-only); > 512 limbs falls back to scalar as before.
+    Browser confirmation (Beast): trip-to-infinity 7.6 -> 22.2 rows/s cold
+    (parity with server-cold 26); the 2600-digit 4M view 1.2 -> 4.7 rows/s
+    cold, single pass (~96 s SIMD build at 273 limbs + strips -- build-
+    dominated as predicted; repeat renders are cache-warm at strip speed).
+    Browser confirmation (Beast, trip-to-infinity.xml, 1117 digits, 4M iters):
+    7.6 -> 22.2 rows/s cold (SIMD build ~19 s + strips; server cold was 26 --
+    parity). Warm-cache repeat render expected at strip speed (150+).

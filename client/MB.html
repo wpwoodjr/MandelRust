@@ -59,6 +59,11 @@
 <head>
 <meta name='viewport' content='width=device-width, height=device-height, user-scalable=no, initial-scale=1, minimum-scale=1, maximum-scale=1'/>
 <meta charset="UTF-8">
+<!-- deep views carry the whole settings XML in ?xml=, so the page URL can be
+     tens of KB; sending it as the Referer of every same-origin request trips
+     the browser's 4096-byte limit warning. Nothing reads the Referer: send
+     just the origin. -->
+<meta name="referrer" content="origin">
 <title>Mandelbrot Viewer</title>
 <!--
 <meta property="og:image" content="https://mandelbrot.xxxxxx.com/thumbnail.png"/>
@@ -298,10 +303,10 @@
   </style>
 </style>
 
-<script src="BigDecimal-all-last.min.js?v=129d3a3356"></script>
-<script src="slider.js?v=129d3a3356"></script>
-<script src="touch.js?v=129d3a3356"></script>
-<script src="percentage-complete.js?v=129d3a3356"></script>
+<script src="BigDecimal-all-last.min.js?v=8e36bc6834"></script>
+<script src="slider.js?v=8e36bc6834"></script>
+<script src="touch.js?v=8e36bc6834"></script>
+<script src="percentage-complete.js?v=8e36bc6834"></script>
 <script>
 
 "use strict";
@@ -460,7 +465,7 @@ var log2of10 = Math.log(10)/Math.log(2);
 // URLs is what stops a cached worker from outliving the binary it drives.
 // Stamped from the assets' contents by stamp-assets.sh at build time -- do not
 // edit by hand. Distinct from EXPECTED_WASM_VERSION, which pins the wasm ABI.
-const ASSET_VERSION = "129d3a3356";
+const ASSET_VERSION = "8e36bc6834";
 
 let compute_mandelbrot;
 WebAssembly

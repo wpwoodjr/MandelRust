@@ -449,7 +449,14 @@ pub(crate) mod simd32 {
     // below MIN_LIMBS the columns are too short for SIMD to beat the scalar path
     // (measured crossover in node/v8: scalar wins through 10 limbs)
     pub const MIN_LIMBS: usize = 11;
-    pub const MAX_LIMBS: usize = 64;
+    // MAX_LIMBS is the reversal-scratch size, NOT an overflow bound: the split
+    // (lo, hi) column accumulators stay below ~n*2^33 even with square_pos's
+    // doubling, so hundreds of limbs are safe (n = 512 peaks ~2^42). 512
+    // limbs = 16384 bits ~ 4932 decimal digits; deep views previously fell
+    // off the old 64-limb cap onto the scalar path exactly where orbit
+    // builds are most expensive (and a user promptly rendered a 2600-digit
+    // view = 273 limbs, past the first bump to 256).
+    pub const MAX_LIMBS: usize = 512;
 
     #[cfg(all(target_arch = "wasm32", feature = "simd128"))]
     pub const AVAILABLE: bool = true;
