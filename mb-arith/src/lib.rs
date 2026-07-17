@@ -5,7 +5,9 @@
 */
 
 
+mod floatexp;
 mod perturbation;
+pub use floatexp::*;
 pub use perturbation::*;
 
 // *** low precision *** //

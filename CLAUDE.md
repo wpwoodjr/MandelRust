@@ -126,6 +126,22 @@ code):
   whose probes never starve (126/270-digit) are BIT-IDENTICAL and at speed
   parity. Lambda alone cannot pick the tier (270-digit has LOWER lambda but
   dc ~1e-270 never reaches the ceiling) -- hence probes, not a formula.
+  FLOATEXP (wasm v11, server): pixel scales below ~2^-1000 (which f64 cannot
+  represent -- dc underflows) run a FloatExp head phase (`floatexp.rs`: f64
+  mantissa + i64 exponent; `bla_drive_fe`): the BLA loop on FloatExp deltas
+  until |d| climbs past ~2^-800, then a mid-pixel BlaState handoff to the
+  UNTOUCHED f64 engine with dc dropped (sound: dc <= ~2^-950 is below the ulp
+  of |d| from there on). While |d| is fe-tiny every skip validates, so the
+  head phase mega-skips and the deep view costs about what a 300-digit view
+  costs (360-boundary at TRUE scale: 34 rows/s single-thread wasm). Dispatch
+  is by dx exponent (`bla_strip_fe`, cutover 2^-1000): views above it run the
+  identical f64 path -- validated bit-identical (126/270/40-slow) at speed
+  parity. The scale plumbing (perturb_setup_fe*, server orbit cache, wasm meta
+  = 6 mantissa/exponent entries, (ox,oy) folded inside wasm) carries FloatExp
+  end to end because a plain-f64 FFI would underflow the values in transit.
+  Brute-validated at 2^-1280 pixel scale in `fe_deep_view_matches_brute_*`
+  and to 2^-1081 on the 360-boundary view's descendants; counts agree to
+  boundary-speckle level (|delta| <= ~80 on 2.5M-count pixels).
   PERF NOTE: |d|^2 is carried across loop iterations, NOT recomputed — a
   redundant multiply-add in the serial dependency chain cost wasm ~2.7x (native
   OoO hid it, V8 didn't) and native ~1.2x. Same law, second sighting: ANY
@@ -246,17 +262,21 @@ Next steps (after the `BLA` branch):
    only bound (--orbit-points flag; 5e8 counts = 8GB orbit, feasible on a big
    box; remote mode is the natural home for ultra-deep counts). Broadcast
    crossover: at big orbits, per-worker builds may beat relaying 100s of MB.
-2. **floatexp deltas** (f64 mantissa + i64 exponent) to push perturbation past
-   f64's pixel-scale floor. With the mag_to_f64 fix the engine is exact to the
-   TRUE f64 limits: full precision to 2.2e-308 pixel scale (~308 digits),
-   graceful subnormal degradation to the 4.9e-324 quantum (~323 digits: see
-   mb-rust-server/360-digits-boundary.xml, which sits AT the floor -- its pixel
-   step is below one quantum, so it renders at ~1.9x wrong scale and cannot
-   zoom deeper). The fixed conversion (first nonzero limb -> mantissa +
-   explicit exponent) is the seed of floatexp's own conversion routine.
-3. Merge `BLA-orbit-sharing` -> `BLA` -> `perturbation` -> `master` once soaked.
-4. Revisit within-pixel SIMD only on x86 hardware (AVX2 shuffles are cheaper —
+2. Merge `BLA-orbit-sharing` -> `BLA` -> `perturbation` -> `master` once soaked.
+3. Revisit within-pixel SIMD only on x86 hardware (AVX2 shuffles are cheaper —
    measure, don't assume).
+
+SHIPPED from this list (wasm v11): **floatexp deltas** — perturbation past
+f64's ~1e-308 pixel-scale floor (see the engine section above for mechanism
+and numbers). The old wall: full precision ended at 2.2e-308 pixel scale
+(~308 digits), subnormal degradation to the 4.9e-324 quantum, and
+mb-rust-server/360-digits-boundary.xml sat AT the floor (pixel step below one
+quantum -> rendered at ~1.9x wrong scale, could not zoom deeper). That view is
+now the shipped acceptance test: renders at TRUE scale, brute-verified, and
+zooming past it works (validated to 64x deeper / dx = 2^-1081; nothing
+depth-specific remains -- the client's digit pipeline is uncapped and the fe
+engine's exponents are i64). floatexp is also the prerequisite the GPU path
+was waiting on (f32 + exponent rescaling needs the same machinery).
 
 SHIPPED from this list (wasm v10): **two-tier adaptive BLA_EPS** for
 low-Lyapunov views — the fix for `mb-rust-server/40-digits-slow.xml` (see the

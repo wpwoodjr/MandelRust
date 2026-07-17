@@ -32,6 +32,7 @@ use crate::{
     negate64, add64, sub64, sq64, multiply64, incr64, HPData64, count_iterations_hp64,
     negate32, add32, sub32, sq32, multiply32, incr32, HPData32, count_iterations_hp32,
 };
+use crate::floatexp::{FloatExp, FE_ZERO};
 
 const ESCAPE_R2: f64 = 8.0;
 
@@ -390,6 +391,160 @@ pub fn perturb_point_bla(
     }
 }
 
+// *** floatexp head phase: perturbation past f64's ~1e-308 pixel-scale floor ***
+//
+// At pixel scales below ~2^-1000 the per-pixel dc underflows f64, but a delta
+// only GROWS from dc, so just the HEAD of each delta orbit needs extended
+// range: this driver runs the BLA loop on FloatExp deltas until |d| climbs
+// into comfortably-normal f64 range, then hands the pixel to the regular f64
+// engine via the same BlaState handoff the two-tier eps path uses. From the
+// handoff point on, dc (<= ~2^-950) is below the ulp of |d| (>= ~2^-800), so
+// the f64 tail legitimately runs with dc = 0. While |d| is fe-tiny every skip
+// radius admits it, so the head phase mega-skips and costs little.
+const FE_HANDOFF_D2_E: i64 = -1600; // |d|^2 exponent at handoff (|d| ~ 2^-800)
+
+fn bla_drive_fe(
+    orbit: &[(f64, f64)],
+    bla: &BlaTable,
+    dcx: FloatExp,
+    dcy: FloatExp,
+    max_iterations: i32,
+) -> Result<i32, BlaState> {
+    let last = orbit.len() - 1;
+    let n_levels = bla.level_off.len();
+    let escape = FloatExp::from_f64(ESCAPE_R2);
+    let mut dr = FE_ZERO;
+    let mut di = FE_ZERO;
+    let mut d2 = FE_ZERO;
+    let mut m = 0usize;
+    let mut n = 0i32;
+
+    while n < max_iterations {
+        // same skip scan as bla_drive, with an exponent-aware radius compare
+        let k_align = if m == 0 { usize::MAX } else { m.trailing_zeros() as usize };
+        let k_max = k_align.min(n_levels - 1);
+        let mut best_k = 0usize;
+        let mut k = 1usize;
+        while k <= k_max {
+            let s = 1usize << k;
+            if m + s > last || (n as usize + s) > max_iterations as usize {
+                break;
+            }
+            let idx = bla.level_off[k] as usize + (m >> k);
+            let r2 = FloatExp::from_f64(bla.entries[idx].r2);
+            if !d2.mag_lt(r2) {
+                break;
+            }
+            best_k = k;
+            k += 1;
+        }
+        if best_k > 0 {
+            let e = &bla.entries[bla.level_off[best_k] as usize + (m >> best_k)];
+            // d' = A*d + B*dc (complex; A, B are plain f64)
+            let (ax, ay) = (FloatExp::from_f64(e.ax), FloatExp::from_f64(e.ay));
+            let (bx, by) = (FloatExp::from_f64(e.bx), FloatExp::from_f64(e.by));
+            let new_dr = ax.mul(dr).sub(ay.mul(di)).add(bx.mul(dcx)).sub(by.mul(dcy));
+            let new_di = ax.mul(di).add(ay.mul(dr)).add(bx.mul(dcy)).add(by.mul(dcx));
+            dr = new_dr;
+            di = new_di;
+            m += 1usize << best_k;
+            n += (1usize << best_k) as i32;
+        } else {
+            // exact step: d' = 2*Z*d + d^2 + dc
+            let (zr, zi) = orbit[m];
+            let (zr, zi) = (FloatExp::from_f64(zr), FloatExp::from_f64(zi));
+            let lin_r = zr.mul(dr).sub(zi.mul(di)).mul_f64(2.0);
+            let lin_i = zr.mul(di).add(zi.mul(dr)).mul_f64(2.0);
+            let sq_r = dr.mul(dr).sub(di.mul(di));
+            let sq_i = dr.mul(di).mul_f64(2.0);
+            dr = lin_r.add(sq_r).add(dcx);
+            di = lin_i.add(sq_i).add(dcy);
+            m += 1;
+            n += 1;
+        }
+
+        // escape / rebase checks at the new position (count n-1, as bla_drive)
+        let (zmr, zmi) = orbit[m];
+        let wr = FloatExp::from_f64(zmr).add(dr);
+        let wi = FloatExp::from_f64(zmi).add(di);
+        let w2 = wr.mul(wr).add(wi.mul(wi));
+        if !w2.mag_lt(escape) {
+            return Ok(n - 1);
+        }
+        d2 = dr.mul(dr).add(di.mul(di));
+        if w2.mag_lt(d2) || m == last {
+            dr = wr;
+            di = wi;
+            d2 = w2;
+            m = 0;
+        }
+        if d2.m != 0.0 && d2.e >= FE_HANDOFF_D2_E {
+            return Err(BlaState {
+                dr: dr.to_f64(),
+                di: di.to_f64(),
+                d2: d2.to_f64(),
+                m,
+                n,
+            });
+        }
+    }
+    Ok(-1)
+}
+
+/// BLA pixel at floatexp depth: floatexp head phase, then the regular f64
+/// engine (strict, relaxing per pixel if starved) with dc dropped -- sound
+/// because dc is below the ulp of |d| from the handoff point on.
+pub fn perturb_point_bla_fe(
+    orbit: &[(f64, f64)],
+    bla: &BlaTable,
+    dcx: FloatExp,
+    dcy: FloatExp,
+    max_iterations: i32,
+) -> i32 {
+    if orbit.len() < 2 {
+        return -1;
+    }
+    match bla_drive_fe(orbit, bla, dcx, dcy, max_iterations) {
+        Ok(count) => count,
+        Err(st) => {
+            let strict = |idx: usize| unsafe { bla.entries.get_unchecked(idx).r2 };
+            match bla_drive::<true>(orbit, bla, strict, 0.0, 0.0, max_iterations, st) {
+                Ok(count) => count,
+                Err(st) => bla_finish_relaxed(orbit, bla, 0.0, 0.0, max_iterations, st),
+            }
+        }
+    }
+}
+
+// floatexp grid: per-pixel dc computed in FloatExp, pixels via the fe head
+// phase. No strip-level tier probing here: the f64 tail already relaxes per
+// pixel when starved (fe-depth views are rare enough that the per-pixel
+// detection cost is acceptable).
+#[allow(clippy::too_many_arguments)]
+fn bla_grid_fe(
+    orbit: &[(f64, f64)],
+    bla: &BlaTable,
+    dcx0: FloatExp,
+    dx: FloatExp,
+    dcy_at: impl Fn(usize) -> FloatExp,
+    rows: usize,
+    columns: usize,
+    max_iterations: i32,
+    out: &mut [i32],
+) {
+    if orbit.len() < 2 {
+        out[..rows * columns].fill(-1);
+        return;
+    }
+    for i in 0..rows {
+        let dcy = dcy_at(i);
+        for j in 0..columns {
+            let dcx = dcx0.add(dx.mul_f64(j as f64));
+            out[i * columns + j] = perturb_point_bla_fe(orbit, bla, dcx, dcy, max_iterations);
+        }
+    }
+}
+
 // The relaxed continuation for a starved pixel. never-inline keeps the hot
 // function down to ONE copy of the iteration loop: letting this second copy
 // inline next to the strict one measured 6-21% on skip-heavy deep views (pure
@@ -496,29 +651,6 @@ fn bla_grid(
     }
 }
 
-// bound |dc| over a rows x columns block and run the BLA pixel loop for it
-fn bla_block(
-    orbit: &[(f64, f64)],
-    dx_f: f64,
-    dy_f: f64,
-    dcx0: f64,
-    row_ref: usize,
-    rows: usize,
-    columns: usize,
-    max_iterations: i32,
-    out: &mut [i32],
-) {
-    let x1 = dcx0 + columns.saturating_sub(1) as f64 * dx_f;
-    let mx = dcx0.abs().max(x1.abs());
-    let y1 = (row_ref as f64 - (rows as f64 - 1.0)) * dy_f;
-    let my = (row_ref as f64 * dy_f).abs().max(y1.abs());
-    let dc_max = (mx * mx + my * my).sqrt();
-    let bla = build_bla_table(orbit, dc_max);
-
-    let dcy_at = |i: usize| (row_ref as f64 - i as f64) * dy_f;
-    bla_grid(orbit, &bla, dcx0, dx_f, dcy_at, rows, columns, max_iterations, out);
-}
-
 /// Orbit-sharing strip grinder. Compute image rows `[strip_row0, strip_row0 +
 /// strip_rows)` against a reference orbit that was built ONCE for the whole
 /// image (reference at the image center, i.e. `perturb_setup(.., image_rows, ..)`
@@ -528,7 +660,8 @@ fn bla_block(
 /// point: pay the expensive HP orbit once, keep per-strip tables tight.
 ///
 /// `dcy_off` shifts every sample by a constant in dc.y: 0.0 for the reference's
-/// own grid (bit-identical to `bla_block` on the whole image, since x + 0.0 == x),
+/// own grid (a whole-image call with strip_row0 = 0, dcy_off = 0.0 is the
+/// block engine the BLA wrappers use, since x + 0.0 == x),
 /// `0.5*dy_f` for the second pass's half-pixel-shifted grid -- the reference
 /// point is not a grid point, so one orbit serves both passes. A matching x
 /// shift is folded into `dcx0` by the caller.
@@ -559,6 +692,57 @@ pub fn bla_strip(
     let dcy_at =
         |i: usize| (image_row_ref as f64 - (strip_row0 + i) as f64) * dy_f + dcy_off;
     bla_grid(orbit, &bla, dcx0, dx_f, dcy_at, strip_rows, columns, max_iterations, out);
+}
+
+// Pixel scales at/above this dx exponent use the plain f64 engine: dc values
+// stay comfortably normal (dcx0 ~ 2^11 * dx), so the f64 path keeps its full
+// precision AND its bit-identical behavior. Below it, the floatexp head phase
+// takes over -- including the formerly "gracefully degrading" subnormal band
+// (2^-1074 < dx < 2^-1000), which now renders at full precision instead.
+const FE_CUTOVER_DX_E: i64 = -1000;
+
+/// `bla_strip` with FloatExp scale arguments: dispatches to the plain f64
+/// strip when the pixel scale is representable (bit-identical to calling
+/// `bla_strip` directly), or to the floatexp head-phase engine below f64's
+/// floor. This is the entry the server and wasm strip exports use.
+#[allow(clippy::too_many_arguments)]
+pub fn bla_strip_fe(
+    orbit: &[(f64, f64)],
+    dx: FloatExp,
+    dy: FloatExp,
+    dcx0: FloatExp,
+    dcy_off: FloatExp,
+    image_row_ref: usize,
+    strip_row0: usize,
+    strip_rows: usize,
+    columns: usize,
+    max_iterations: i32,
+    out: &mut [i32],
+) {
+    if dx.e >= FE_CUTOVER_DX_E {
+        bla_strip(
+            orbit, dx.to_f64(), dy.to_f64(), dcx0.to_f64(), dcy_off.to_f64(),
+            image_row_ref, strip_row0, strip_rows, columns, max_iterations, out,
+        );
+        return;
+    }
+    // dc_max over this strip, in fe (its f64 image is ~0, which is fine: at
+    // these depths the |B|*dc_max term is provably negligible against the
+    // radii -- that is exactly why deep-zoom BLA skips are long)
+    let x1 = dcx0.add(dx.mul_f64(columns.saturating_sub(1) as f64));
+    let mx = if dcx0.mag_lt(x1) { x1 } else { dcx0 };
+    let dcy_top = dy.mul_f64(image_row_ref as f64 - strip_row0 as f64).add(dcy_off);
+    let dcy_bot = dy
+        .mul_f64(image_row_ref as f64 - (strip_row0 + strip_rows.saturating_sub(1)) as f64)
+        .add(dcy_off);
+    let my = if dcy_top.mag_lt(dcy_bot) { dcy_bot } else { dcy_top };
+    let dc_max2 = mx.mul(mx).add(my.mul(my));
+    let bla = build_bla_table(orbit, dc_max2.to_f64().sqrt());
+
+    let dcy_at = |i: usize| {
+        dy.mul_f64(image_row_ref as f64 - (strip_row0 + i) as f64).add(dcy_off)
+    };
+    bla_grid_fe(orbit, &bla, dcx0, dx, dcy_at, strip_rows, columns, max_iterations, out);
 }
 
 // *** shared-index variant (SIMD-friendly) *** //
@@ -883,8 +1067,9 @@ macro_rules! perturb_engine {
      $negate:ident, $add:ident, $sub:ident, $sq:ident, $multiply:ident, $incr:ident,
      $hpdata:ident, $count_iterations:ident,
      $mag_to_f64:ident, $limbs_to_f64_scratch:ident, $limbs_to_f64:ident,
-     $reference_orbit:ident, $perturb_setup:ident, $mandelbrot_perturb:ident,
-     $mandelbrot_perturb_glitch:ident) => {
+     $mag_to_fe:ident, $limbs_to_fe_scratch:ident, $limbs_to_fe:ident,
+     $reference_orbit:ident, $perturb_setup:ident, $perturb_setup_fe:ident,
+     $mandelbrot_perturb:ident, $mandelbrot_perturb_glitch:ident) => {
 
 /// Convert a magnitude (non-negative limb value: limb0 = integral part, limbs 1..
 /// = fractional limbs, most significant first) to f64.
@@ -941,6 +1126,45 @@ fn $limbs_to_f64_scratch(x: &[$limb], scratch: &mut [$limb]) -> f64 {
 pub fn $limbs_to_f64(x: &[$limb]) -> f64 {
     let mut scratch = vec![0 as $limb; x.len()];
     $limbs_to_f64_scratch(x, &mut scratch)
+}
+
+/// FloatExp variant of $mag_to_f64: same 3-limb mantissa assembly, but the
+/// scale goes into the explicit exponent instead of an f64 multiply, so there
+/// is no floor -- values below 2^-1074 convert exactly. (Converting the result
+/// with .to_f64() reproduces $mag_to_f64 bit for bit, subnormal path included.)
+#[inline]
+fn $mag_to_fe(m: &[$limb]) -> FloatExp {
+    const B: i64 = <$limb>::BITS as i64;
+    let k = match m.iter().position(|&l| l != 0) {
+        Some(k) => k,
+        None => return FE_ZERO,
+    };
+    let step = 2.0f64.powi(-(B as i32));
+    let mut mant = m[k] as f64;
+    let mut lo = step;
+    let end = core::cmp::min(k + 3, m.len());
+    for i in (k + 1)..end {
+        mant += m[i] as f64 * lo;
+        lo *= step;
+    }
+    FloatExp::new(mant, -B * (k as i64))
+}
+
+/// FloatExp variant of $limbs_to_f64_scratch (two's-complement input).
+#[inline]
+fn $limbs_to_fe_scratch(x: &[$limb], scratch: &mut [$limb]) -> FloatExp {
+    if (x[0] >> (<$limb>::BITS - 1)) != 0 {
+        $negate(x, scratch);
+        $mag_to_fe(&scratch[..x.len()]).neg()
+    } else {
+        $mag_to_fe(x)
+    }
+}
+
+/// FloatExp variant of $limbs_to_f64 (allocating).
+pub fn $limbs_to_fe(x: &[$limb]) -> FloatExp {
+    let mut scratch = vec![0 as $limb; x.len()];
+    $limbs_to_fe_scratch(x, &mut scratch)
 }
 
 /// Compute the reference orbit Z_0 = 0, Z_{k+1} = Z_k^2 + C at high precision,
@@ -1052,6 +1276,43 @@ pub fn $perturb_setup(
     let dcx0 = -(col_ref as f64) * dx_f;
 
     (orbit, dx_f, dy_f, dcx0, col_ref, row_ref)
+}
+
+/// FloatExp variant of $perturb_setup: same orbit, but the pixel steps and
+/// dcx0 keep their full exponent range, so views below f64's ~1e-308 pixel
+/// scale set up correctly. Feed the results to `bla_strip_fe` (which
+/// dispatches back to the plain f64 engine when the scale allows).
+pub fn $perturb_setup_fe(
+    xmin: &[$limb],
+    dx: &[$limb],
+    ymax: &[$limb],
+    dy: &[$limb],
+    chunks: usize,
+    rows: usize,
+    columns: usize,
+    max_iterations: i32,
+) -> (Vec<(f64, f64)>, FloatExp, FloatExp, FloatExp, usize, usize) {
+    let col_ref = columns / 2;
+    let row_ref = rows / 2;
+
+    let mut cx = xmin[..chunks].to_vec();
+    for _ in 0..col_ref {
+        $incr(&mut cx, &dx[..chunks]);
+    }
+    let mut dy_neg = vec![0 as $limb; chunks];
+    $negate(&dy[..chunks], &mut dy_neg);
+    let mut cy = ymax[..chunks].to_vec();
+    for _ in 0..row_ref {
+        $incr(&mut cy, &dy_neg);
+    }
+
+    let orbit = $reference_orbit(&cx, &cy, max_iterations);
+
+    let dx_fe = $limbs_to_fe(&dx[..chunks]);
+    let dy_fe = $limbs_to_fe(&dy[..chunks]);
+    let dcx0 = dx_fe.mul_f64(-(col_ref as f64));
+
+    (orbit, dx_fe, dy_fe, dcx0, col_ref, row_ref)
 }
 
 /// Compute a `rows` x `columns` block by perturbation, reference at block center.
@@ -1194,25 +1455,32 @@ perturb_engine!(u64,
     negate64, add64, sub64, sq64, multiply64, incr64,
     HPData64, count_iterations_hp64,
     mag_to_f64_64, limbs_to_f64_scratch_64, limbs64_to_f64,
-    reference_orbit64, perturb_setup64, mandelbrot_perturb64, mandelbrot_perturb_glitch64);
+    mag_to_fe_64, limbs_to_fe_scratch_64, limbs64_to_fe,
+    reference_orbit64, perturb_setup64, perturb_setup_fe64,
+    mandelbrot_perturb64, mandelbrot_perturb_glitch64);
 
 perturb_engine!(u32,
     negate32, add32, sub32, sq32, multiply32, incr32,
     HPData32, count_iterations_hp32,
     mag_to_f64_32, limbs_to_f64_scratch_32, limbs32_to_f64,
-    reference_orbit32, perturb_setup32, mandelbrot_perturb32, mandelbrot_perturb_glitch32);
+    mag_to_fe_32, limbs_to_fe_scratch_32, limbs32_to_fe,
+    reference_orbit32, perturb_setup32, perturb_setup_fe32,
+    mandelbrot_perturb32, mandelbrot_perturb_glitch32);
 
 /// Compute a block by BLA-accelerated perturbation (rebasing engine + skip
 /// table), reference at the block center. Same signature/semantics as
 /// mandelbrot_perturb64; the BLA table is built once per reference orbit.
+/// Scale setup is FloatExp, so views below f64's pixel-scale floor dispatch
+/// to the floatexp head-phase engine (see bla_strip_fe); representable views
+/// run the plain f64 path, bit-identical to before.
 pub fn mandelbrot_perturb_bla64(
     xmin: &[u64], dx: &[u64], ymax: &[u64], dy: &[u64],
     chunks: usize, rows: usize, columns: usize,
     max_iterations: i32, out: &mut [i32],
 ) {
-    let (orbit, dx_f, dy_f, dcx0, _col_ref, row_ref) =
-        perturb_setup64(xmin, dx, ymax, dy, chunks, rows, columns, max_iterations);
-    bla_block(&orbit, dx_f, dy_f, dcx0, row_ref, rows, columns, max_iterations, out);
+    let (orbit, dx_fe, dy_fe, dcx0, _col_ref, row_ref) =
+        perturb_setup_fe64(xmin, dx, ymax, dy, chunks, rows, columns, max_iterations);
+    bla_strip_fe(&orbit, dx_fe, dy_fe, dcx0, FE_ZERO, row_ref, 0, rows, columns, max_iterations, out);
 }
 
 /// u32-limb variant of mandelbrot_perturb_bla64 (the delta loop and BLA table
@@ -1222,9 +1490,9 @@ pub fn mandelbrot_perturb_bla32(
     chunks: usize, rows: usize, columns: usize,
     max_iterations: i32, out: &mut [i32],
 ) {
-    let (orbit, dx_f, dy_f, dcx0, _col_ref, row_ref) =
-        perturb_setup32(xmin, dx, ymax, dy, chunks, rows, columns, max_iterations);
-    bla_block(&orbit, dx_f, dy_f, dcx0, row_ref, rows, columns, max_iterations, out);
+    let (orbit, dx_fe, dy_fe, dcx0, _col_ref, row_ref) =
+        perturb_setup_fe32(xmin, dx, ymax, dy, chunks, rows, columns, max_iterations);
+    bla_strip_fe(&orbit, dx_fe, dy_fe, dcx0, FE_ZERO, row_ref, 0, rows, columns, max_iterations, out);
 }
 
 #[cfg(test)]
@@ -1385,6 +1653,71 @@ mod tests {
         // perturbation is f64-approximate; near the boundary a few pixels may differ
         // from exact HP, but the overall rate must be tiny (<1%).
         assert!(mismatches * 100 <= total, "too many mismatches: {mismatches}/{total}");
+    }
+
+    // Same Misiurewicz-point window at pixel step 2^-1280 (~385 decimal
+    // digits) -- far below f64's ~2^-1074 floor, where the old engine could
+    // not even represent dc. Exercises the floatexp head phase, the mid-pixel
+    // handoff to the f64 engine, and the fe dc plumbing, against brute HP.
+    fn fe_deep_view_body(use32: bool) {
+        let n_digits = 81usize;
+        let frac0 = vec![0u32; n_digits];
+        let mut frac_dx = vec![0u32; n_digits];
+        frac_dx[79] = 1; // digit weight 2^-16*80 = 2^-1280
+        let xd = coord(0, &frac0); // 0.0
+        let yd = coord(1, &frac0); // 1.0
+        let dxd = coord(0, &frac_dx);
+        let dyd = coord(0, &frac_dx);
+        let (rows, columns, max_iter) = (32, 32, 8000);
+
+        let (mismatches, total, max_c, distinct) = if use32 {
+            let chunks = chunks32_for(xd.len());
+            let (dx, dy) = (u32_to_limbs32(&dxd), u32_to_limbs32(&dyd));
+            let mut xmin = u32_to_limbs32(&xd);
+            let mut dx_neg = vec![0u32; xmin.len()];
+            negate32(&dx, &mut dx_neg);
+            for _ in 0..columns / 2 { incr32(&mut xmin, &dx_neg); }
+            let mut ymax = u32_to_limbs32(&yd);
+            for _ in 0..rows / 2 { incr32(&mut ymax, &dy); }
+
+            let mut pert = vec![0i32; rows * columns];
+            mandelbrot_perturb_bla32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert);
+            let brute = brute_image32(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter);
+            count_stats(&pert, &brute, rows, columns)
+        } else {
+            let chunks = chunks64_for(xd.len());
+            let (dx, dy) = (u32_to_limbs64(&dxd), u32_to_limbs64(&dyd));
+            let mut xmin = u32_to_limbs64(&xd);
+            let mut dx_neg = vec![0u64; xmin.len()];
+            negate64(&dx, &mut dx_neg);
+            for _ in 0..columns / 2 { incr64(&mut xmin, &dx_neg); }
+            let mut ymax = u32_to_limbs64(&yd);
+            for _ in 0..rows / 2 { incr64(&mut ymax, &dy); }
+
+            let mut pert = vec![0i32; rows * columns];
+            mandelbrot_perturb_bla64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter, &mut pert);
+            let brute = brute_image64(&xmin, &dx, &ymax, &dy, chunks, rows, columns, max_iter);
+            count_stats(&pert, &brute, rows, columns)
+        };
+
+        // separation from 2^-1280 at this point's lambda (~0.8/iter) takes
+        // ~1100 iterations, so a healthy render has counts >= ~1000 and real
+        // structure; a broken fe path collapses to one flat count.
+        assert!(
+            max_c >= 1000 && distinct >= 20,
+            "view not a meaningful fe-depth test: max_count={max_c} distinct={distinct}"
+        );
+        assert!(mismatches * 100 <= total, "too many mismatches: {mismatches}/{total}");
+    }
+
+    #[test]
+    fn fe_deep_view_matches_brute_u32() {
+        fe_deep_view_body(true);
+    }
+
+    #[test]
+    fn fe_deep_view_matches_brute_u64() {
+        fe_deep_view_body(false);
     }
 
     fn count_stats(pert: &[i32], brute: &[Vec<i32>], rows: usize, columns: usize) -> (usize, usize, i32, usize) {

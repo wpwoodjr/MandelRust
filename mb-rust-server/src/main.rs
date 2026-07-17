@@ -348,9 +348,12 @@ struct MandelbrotCoordsHP2 {
 // upcoming request), so the true memory bound is max(budget, largest orbit).
 struct CachedOrbit {
     orbit: Vec<(f64, f64)>,
-    dx_f: f64,
-    dy_f: f64,
-    dcx0: f64,
+    // FloatExp scale meta: pixel scales below f64's ~1e-308 floor (360+ digit
+    // views) are unrepresentable as plain f64; bla_strip_fe dispatches back to
+    // the f64 engine when the scale allows (bit-identical to the old path)
+    dx_fe: FloatExp,
+    dy_fe: FloatExp,
+    dcx0: FloatExp,
     row_ref: usize,
 }
 
@@ -427,9 +430,9 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                 let dx = u32_to_limbs64(&coords.dx);
                 let ymax = u32_to_limbs64(&coords.ymax);
                 let dy = u32_to_limbs64(&coords.dy);
-                let (orbit, dx_f, dy_f, dcx0, _col_ref, row_ref) =
-                    perturb_setup64(&xmin, &dx, &ymax, &dy, chunks, basis_rows, basis_columns, max_iter);
-                let c = std::sync::Arc::new(CachedOrbit { orbit, dx_f, dy_f, dcx0, row_ref });
+                let (orbit, dx_fe, dy_fe, dcx0, _col_ref, row_ref) =
+                    perturb_setup_fe64(&xmin, &dx, &ymax, &dy, chunks, basis_rows, basis_columns, max_iter);
+                let c = std::sync::Arc::new(CachedOrbit { orbit, dx_fe, dy_fe, dcx0, row_ref });
                 orbit_cache_insert(key, c.clone());
                 (c, false)
             }
@@ -445,8 +448,9 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                 cache.len(), total_mb);
         }
         // this request's sampling grid, offset (ox, oy) pixels from the basis
-        let dcx0_eff = cached.dcx0 + coords.ox * cached.dx_f;
-        let dcy_off = coords.oy * cached.dy_f;
+        // (folded in FloatExp: at fe depths the f64 fold would underflow)
+        let dcx0_eff = cached.dcx0.add(cached.dx_fe.mul_f64(coords.ox));
+        let dcy_off = cached.dy_fe.mul_f64(coords.oy);
 
         let pool = match rayon::ThreadPoolBuilder::new().num_threads(threads).build() {
             Ok(p) => p,
@@ -461,7 +465,7 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                 }
                 let h = strip.min(rows - r0);
                 let mut out = vec![0i32; h*columns];
-                bla_strip(&cached.orbit, cached.dx_f, cached.dy_f, dcx0_eff, dcy_off,
+                bla_strip_fe(&cached.orbit, cached.dx_fe, cached.dy_fe, dcx0_eff, dcy_off,
                     cached.row_ref, r0, h, columns, max_iter, &mut out);
                 let counts: Vec<&[i32]> = out.chunks(columns).collect();
                 let line = format!(

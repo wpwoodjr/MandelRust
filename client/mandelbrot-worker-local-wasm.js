@@ -5,7 +5,11 @@ let malloc, dalloc;
 // orbit sharing (v8): build one reference orbit per image, reuse across strips
 let build_reference_orbit = null, compute_strip_with_orbit = null, malloc_f64 = null, free_f64 = null;
 // cached orbit for the image this worker is currently rendering
-let cachedImageId = null, cachedOrbit = null; // {ptr, len, dx_f, dy_f, dcx0, rowRef}
+let cachedImageId = null, cachedOrbit = null; // {ptr, len, meta: Float64Array(6) copy, rowRef}
+// meta = [dx_m, dx_e, dy_m, dy_e, dcx0_m, dcx0_e]: FloatExp mantissa/exponent
+// pairs -- pixel scales below f64's ~1e-308 floor can't ride through plain f64
+// values, so the scale crosses the FFI split and (ox, oy) folding happens
+// inside wasm (v11).
 
 // Set to true to log HP compute time per strip and the loaded .wasm size
 // (the SIMD build is ~57 KB; the pre-SIMD build was ~43 KB -> a quick cache check).
@@ -17,7 +21,7 @@ let hpMsAccum = 0, hpStripAccum = 0;
 // Must match mb_wasm_version() in mb-wasm/src/lib.rs. Bump both together, and
 // bump ASSET_VERSION in MB.html so caches can't pair a new worker with an old
 // binary (or vice versa).
-const EXPECTED_WASM_VERSION = 10;
+const EXPECTED_WASM_VERSION = 11;
 
 function wasmReady() {
     return compute_mandelbrot && compute_mandelbrot_hp && compute_mandelbrot_hp_perturb
@@ -79,17 +83,17 @@ function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows) {
     let ymaxPtr = wasmMemory.copyFromArrayU32(ymax).byteOffset;
     let dyPtr = wasmMemory.copyFromArrayU32(dy).byteOffset;
     let lenPtr = malloc(4);
-    let metaPtr = malloc_f64(3);
+    let metaPtr = malloc_f64(6);
     let _tb = DEBUG ? performance.now() : 0;
     let orbitPtr = build_reference_orbit(xminPtr, dxPtr, ymaxPtr, dyPtr, len,
         basisCols, basisRows, maxIterations, lenPtr, metaPtr);
     let orbitLen = new Uint32Array(wasmMemory.memory.buffer, lenPtr, 1)[0];
-    let meta = new Float64Array(wasmMemory.memory.buffer, metaPtr, 3);
-    cachedOrbit = { ptr: orbitPtr, len: orbitLen,
-        dx_f: meta[0], dy_f: meta[1], dcx0: meta[2], rowRef: basisRows >>> 1 };
+    // copy the meta out of wasm memory (later allocations may grow/detach it)
+    let meta = Float64Array.from(new Float64Array(wasmMemory.memory.buffer, metaPtr, 6));
+    cachedOrbit = { ptr: orbitPtr, len: orbitLen, meta: meta, rowRef: basisRows >>> 1 };
     cachedImageId = imageId;
     if (DEBUG) console.log(`[w${workerNumber}] built orbit ${orbitLen} pts for image ${imageId} in ${(performance.now()-_tb).toFixed(1)} ms`);
-    dalloc(lenPtr, 4); free_f64(metaPtr, 3);
+    dalloc(lenPtr, 4); free_f64(metaPtr, 6);
     dalloc(dyPtr, len*4); dalloc(ymaxPtr, len*4); dalloc(dxPtr, len*4); dalloc(xminPtr, len*4);
 }
 
@@ -138,8 +142,9 @@ onmessage = function(msg) {
                     let outLen = nrows*columnCount;
                     let outPtr = wasmMemory.newArrayI32(outLen).byteOffset;
                     let _t0 = DEBUG ? performance.now() : 0;
-                    compute_strip_with_orbit(o.ptr, o.len, o.dx_f, o.dy_f,
-                        o.dcx0 + ox*o.dx_f, oy*o.dy_f, o.rowRef,
+                    compute_strip_with_orbit(o.ptr, o.len,
+                        o.meta[0], o.meta[1], o.meta[2], o.meta[3], o.meta[4], o.meta[5],
+                        ox, oy, o.rowRef,
                         firstRow, nrows, columnCount, maxIterations, outPtr);
                     if (DEBUG) { hpMsAccum += performance.now()-_t0; hpStripAccum += 1; }
                     // fresh view: grinding (BLA table alloc) may have grown memory
@@ -213,7 +218,7 @@ onmessage = function(msg) {
             let copy = new Float64Array(o.len * 2);
             copy.set(new Float64Array(wasmMemory.memory.buffer, o.ptr, o.len * 2));
             postMessage([ "orbit", imageId,
-                { len: o.len, dx_f: o.dx_f, dy_f: o.dy_f, dcx0: o.dcx0, rowRef: o.rowRef },
+                { len: o.len, meta: Array.from(o.meta), rowRef: o.rowRef },
                 copy ], [ copy.buffer ]);
         });
     } else if (data[0] == "orbit") {
@@ -230,7 +235,7 @@ onmessage = function(msg) {
             let ptr = malloc_f64(arr.length);
             new Float64Array(wasmMemory.memory.buffer, ptr, arr.length).set(arr);
             cachedOrbit = { ptr: ptr, len: meta.len,
-                dx_f: meta.dx_f, dy_f: meta.dy_f, dcx0: meta.dcx0, rowRef: meta.rowRef };
+                meta: Float64Array.from(meta.meta), rowRef: meta.rowRef };
             cachedImageId = imageId;
             if (DEBUG) console.log(`[w${workerNumber}] adopted broadcast orbit ${meta.len} pts for image ${imageId}`);
         });

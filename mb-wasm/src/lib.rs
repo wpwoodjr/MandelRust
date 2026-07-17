@@ -54,8 +54,14 @@ pub extern "C"  fn dalloc(ptr: *mut u8, size: u32) {
 //      probe pixels detect starvation (> BLA_RELAX_RUN consecutive exact
 //      steps) and flip their strip to BLA_EPS_RELAXED radii. Strips whose
 //      probes never starve are bit-identical to v9.
+// 11 = floatexp: pixel scales below f64's ~1e-308 floor render via a floatexp
+//      (f64 mantissa + i64 exponent) head phase. out_meta grows to 6 entries
+//      of mantissa/exponent pairs, and compute_strip_with_orbit takes those
+//      pairs plus raw (ox, oy) -- the offset folding that JS used to do in f64
+//      now happens inside wasm at full range. Views above the floor are
+//      bit-identical to v10.
 #[no_mangle]
-pub extern "C" fn mb_wasm_version() -> u32 { 10 }
+pub extern "C" fn mb_wasm_version() -> u32 { 11 }
 
 
 use mb_arith::*;
@@ -166,10 +172,13 @@ pub extern "C" fn free_f64(ptr: *mut f64, count: u32) {
 }
 
 // Build the whole-image reference orbit (reference at image center, matching
-// perturb_setup32). Returns a pointer to `2*N` interleaved f64 (zr,zi); writes the
-// orbit point count N to *out_len and the f64 pixel steps [dx_f, dy_f, dcx0] to
-// out_meta[0..3] so the caller can hand them to compute_strip_with_orbit without
-// reconverting limbs. The buffer is 8-aligned; free it with free_f64(ptr, 2*N).
+// perturb_setup_fe32). Returns a pointer to `2*N` interleaved f64 (zr,zi);
+// writes the orbit point count N to *out_len and the FloatExp scale meta
+// [dx_m, dx_e, dy_m, dy_e, dcx0_m, dcx0_e] to out_meta[0..6] (exponents carried
+// as f64 -- exact for any real exponent) so the caller can hand them to
+// compute_strip_with_orbit without reconverting limbs. The mantissa/exponent
+// split is what lets pixel scales below f64's ~1e-308 floor survive the FFI.
+// The buffer is 8-aligned; free it with free_f64(ptr, 2*N).
 #[no_mangle]
 pub extern "C" fn build_reference_orbit(
     xmin: *const u32, dx: *const u32, ymax: *const u32, dy: *const u32, len: u32,
@@ -188,7 +197,7 @@ pub extern "C" fn build_reference_orbit(
     let ymax = u32_to_limbs32(ymax);
     let dy = u32_to_limbs32(dy);
 
-    let (orbit, dx_f, dy_f, dcx0, _col_ref, _row_ref) = perturb_setup32(
+    let (orbit, dx_fe, dy_fe, dcx0, _col_ref, _row_ref) = perturb_setup_fe32(
         &xmin, &dx, &ymax, &dy, chunks, image_rows as usize, columns as usize, max_iterations,
     );
 
@@ -200,25 +209,30 @@ pub extern "C" fn build_reference_orbit(
     std::mem::forget(boxed); // ownership passes to JS; freed via free_f64
     unsafe {
         *out_len = n as u32;
-        *out_meta.add(0) = dx_f;
-        *out_meta.add(1) = dy_f;
-        *out_meta.add(2) = dcx0;
+        *out_meta.add(0) = dx_fe.m;
+        *out_meta.add(1) = dx_fe.e as f64;
+        *out_meta.add(2) = dy_fe.m;
+        *out_meta.add(3) = dy_fe.e as f64;
+        *out_meta.add(4) = dcx0.m;
+        *out_meta.add(5) = dcx0.e as f64;
     }
     ptr
 }
 
 // Grind image rows [strip_row0, strip_row0+strip_rows) against a shared orbit
 // (2*orbit_len interleaved f64, as returned/broadcast from build_reference_orbit).
-// dx_f/dy_f/dcx0 come from out_meta; image_row_ref = image_rows/2 fixes the
-// reference the orbit was built at. dcy_off shifts every sample in dc.y: 0.0 for
-// the reference's own grid, 0.5*dy_f for the half-pixel-shifted second pass (a
-// matching x shift is folded into dcx0 by the caller). Writes strip_rows*columns
+// The scale arguments are the FloatExp mantissa/exponent pairs from out_meta;
+// (ox, oy) is this job's sampling-grid offset from the basis grid in pixels
+// (pass 2: -0.5, +0.5), folded into dc here -- in FloatExp, since at fe depths
+// the f64 fold JS used to do would underflow. image_row_ref = image_rows/2
+// fixes the reference row the orbit was built at. Writes strip_rows*columns
 // i32 to out.
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
 pub extern "C" fn compute_strip_with_orbit(
     orbit_ptr: *const f64, orbit_len: u32,
-    dx_f: f64, dy_f: f64, dcx0: f64, dcy_off: f64, image_row_ref: u32,
+    dx_m: f64, dx_e: f64, dy_m: f64, dy_e: f64, dcx0_m: f64, dcx0_e: f64,
+    ox: f64, oy: f64, image_row_ref: u32,
     strip_row0: u32, strip_rows: u32, columns: u32,
     max_iterations: i32, iteration_counts: *mut i32,
 ) {
@@ -230,8 +244,12 @@ pub extern "C" fn compute_strip_with_orbit(
     let strip_rows = strip_rows as usize;
     let columns = columns as usize;
     let out = unsafe { std::slice::from_raw_parts_mut(iteration_counts, strip_rows * columns) };
-    bla_strip(
-        orbit, dx_f, dy_f, dcx0, dcy_off, image_row_ref as usize,
+    let dx = FloatExp::new(dx_m, dx_e as i64);
+    let dy = FloatExp::new(dy_m, dy_e as i64);
+    let dcx0 = FloatExp::new(dcx0_m, dcx0_e as i64).add(dx.mul_f64(ox));
+    let dcy_off = dy.mul_f64(oy);
+    bla_strip_fe(
+        orbit, dx, dy, dcx0, dcy_off, image_row_ref as usize,
         strip_row0 as usize, strip_rows, columns, max_iterations, out,
     );
 }

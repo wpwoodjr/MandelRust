@@ -486,3 +486,26 @@ BMarks
         999999 447 (baseline 422-429) -- parity or a shade better, so the
         strict path is clean on ARM too; 40-digits-slow 101 (no pre-change CB
         baseline was ever taken for this view).
+
+17 Jul 2026 - floatexp SHIPPED (wasm v11 + server): perturbation past f64's
+    ~1e-308 pixel-scale floor. FloatExp (f64 mantissa + i64 exponent) head
+    phase: BLA loop on fe deltas until |d| > ~2^-800, then mid-pixel BlaState
+    handoff to the untouched f64 engine with dc dropped (dc <= 2^-950 is below
+    |d|'s ulp from there). Head phase mega-skips (all radii admit fe-tiny d),
+    so deep views cost like 300-digit views. Dispatch by dx exponent at
+    2^-1000; scale plumbing is FloatExp end-to-end (setup, server cache, wasm
+    meta = 6 mant/exp entries, ox/oy folded inside wasm at v11).
+    Acceptance (360-digits-boundary.xml, the old wall -- pixel step 2^-1075 is
+    BELOW f64's last quantum, "f64 image would be 0"):
+      renders at TRUE scale, 345 distinct counts, 34 rows/s single-thread
+      wasm; brute-verified px deltas -2/+80/-48 on 2.5M-count boundary pixels
+      (speckle-level; v10 rendered a ~1.9x wrong-scale image, 98.6% of px
+      differ from it). PgDn (2x, dx 2^-1076) and 64x deeper (dx 2^-1081):
+      both render with structure, brute deltas +26 / -3. No remaining
+      depth-specific limit (client digit pipeline is uncapped; fe exponents
+      are i64).
+    Regression: 126/270/40-digits-slow BIT-IDENTICAL to v10, throughput parity
+      (pinned 4-rep A/B: 126: ~510 both; 270: ~69 both; 40-slow: ~42 both).
+    Native tests: fe_deep_view_matches_brute_u32/u64 at pixel step 2^-1280
+      (~385 digits, Misiurewicz (0,1) window) vs brute HP: <1% mismatch,
+      structure asserted. 23 tests green.
