@@ -549,3 +549,16 @@ BMarks
       thread ratio); 999999 all-black: 446 -> 305 (1.46x). The "before"
       numbers were the wrong-scale wrong-count engine; the fe cost ratios
       match Beast, so the full-fe plateau is architecture-neutral.
+
+17 Jul 2026 - CB 4M-orbit memory ceiling RETRACTED (mostly): a ~51-digit 4M-iter
+    view with a NON-escaping reference (orbit 4,000,001 pts = ~305 MB BLA
+    table per in-flight worker strip -- the maximum-memory configuration, same
+    as the paging incident's) runs 131 rows/s on the CB at 8 workers, matching
+    the clean prediction (17.7 single-thread x 8). The earlier "4M -> 1.25
+    rows/s, paging" measurement was likely VM/background contamination (same
+    pattern as the earlier contaminated CB sessions). Guidance downgraded:
+    halving workers on 8GB machines for 4M views is only needed if a slowdown
+    actually shows; prefix tables remain the right architecture for the >4M
+    budgets item but are no longer an urgent CB fix.
+    NOTE this view's counts run to 3,999,698 of the 4M cap -- the deep-iters
+    cap is about to be the binding limit on this lineage.
