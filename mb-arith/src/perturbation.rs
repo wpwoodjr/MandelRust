@@ -45,7 +45,9 @@ pub const DEFAULT_ORBIT_BUDGET: i32 = 4_000_000;
 /// Iterate one pixel by perturbation against the reference `orbit`. `dcx`/`dcy`
 /// are the pixel's offset from the reference coordinate (dc = c - C), in f64.
 /// Returns the crate-standard iteration count (index of the first escaping z with
-/// the z_0 = c convention), or -1 if it never escapes within `max_iterations`.
+/// the z_0 = c convention), -1 if it never escapes within `max_iterations`, or
+/// -2 if a budget-truncated reference cannot resolve it (rendered white so it
+/// can't be mistaken for true interior black).
 /// Width-agnostic: the reference is stored as f64 regardless of the limb engine.
 #[inline]
 pub fn perturb_point(orbit: &[(f64, f64)], dcx: f64, dcy: f64, max_iterations: i32) -> i32 {
@@ -81,9 +83,13 @@ pub fn perturb_point(orbit: &[(f64, f64)], dcx: f64, dcy: f64, max_iterations: i
         // rebase: keep the delta small, and wrap when the reference runs out.
         if w2 < dr * dr + di * di || m == last {
             if m == last && !orbit_escaped(orbit) {
-                // budget-truncated reference: wrapping a non-escaped truncated
-                // orbit is unsound (the flat-blob failure) -- render black
-                return -1;
+                // Non-escaped reference ran out. If the BUDGET cut it short,
+                // wrapping is unsound (the flat-blob failure) -- unresolved,
+                // -2. If it ran the full max_iterations (interior reference),
+                // a pixel still riding it at the end is genuine interior: a
+                // never-rebased pixel only reaches m == last on its final
+                // iteration, so -1 is exact.
+                return if last < max_iterations as usize { -2 } else { -1 };
             }
             dr = wr;
             di = wi;
@@ -189,7 +195,11 @@ pub struct BlaEntry {
 /// the prefix with full resolution.
 pub struct BlaTable {
     pub entries: Vec<BlaEntry>,
-    relax_r2: std::cell::OnceCell<Vec<f64>>, // BLA_EPS_RELAXED tier, on demand
+    // OnceLock (not OnceCell) so a big table can be SHARED read-only across a
+    // request's threads -- per-strip tables at deep-iteration orbit sizes
+    // multiply to tens of GB (measured: 32 threads x ~475 MB at a 128M-point
+    // orbit OOM-killed the server); only touched on the cold starve path
+    relax_r2: std::sync::OnceLock<Vec<f64>>, // BLA_EPS_RELAXED tier, on demand
     dc_max: f64,
     pub level_off: Vec<u32>, // start of level k within entries
     pub prefix: usize, // steps below this have full level resolution
@@ -370,7 +380,7 @@ pub fn build_bla_table_cfg(orbit: &[(f64, f64)], dc_max: f64, prefix_cfg: usize)
         off = *level_off.last().unwrap() as usize;
         len /= 2;
     }
-    BlaTable { entries, relax_r2: std::cell::OnceCell::new(), dc_max, level_off, prefix }
+    BlaTable { entries, relax_r2: std::sync::OnceLock::new(), dc_max, level_off, prefix }
 }
 
 // In-flight pixel state handed from the strict phase to the relaxed phase.
@@ -487,7 +497,9 @@ fn bla_drive<const DETECT: bool, const TAIL: bool>(
         d2 = dr * dr + di * di;
         if w2 < d2 || m == last {
             if m == last && !orbit_escaped(orbit) {
-                return Ok(-1); // budget-truncated reference: black
+                // budget-truncated: unresolved (-2); full-length interior
+                // reference: genuine interior (-1) -- see perturb_point
+                return Ok(if last < max_iterations as usize { -2 } else { -1 });
             }
             dr = wr;
             di = wi;
@@ -653,7 +665,9 @@ fn bla_drive_fe<const HANDOFF: bool>(
         d2 = dr.mul(dr).add(di.mul(di));
         if w2.mag_lt(d2) || m == last {
             if m == last && !orbit_escaped(orbit) {
-                return Ok(-1); // budget-truncated reference: black
+                // budget-truncated: unresolved (-2); full-length interior
+                // reference: genuine interior (-1) -- see perturb_point
+                return Ok(if last < max_iterations as usize { -2 } else { -1 });
             }
             dr = wr;
             di = wi;
@@ -952,6 +966,65 @@ pub fn bla_strip_fe(
         dy.mul_f64(image_row_ref as f64 - (strip_row0 + i) as f64).add(dcy_off)
     };
     bla_grid_fe(orbit, dips, &bla, dcx0, dx, dcy_at, strip_rows, columns, max_iterations, out);
+}
+
+/// Build ONE BLA table for a whole image (dc_max over all rows), for sharing
+/// read-only across a request's strip threads. Per-strip tables keep skips a
+/// little longer (smaller dc_max) but multiply memory by the thread count --
+/// ruinous at deep-iteration orbit sizes (~40 B/prefix-point + 1.25 B/point
+/// of tail, PER live strip). Use with `bla_strip_fe_with_table`.
+#[allow(clippy::too_many_arguments)]
+pub fn bla_image_table(
+    orbit: &[(f64, f64)],
+    dx: FloatExp,
+    dy: FloatExp,
+    dcx0: FloatExp,
+    dcy_off: FloatExp,
+    image_row_ref: usize,
+    image_rows: usize,
+    columns: usize,
+) -> BlaTable {
+    let x1 = dcx0.add(dx.mul_f64(columns.saturating_sub(1) as f64));
+    let mx = if dcx0.mag_lt(x1) { x1 } else { dcx0 };
+    let dcy_top = dy.mul_f64(image_row_ref as f64).add(dcy_off);
+    let dcy_bot = dy
+        .mul_f64(image_row_ref as f64 - (image_rows.saturating_sub(1)) as f64)
+        .add(dcy_off);
+    let my = if dcy_top.mag_lt(dcy_bot) { dcy_bot } else { dcy_top };
+    let dc_max2 = mx.mul(mx).add(my.mul(my));
+    build_bla_table(orbit, dc_max2.to_f64().sqrt())
+}
+
+/// `bla_strip_fe` against a caller-provided (typically shared whole-image)
+/// table instead of building one per strip.
+#[allow(clippy::too_many_arguments)]
+pub fn bla_strip_fe_with_table(
+    orbit: &[(f64, f64)],
+    dips: &[OrbitDip],
+    bla: &BlaTable,
+    dx: FloatExp,
+    dy: FloatExp,
+    dcx0: FloatExp,
+    dcy_off: FloatExp,
+    image_row_ref: usize,
+    strip_row0: usize,
+    strip_rows: usize,
+    columns: usize,
+    max_iterations: i32,
+    out: &mut [i32],
+) {
+    if dx.e >= FE_CUTOVER_DX_E {
+        let (dx_f, dy_f) = (dx.to_f64(), dy.to_f64());
+        let (dcx0_f, dcy_off_f) = (dcx0.to_f64(), dcy_off.to_f64());
+        let dcy_at =
+            |i: usize| (image_row_ref as f64 - (strip_row0 + i) as f64) * dy_f + dcy_off_f;
+        bla_grid(orbit, bla, dcx0_f, dx_f, dcy_at, strip_rows, columns, max_iterations, out);
+        return;
+    }
+    let dcy_at = |i: usize| {
+        dy.mul_f64(image_row_ref as f64 - (strip_row0 + i) as f64).add(dcy_off)
+    };
+    bla_grid_fe(orbit, dips, bla, dcx0, dx, dcy_at, strip_rows, columns, max_iterations, out);
 }
 
 // *** shared-index variant (SIMD-friendly) *** //
@@ -1388,7 +1461,7 @@ pub fn $limbs_to_fe(x: &[$limb]) -> FloatExp {
 /// the old behavior.
 ///
 /// When the budget truncates a NON-escaped reference, pixels that outlive it
-/// return -1 (black) instead of wrapping: wrapping a dead truncated orbit
+/// return -2 (unresolved, rendered white) instead of wrapping: wrapping a dead truncated orbit
 /// gives them an order-1 delta that annihilates their dc, collapsing adjacent
 /// pixels onto one shared trajectory with IDENTICAL counts (measured: a
 /// 289-digit view at maxIter 5e8 returned cap+1017 for every center pixel; a
@@ -1939,14 +2012,15 @@ mod tests {
     }
 
     // Budget-truncated reference: pixels that outlive the orbit must come back
-    // BLACK (-1), never with a wrong count -- and pixels the budget covers (or
-    // that resolve past it via rebases) must agree with the full-budget run.
+    // UNRESOLVED (-2, rendered white), never with a wrong count -- and pixels
+    // the budget covers (or that resolve past it via rebases) must agree with
+    // the full-budget run.
     #[test]
-    fn truncated_orbit_returns_black() {
+    fn truncated_orbit_returns_unresolved() {
         // fe-depth Misiurewicz window (as fe_deep_view_body): dc ~ 2^-1280 and
         // the (0,1) orbit never dips low, so pixels ride the reference without
         // rebasing -- exactly the case where an outlived truncated orbit must
-        // return black. (At shallow high-lambda depths rebasing legitimately
+        // come back unresolved. (At shallow high-lambda depths rebasing legitimately
         // computes full counts from a short orbit, and nothing truncates.)
         let n_digits = 81usize;
         let frac0 = vec![0u32; n_digits];
@@ -1982,7 +2056,7 @@ mod tests {
         let mut truncated = 0usize;
         let mut wrong = 0usize;
         for i in 0..full.len() {
-            if cut[i] == -1 && full[i] != -1 {
+            if cut[i] == -2 && full[i] != -2 {
                 truncated += 1; // legitimately unresolved under the small budget
             } else if cut[i] != full[i] {
                 wrong += 1; // must stay rare (BLA reference-length speckle only)

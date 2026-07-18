@@ -21,7 +21,7 @@ let hpMsAccum = 0, hpStripAccum = 0;
 // Must match mb_wasm_version() in mb-wasm/src/lib.rs. Bump both together, and
 // bump ASSET_VERSION in MB.html so caches can't pair a new worker with an old
 // binary (or vice versa).
-const EXPECTED_WASM_VERSION = 12;
+const EXPECTED_WASM_VERSION = 13;
 
 function wasmReady() {
     return compute_mandelbrot && compute_mandelbrot_hp && compute_mandelbrot_hp_perturb
@@ -75,7 +75,7 @@ let wasmMemory;
 
 // Build the whole-image reference orbit from the basis grid coords and cache it.
 // Pointers are captured as numbers: the build grows wasm memory (detaching views).
-function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows) {
+function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows, orbitBudget) {
     if (cachedOrbit) {
         free_f64(cachedOrbit.ptr, cachedOrbit.len * 2);
         if (cachedOrbit.dipsLen > 0) free_f64(cachedOrbit.dipsPtr, cachedOrbit.dipsLen * 5);
@@ -91,7 +91,7 @@ function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows) {
     let dipsPtrPtr = malloc(4), dipsLenPtr = malloc(4);
     let _tb = performance.now();
     let orbitPtr = build_reference_orbit(xminPtr, dxPtr, ymaxPtr, dyPtr, len,
-        basisCols, basisRows, maxIterations, lenPtr, metaPtr, dipsPtrPtr, dipsLenPtr);
+        basisCols, basisRows, maxIterations, orbitBudget || 0, lenPtr, metaPtr, dipsPtrPtr, dipsLenPtr);
     let orbitLen = new Uint32Array(wasmMemory.memory.buffer, lenPtr, 1)[0];
     // copy the meta out of wasm memory (later allocations may grow/detach it)
     let meta = Float64Array.from(new Float64Array(wasmMemory.memory.buffer, metaPtr, 6));
@@ -141,23 +141,39 @@ onmessage = function(msg) {
                 let imageCols = data[10];  // BASIS grid columns -- build param
                 let ox = data[11], oy = data[12]; // this job's grid offset from the
                                                   // basis grid, in pixels (pass 2: -0.5, +0.5)
+                let orbitBudget = data[13];       // reference-orbit point budget
                 if (highPrecision && imageId !== undefined) {
                     // ORBIT SHARING: build the reference orbit ONCE per view
                     // (cached by imageId), then grind this strip against it.
                     // xmin/ymax/etc here are the BASIS (pass-1) image coords shared
                     // by every job of both passes; firstRow/columnCount describe
                     // THIS job's sampling grid, offset from the basis by (ox, oy).
-                    if (cachedImageId !== imageId) {
-                        buildOrbit(imageId, xmin, dx, ymax, dy, imageCols, imageRows);
+                    try {
+                        if (cachedImageId !== imageId) {
+                            buildOrbit(imageId, xmin, dx, ymax, dy, imageCols, imageRows, orbitBudget);
+                        }
+                    } catch (err) {
+                        // a wasm trap here is almost always memory.grow being
+                        // denied (the orbit + table exceed what the browser
+                        // grants this worker) -- say so instead of dying mute
+                        postMessage(["fatal", `Worker ${workerNumber}: high-precision compute failed (${err}). ` +
+                            `Likely out of memory: reduce the number of workers or Max Iterations.`]);
+                        return;
                     }
                     let o = cachedOrbit;
                     let outLen = nrows*columnCount;
                     let outPtr = wasmMemory.newArrayI32(outLen).byteOffset;
                     let _t0 = DEBUG ? performance.now() : 0;
-                    compute_strip_with_orbit(o.ptr, o.len, o.dipsPtr, o.dipsLen,
-                        o.meta[0], o.meta[1], o.meta[2], o.meta[3], o.meta[4], o.meta[5],
-                        ox, oy, o.rowRef,
-                        firstRow, nrows, columnCount, maxIterations, outPtr);
+                    try {
+                        compute_strip_with_orbit(o.ptr, o.len, o.dipsPtr, o.dipsLen,
+                            o.meta[0], o.meta[1], o.meta[2], o.meta[3], o.meta[4], o.meta[5],
+                            ox, oy, o.rowRef,
+                            firstRow, nrows, columnCount, maxIterations, outPtr);
+                    } catch (err) {
+                        postMessage(["fatal", `Worker ${workerNumber}: high-precision compute failed (${err}). ` +
+                            `Likely out of memory: reduce the number of workers or Max Iterations.`]);
+                        return;
+                    }
                     if (DEBUG) { hpMsAccum += performance.now()-_t0; hpStripAccum += 1; }
                     // fresh view: grinding (BLA table alloc) may have grown memory
                     let counts = new Int32Array(wasmMemory.memory.buffer, outPtr, outLen);
@@ -223,7 +239,7 @@ onmessage = function(msg) {
         waitForWasm(workerNumber, jobNumber).then(() => {
             let imageId = data[1];
             if (cachedImageId !== imageId) {
-                buildOrbit(imageId, data[2], data[3], data[4], data[5], data[6], data[7]);
+                buildOrbit(imageId, data[2], data[3], data[4], data[5], data[6], data[7], data[8]);
             }
             let o = cachedOrbit;
             // copy out of wasm memory (the view may not be transferred directly)

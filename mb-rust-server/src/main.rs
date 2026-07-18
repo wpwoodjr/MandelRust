@@ -24,7 +24,8 @@ static mut ORBIT_CACHE_BYTES: usize = 128 * 1024 * 1024;
 static mut VERBOSE: bool = false;
 // reference-orbit point budget (--orbit-points, in millions of points).
 // 16 bytes/point: the deep-iterations lever -- maxIterations above the budget
-// resolves pixels up to it and renders the rest black (see reference_orbit).
+// resolves pixels up to it; the rest return count -2, rendered white by the
+// client (see reference_orbit).
 static mut ORBIT_BUDGET_POINTS: i32 = mb_arith::DEFAULT_ORBIT_BUDGET;
 
 fn orbit_budget() -> i32 {
@@ -54,7 +55,8 @@ Options:
                    16 bytes/point of RAM while a request is in flight (plus
                    cache retention): 100 = 1.6 GB, 500 = 8 GB. maxIterations
                    above the budget renders the pixels that outlive the orbit
-                   black instead of wrong -- raise this to resolve them.
+                   white (unresolved) instead of wrong -- raise this to resolve
+                   them.
 
 Legacy options (apply only to the old per-job /mb-computeHP endpoint, used by
 old clients; the current client sends one streaming /mb-computeHP2 request per
@@ -202,7 +204,11 @@ async fn redirect() -> Result<HttpResponse> {
 }
 
 async fn ping() -> Result<HttpResponse> {
-    Ok(HttpResponse::Ok().into())
+    // advertise the orbit point budget so the client can flag budget-limited
+    // renders in remote mode (old clients ignore the header)
+    Ok(HttpResponse::Ok()
+        .insert_header(("X-MB-Orbit-Points", orbit_budget().to_string()))
+        .finish())
 }
 
 fn web_server(url: &str) {
@@ -483,6 +489,19 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
         let dcx0_eff = cached.dcx0.add(cached.dx_fe.mul_f64(coords.ox));
         let dcy_off = cached.dy_fe.mul_f64(coords.oy);
 
+        // Big orbits share ONE whole-image BLA table across the request's
+        // threads: per-strip tables (smaller dc_max, slightly longer skips)
+        // multiply memory by the thread count -- ~475 MB each at a 128M-point
+        // orbit OOM-killed a 32-thread run. Below the threshold, per-strip
+        // tables keep today's behavior bit for bit.
+        const SHARED_TABLE_MIN_ORBIT: usize = 8_000_000;
+        let shared_table = if cached.orbit.len() > SHARED_TABLE_MIN_ORBIT {
+            Some(bla_image_table(&cached.orbit, cached.dx_fe, cached.dy_fe,
+                dcx0_eff, dcy_off, cached.row_ref, rows, columns))
+        } else {
+            None
+        };
+
         let pool = match rayon::ThreadPoolBuilder::new().num_threads(threads).build() {
             Ok(p) => p,
             Err(_) => return,
@@ -496,8 +515,13 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                 }
                 let h = strip.min(rows - r0);
                 let mut out = vec![0i32; h*columns];
-                bla_strip_fe(&cached.orbit, &cached.dips, cached.dx_fe, cached.dy_fe, dcx0_eff, dcy_off,
-                    cached.row_ref, r0, h, columns, max_iter, &mut out);
+                match &shared_table {
+                    Some(t) => bla_strip_fe_with_table(&cached.orbit, &cached.dips, t,
+                        cached.dx_fe, cached.dy_fe, dcx0_eff, dcy_off,
+                        cached.row_ref, r0, h, columns, max_iter, &mut out),
+                    None => bla_strip_fe(&cached.orbit, &cached.dips, cached.dx_fe, cached.dy_fe,
+                        dcx0_eff, dcy_off, cached.row_ref, r0, h, columns, max_iter, &mut out),
+                }
                 let counts: Vec<&[i32]> = out.chunks(columns).collect();
                 let line = format!(
                     "{{\"firstRow\":{},\"nrows\":{},\"iterationCounts\":{}}}\n",

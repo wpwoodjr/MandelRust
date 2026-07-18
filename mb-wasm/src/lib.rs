@@ -66,8 +66,16 @@ pub extern "C"  fn dalloc(ptr: *mut u8, size: u32) {
 //      build_reference_orbit and consumed by compute_strip_with_orbit --
 //      without it, interior minibrot pixels at fe depths falsely escape
 //      (non-black, fuzzy minibrots).
+// 13 = deep iterations: build_reference_orbit takes an orbit point budget
+//      (16 B/point; the client sizes it to worker count and RAM). Pixels that
+//      outlive a budget-truncated reference return count -2 (rendered white,
+//      distinct from interior black); the BLA table keeps
+//      full resolution over a 4M-point prefix and sparse 64+ skips beyond.
+//      Orbits over 2M points cache ONE whole-image BLA table per worker per
+//      view (per-strip table churn ratcheted the wasm heap until memory.grow
+//      failed mid-render on 4M-orbit views at high worker counts).
 #[no_mangle]
-pub extern "C" fn mb_wasm_version() -> u32 { 12 }
+pub extern "C" fn mb_wasm_version() -> u32 { 13 }
 
 
 use mb_arith::*;
@@ -188,7 +196,7 @@ pub extern "C" fn free_f64(ptr: *mut f64, count: u32) {
 #[no_mangle]
 pub extern "C" fn build_reference_orbit(
     xmin: *const u32, dx: *const u32, ymax: *const u32, dy: *const u32, len: u32,
-    columns: u32, image_rows: u32, max_iterations: i32,
+    columns: u32, image_rows: u32, max_iterations: i32, orbit_budget: i32,
     out_len: *mut u32, out_meta: *mut f64,
     out_dips_ptr: *mut u32, out_dips_len: *mut u32,
 ) -> *mut f64 {
@@ -206,7 +214,7 @@ pub extern "C" fn build_reference_orbit(
 
     let (orbit, dips, dx_fe, dy_fe, dcx0, _col_ref, _row_ref) = perturb_setup_fe32(
         &xmin, &dx, &ymax, &dy, chunks, image_rows as usize, columns as usize, max_iterations,
-        DEFAULT_ORBIT_BUDGET,
+        if orbit_budget > 0 { orbit_budget } else { DEFAULT_ORBIT_BUDGET },
     );
 
     // dip side table as 5 f64 per entry: [index, zr_m, zr_e, zi_m, zi_e].
@@ -289,6 +297,49 @@ pub extern "C" fn compute_strip_with_orbit(
     let dy = FloatExp::new(dy_m, dy_e as i64);
     let dcx0 = FloatExp::new(dcx0_m, dcx0_e as i64).add(dx.mul_f64(ox));
     let dcy_off = dy.mul_f64(oy);
+
+    // Big orbits: build the BLA table ONCE per view (whole-image dc_max) and
+    // cache it across this worker's strips. Per-strip tables at 160 MB+ are
+    // alloc/free churn that RATCHETS the wasm heap (wasm memory never
+    // shrinks; fragmentation makes each rebuild land higher) until
+    // memory.grow is denied mid-render -- observed as Rust aborts
+    // ("unreachable executed") across a 32-worker deep render. One cached
+    // table also removes the per-strip build cost. Small orbits keep
+    // per-strip tables: tight dc_max (longest skips), tiny churn,
+    // bit-identical to previous behavior.
+    const TABLE_CACHE_MIN_ORBIT: u32 = 2_000_000;
+    if orbit_len > TABLE_CACHE_MIN_ORBIT {
+        use std::cell::RefCell;
+        type TableKey = (usize, u32, u64, i64, u64, i64, u64, i64, u32, u32);
+        thread_local! {
+            static TABLE_CACHE: RefCell<Option<(TableKey, BlaTable)>> = const { RefCell::new(None) };
+        }
+        let key: TableKey = (
+            orbit_ptr as usize, orbit_len,
+            dx.m.to_bits(), dx.e,
+            dcx0.m.to_bits(), dcx0.e,
+            dcy_off.m.to_bits(), dcy_off.e,
+            image_row_ref, columns as u32,
+        );
+        TABLE_CACHE.with(|cell| {
+            let mut cache = cell.borrow_mut();
+            let stale = cache.as_ref().map(|(k, _)| *k != key).unwrap_or(true);
+            if stale {
+                *cache = None; // drop the old table BEFORE allocating the new one
+                let rows_est = image_row_ref as usize * 2 + 1; // >= actual rows
+                let table = bla_image_table(
+                    orbit, dx, dy, dcx0, dcy_off, image_row_ref as usize, rows_est, columns,
+                );
+                *cache = Some((key, table));
+            }
+            let (_, table) = cache.as_ref().unwrap();
+            bla_strip_fe_with_table(
+                orbit, &dips, table, dx, dy, dcx0, dcy_off, image_row_ref as usize,
+                strip_row0 as usize, strip_rows, columns, max_iterations, out,
+            );
+        });
+        return;
+    }
     bla_strip_fe(
         orbit, &dips, dx, dy, dcx0, dcy_off, image_row_ref as usize,
         strip_row0 as usize, strip_rows, columns, max_iterations, out,

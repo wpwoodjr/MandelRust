@@ -611,3 +611,36 @@ BMarks
     Browser confirmation (Beast, trip-to-infinity.xml, 1117 digits, 4M iters):
     7.6 -> 22.2 rows/s cold (SIMD build ~19 s + strips; server cold was 26 --
     parity). Warm-cache repeat render expected at strip speed (150+).
+
+17 Jul 2026 - DEEP ITERATIONS SHIPPED (deep-iterations branch, wasm v13 +
+    server --orbit-points): the 4M iteration cap is gone.
+    Stage 1: runtime orbit budget + truncation-returns-black (pixels outliving
+      a truncated non-escaped reference render black, never wrong; rebasing
+      still resolves counts past the budget where close approaches allow --
+      the first truncation test FAILED because a high-lambda view resolved
+      everything from a 500-point orbit, working as designed).
+    Stage 2: BLA table = full pyramid over a 4M-pt prefix (bit-identical for
+      all existing views) + sparse 64+-skip levels beyond (~1.25 B/pt), tail
+      entries folded on the fly. TAIL is a const generic: a branchless runtime
+      prefix check still cost ~2-3.5% under V8 (hot-loop law, third sighting);
+      monomorphized = parity, all views bit-identical.
+    Stage 3: wasm v13 budget FFI; browser budget = 4 GB / workerCount clamped
+      [4M, 150M]; maxIter slider to 1e9; server shares ONE whole-image table
+      across threads for orbits > 8M pts (per-strip tables x 32 threads =
+      ~15 GB at a 128M orbit -> OOM-killed; shared = one ~475 MB table).
+    Browser-side table churn fix (found via a user Firefox crash: "unreachable
+      executed" x19 mid-render on a deep 4M-orbit view at 32 workers): per-
+      strip tables at 160 MB+ are alloc/free churn that RATCHETS the wasm heap
+      (wasm memory never shrinks; fragmentation lands each rebuild higher)
+      until memory.grow is denied -> Rust abort. Orbits > 2M pts now cache ONE
+      whole-image table per worker per view. Measured (node): 51-digit
+      minibrot @16M iters: 10.7 -> 25.0 rows/s (2.3x -- the per-strip rebuild
+      of a ~500 MB table dominated) and BIT-IDENTICAL counts; 360-boundary
+      (fe): bit-identical, 13.8 -> 14.9; sub-threshold views untouched.
+    Acceptance (Beast, WSL 31 GB):
+      51-digit minibrot (was brushing 4M): maxIter 16M/budget 16M -> counts to
+        15.5M, black 3307 -> 816; SAME image with budget 8M (rebasing covers).
+      needs-750M-iters.xml (800x600, 138 digits) at maxIter 750M:
+        budget 128M (2 GB): 30 s total, counts 154M..749.8M, 17.8% black;
+        budget 750M (12 GB orbit): 112 s, black down to 7.0%.
+      The view is aptly named: minimum escaping count in frame is 154M.

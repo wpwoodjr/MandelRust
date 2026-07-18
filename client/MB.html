@@ -303,10 +303,10 @@
   </style>
 </style>
 
-<script src="BigDecimal-all-last.min.js?v=e11f550634"></script>
-<script src="slider.js?v=e11f550634"></script>
-<script src="touch.js?v=e11f550634"></script>
-<script src="percentage-complete.js?v=e11f550634"></script>
+<script src="BigDecimal-all-last.min.js?v=2657b94caa"></script>
+<script src="slider.js?v=2657b94caa"></script>
+<script src="touch.js?v=2657b94caa"></script>
+<script src="percentage-complete.js?v=2657b94caa"></script>
 <script>
 
 "use strict";
@@ -465,7 +465,7 @@ var log2of10 = Math.log(10)/Math.log(2);
 // URLs is what stops a cached worker from outliving the binary it drives.
 // Stamped from the assets' contents by stamp-assets.sh at build time -- do not
 // edit by hand. Distinct from EXPECTED_WASM_VERSION, which pins the wasm ABI.
-const ASSET_VERSION = "e11f550634";
+const ASSET_VERSION = "2657b94caa";
 
 let compute_mandelbrot;
 WebAssembly
@@ -624,6 +624,29 @@ function zoomFactorText() {
     return "zoom " + zMant.toFixed(3) + (zExp !== 0 ? "e" + zExp : "");
 }
 
+// When a local HP render's orbit budget is below maxIterations, pixels the
+// budget (plus rebasing) cannot resolve render WHITE (count -2, distinct from
+// interior black) -- say so, and how to get them back.
+function orbitBudgetText() {
+    if (!highPrecision) {
+        return "";
+    }
+    const m = (v) => (v % 1000000 === 0 ? (v/1000000) + "M" : (v/1000000).toFixed(1) + "M");
+    if (document.getElementById("local").checked) {
+        const budget = orbitBudgetPoints();
+        if (budget >= maxIterSlider.value) {
+            return "";
+        }
+        return ", orbit budget " + m(budget) + " (unresolved px white; fewer workers go deeper)";
+    }
+    // remote: the server's budget applies (advertised by the health check)
+    if (serverOrbitBudget && serverOrbitBudget < maxIterSlider.value) {
+        return ", server orbit budget " + m(serverOrbitBudget) +
+               " (unresolved px white; restart server with a bigger --orbit-points)";
+    }
+    return "";
+}
+
 function repaint(dontUpdateStatusToIdle) {
     // console.log("repaint from", (new Error()).stack.split("\n")[2].trim().split(" ")[1], dontUpdateStatusToIdle);
     doDraw();
@@ -639,7 +662,7 @@ function repaint(dontUpdateStatusToIdle) {
             pass = "Pass 2, ";
         }
         const prec = (highPrecision ? digits + " digits precision" : "normal precision")
-                    + ", " + zoomFactorText();
+                    + ", " + zoomFactorText() + orbitBudgetText();
         statusText.statusMessage.updateText(pass + prec +
                     "... completed " + rc + " of " + ch + " rows at " + rpsText);
         statusText.statusHeader.updateText(pass + prec + ", " + (rc/ch*100).toFixed(0) + "%");
@@ -743,6 +766,35 @@ let USE_ORBIT_SHARING = true;
 let USE_ORBIT_BROADCAST = true;
 // Identifies which view an orbit belongs to (bumped once per startJob; the
 // second pass reuses the same id, and so the same orbit).
+// Reference-orbit point budget for LOCAL (wasm) workers. The orbit is 16
+// bytes/point and EVERY worker holds its own copy (no shared memory without
+// SAB), so the per-worker budget divides a total RAM allowance by the worker
+// count -- fewer workers render deeper iteration counts. Clamped to a wasm32
+// address-space ceiling. maxIterations above the budget renders the pixels
+// that outlive the reference white (count -2, "unresolved") instead of wrong;
+// the server chooses its own budget (--orbit-points), so remote mode
+// is the home for extreme counts.
+const ORBIT_RAM_BUDGET_BYTES = 4 * 1024 * 1024 * 1024; // across all workers
+const ORBIT_WORKER_CEILING_POINTS = 150000000;         // wasm32 address space
+function orbitBudgetPoints() {
+    // Per-worker memory model (measured, not just the orbit -- ignoring the
+    // BLA table undercounted by ~6x and OOM-killed 32-worker deep renders):
+    //   orbit: 16 B/pt
+    //   table: ~96 B/pt (entries + lazy relax tier) up to the 4M-pt table
+    //          prefix, then ~403 MB + ~1.5 B/pt of sparse tail beyond it
+    const share = ORBIT_RAM_BUDGET_BYTES / workerCount;
+    const PREFIX = 4194304;
+    let pts = Math.floor(share / (16 + 96));
+    if (pts > PREFIX) {
+        const prefixBytes = PREFIX * (16 + 96);
+        pts = Math.floor(PREFIX + (share - prefixBytes) / (16 + 1.5));
+    }
+    // floor at the classic 4M (pre-deep-iterations memory profile; high worker
+    // counts on deep views were always near the edge -- reduce workers to go
+    // deeper), ceiling at the wasm32 address space
+    return Math.max(4000000, Math.min(ORBIT_WORKER_CEILING_POINTS, pts));
+}
+
 // Orbit identity is CONTENT-keyed (a hash of the basis coords + maxIter), so
 // re-rendering the same view -- second passes, palette changes, repeat visits
 // -- reuses the workers' cached reference orbit instead of rebuilding it
@@ -854,6 +906,12 @@ function startJob(dontClear) {
     if (running) {
        stopJob();
     }
+    if (document.getElementById("remote").checked) {
+        // refresh serverOrbitBudget: the server may have restarted with a new
+        // --orbit-points since page load. Async, but resolves long before the
+        // status line is drawn at render completion.
+        pageExists("/remoteCanComputeMB");
+    }
     if (! zoomTimeout && dontClear !== true) {
         graphics.fillStyle = "#BBBBBB";
         graphics.fillRect(0,0,canvas.width,canvas.height);
@@ -898,7 +956,8 @@ function startJob(dontClear) {
             yValImageArray = new ArrayType(chunks+1);
             convert(yValImageArray, yVal, chunks+1);
             imageId = basisId(xminArray, dxArray, yValImageArray, dyArray,
-                              rows, columns, maxIterSlider.value);
+                              rows, columns, maxIterSlider.value)
+                      + "-b" + orbitBudgetPoints(); // budget changes orbit content
             hpBasis = { id: imageId, xmin: xminArray, dx: dxArray, dy: dyArray,
                         yVal: yValImageArray, rows: rows, cols: columns };
         }
@@ -981,7 +1040,7 @@ function startJob(dontClear) {
             workers[i].postMessage([
                 "task", j.row, j.columns,
                 j.xmin, j.dx, j.yVal, j.dy, j.nrows,
-                j.imageRows, j.imageId, j.imageCols, j.ox, j.oy
+                j.imageRows, j.imageId, j.imageCols, j.ox, j.oy, orbitBudgetPoints()
             ]);
         }
     };
@@ -1000,7 +1059,8 @@ function startJob(dontClear) {
             workers[i].postMessage(["setup",jobNum, maxIterSlider.value,highPrecision,i,workerCount]);
         }
         workers[0].postMessage(["buildOrbit", hpBasis.id,
-            hpBasis.xmin, hpBasis.dx, hpBasis.yVal, hpBasis.dy, hpBasis.cols, hpBasis.rows]);
+            hpBasis.xmin, hpBasis.dx, hpBasis.yVal, hpBasis.dy, hpBasis.cols, hpBasis.rows,
+            orbitBudgetPoints()]);
     } else {
         dispatchFirstJobs();
     }
@@ -1062,7 +1122,7 @@ function jobFinished(msg) {
        worker.postMessage([
             "task", j.row, j.columns,
             j.xmin, j.dx, j.yVal, j.dy, j.nrows,
-            j.imageRows, j.imageId, j.imageCols, j.ox, j.oy
+            j.imageRows, j.imageId, j.imageCols, j.ox, j.oy, orbitBudgetPoints()
         ]);
     }
     var iterationCounts = job[2];
@@ -1206,7 +1266,7 @@ function startSecondPass() {
         workers[i].postMessage([
             "task", j.row, j.columns,
             j.xmin, j.dx, j.yVal, j.dy, j.nrows,
-            j.imageRows, j.imageId, j.imageCols, j.ox, j.oy
+            j.imageRows, j.imageId, j.imageCols, j.ox, j.oy, orbitBudgetPoints()
         ]);
     }
     running = true;
@@ -1216,35 +1276,31 @@ function startSecondPass() {
     progressCircle.setPass(2, highPrecision);
 }
 
+// -1 = interior (never escaped): black. -2 = unresolved (outlived a
+// budget-truncated reference): white, so it can't be mistaken for interior.
+function colorForCount(ct) {
+    if (ct == -2) return [255,255,255];
+    if (ct < 0) return [0,0,0];
+    return paletteColorFor(ct);
+}
+
 function putRow(row) {
     var iterationCounts = savedIterationCounts[row];
     var above = savedIterationCounts2ndPass[row];
     var below = savedIterationCounts2ndPass[row+1];
     var average = above && below;
     var secondPassColor;
-    var ct;
     if (average) {
-       ct = above[0];
-       var c1 = ct < 0 ? [0,0,0] : paletteColorFor(ct);
-       ct = below[0];
-       var c2 = ct < 0 ? [0,0,0] : paletteColorFor(ct);
+       var c1 = colorForCount(above[0]);
+       var c2 = colorForCount(below[0]);
        secondPassColor = [c1[0]+c2[0],c1[1]+c2[1],c1[2]+c2[2]];
     }
     var columns = canvas.width;
     for (var i = 0; i < columns; i++) {
-       ct = iterationCounts[i];
-       var color;
-       if (ct < 0) {
-          color = [0,0,0];
-       }
-       else {
-          color = paletteColorFor(iterationCounts[i]);
-       }
+       var color = colorForCount(iterationCounts[i]);
        if (average) {
-           ct = above[i+1];
-           var c1 = ct < 0 ? [0,0,0] : paletteColorFor(ct);
-           ct = below[i+1];
-           var c2 = ct < 0 ? [0,0,0] : paletteColorFor(ct);
+           var c1 = colorForCount(above[i+1]);
+           var c2 = colorForCount(below[i+1]);
            var secondPassColor2 = [c1[0]+c2[0],c1[1]+c2[1],c1[2]+c2[2]];
            color = [ // had a bug where I modified the color that was still in the palette array!
                ( 4*color[0] + secondPassColor[0] + secondPassColor2[0] ) / 8,
@@ -1829,10 +1885,21 @@ function changeWorkerCount() {
     setLocalStorageItem("mandelbrotWorkerCount-" + (document.getElementById("local").checked ? "local" : "remote"), ct);
 }
 
+// the server's reference-orbit point budget (X-MB-Orbit-Points from the
+// health check); null = unknown/old server. Used to flag budget-limited
+// remote renders in the status line.
+let serverOrbitBudget = null;
+
 async function pageExists(url) {
     try {
         const response = await fetch(url);
         // console.log(response);
+        if (response.ok) {
+            const pts = Number(response.headers.get("X-MB-Orbit-Points"));
+            if (pts > 0) {
+                serverOrbitBudget = pts;
+            }
+        }
         return response.ok;
     } catch (error) {
         return false;
@@ -2924,7 +2991,9 @@ function PalettePreview() {
    }
    function showRow(row) { 
        for (var k = 0; k < previewRect.width; k++) {
-           if (previewCounts[row][k] == -1)
+           if (previewCounts[row][k] == -2)
+               g.fillStyle="white"; // unresolved (budget-truncated reference)
+           else if (previewCounts[row][k] < 0)
                g.fillStyle="black";
            else {
                var index = previewCounts[row][k] % paletteLengthInEditor;
@@ -3730,9 +3799,10 @@ function createSliders() {
         "maxIterSlider", {
         label: "Max Iterations:",
         title: "How many steps in the Mandelbrot iteration before giving up and coloring the pixel black.",
-        logarithmic: true, initialValue: 1000, minValue: 1, maxValue:4000000, textLength: 7,
+        logarithmic: true, initialValue: 1000, minValue: 1, maxValue:1000000000, textLength: 10,
         stickyVals: [3,5,10,25,50,75,100,250,500,750,1000,2500,5000,7500,10000,25000,50000,75000,100000,
-                     250000,500000,1000000,2000000,4000000]
+                     250000,500000,1000000,2000000,4000000,8000000,16000000,32000000,
+                     64000000,125000000,250000000,500000000,1000000000]
         });
     maxIterSlider.onInput = function (interimMaxIters, lastInterimMaxIters) {
         // console.log("i:",this.id,interimMaxIters);

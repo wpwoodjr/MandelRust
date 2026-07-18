@@ -39,6 +39,9 @@ mb-rust-server [URL] [OPTIONS]
   --orbit-cache N   # Reference-orbit cache budget in MB (default 128, 0 = off).
                     # Keyed by view coords; pass 2 / re-renders skip the orbit
                     # build. Real bound: max(N, largest single orbit)
+  --orbit-points N  # Reference-orbit point budget in MILLIONS (default 4).
+                    # 16 B/point; maxIterations above the budget renders the
+                    # pixels that outlive the orbit white (unresolved) instead of wrong
   # Legacy options -- apply only to the old per-job /mb-computeHP endpoint
   # (current clients use /mb-computeHP2 and pick their own thread count):
   -r, --rayon N     # Rayon threads per legacy request (default: 2)
@@ -265,28 +268,32 @@ engines; the `BLA` branch (this work) adds BLA on top — both shipped as defaul
 work.
 
 Next steps (after the `BLA` branch):
-1. **Deep iteration counts (maxIter > 4M)**: the UI caps maxIterations at 4M
-   because the reference orbit caps at 4M points (64MB orbit; the ~80B/pt BLA
-   table is the real scaling cost: ~320MB per in-flight strip, so small-RAM
-   devices want fewer workers), and a cap-truncated
-   (non-escaped) reference is UNSOUND for pixels that outlive it: the
-   end-of-orbit wrap gives them an order-1 delta that annihilates their
-   ~1e-24x dc in f64, collapsing adjacent pixels onto one trajectory with
-   IDENTICAL counts (measured with the cap at 2M: 289-digit view at maxIter 5e8 -> flat blob,
-   all center pixels = 2001017 = cap+1017). Wraps are sound only for escaped refs
-   (validated) and interior pixels (measured free: reference re-converges, 31
-   wraps cost ~0). The fix when revisited: runtime orbit budget instead of the
-   2M const (orbit must COVER pixel counts; 16B/pt), truncation-returns-black
-   beyond it, BLA table built over a ~2M-point prefix (rebasing keeps m low, so
-   the 80B/pt table need not follow the orbit up). Budgets: browser =
-   budget/workerCount (fewer workers -> deeper; wasm32 hard ceiling ~150M pts),
-   server = one SHARED orbit per request so threads are free and RAM is the
-   only bound (--orbit-points flag; 5e8 counts = 8GB orbit, feasible on a big
-   box; remote mode is the natural home for ultra-deep counts). Broadcast
-   crossover: at big orbits, per-worker builds may beat relaying 100s of MB.
-2. Merge `BLA-orbit-sharing` -> `BLA` -> `perturbation` -> `master` once soaked.
-3. Revisit within-pixel SIMD only on x86 hardware (AVX2 shuffles are cheaper —
+1. Merge `BLA-orbit-sharing` -> `BLA` -> `perturbation` -> `master` once
+   soaked (plus the `deep-iterations` branch on top).
+2. Revisit within-pixel SIMD only on x86 hardware (AVX2 shuffles are cheaper —
    measure, don't assume).
+
+SHIPPED from this list (wasm v13, `deep-iterations` branch): **deep iteration
+counts** — the 4M cap is gone. reference_orbit takes a runtime point budget
+(16 B/pt; server --orbit-points in millions, browser = a 4 GB RAM allowance /
+workerCount clamped to a ~150M-pt wasm32 ceiling — fewer workers render
+deeper); pixels that outlive a budget-truncated non-escaped reference return
+count -2, rendered WHITE (distinct from interior black), never wrong (the
+flat-blob unsoundness is structurally impossible now),
+while rebasing still resolves counts far past the budget where close
+approaches allow (measured: the 51-digit minibrot view at maxIter 16M renders
+IDENTICALLY with an 8M budget; needs-750M-iters.xml at a 128M budget resolves
+counts to 749.8M with 17.8% unresolved, full 750M budget = 7% black). The BLA
+table keeps full level resolution over a 4M-point prefix (bit-identical to
+the old whole-orbit tables within it) and only 64+-point skips beyond
+(~1.25 B/pt); the scan's start level is a TAIL const generic because even a
+branchless runtime check cost ~2-3.5% under V8 (hot-loop law, third
+sighting). Big orbits (> 8M pts) share ONE whole-image table across a
+server request's threads — per-strip tables multiply by thread count and
+OOM-killed a 32-thread 128M-orbit run at ~475 MB each. UI maxIterations cap
+is now 1e9 (i32 counts wall at ~2.1e9 is the next ceiling). first-render
+latency at extreme budgets is the orbit build (~30 s at 128M native, ~112 s
+at 750M).
 
 SHIPPED from this list (wasm v11): **floatexp deltas** — perturbation past
 f64's ~1e-308 pixel-scale floor (see the engine section above for mechanism
