@@ -293,7 +293,36 @@ server request's threads — per-strip tables multiply by thread count and
 OOM-killed a 32-thread 128M-orbit run at ~475 MB each. UI maxIterations cap
 is now 1e9 (i32 counts wall at ~2.1e9 is the next ceiling). first-render
 latency at extreme budgets is the orbit build (~30 s at 128M native, ~112 s
-at 750M).
+at 750M; ~17.5 us/pt at 2600 digits — cost/pt goes with limbs^2).
+
+SHIPPED on `deep-iterations` (server): **escalating reference selection +
+orbit-build cancellation**. A center reference that escapes (or reaches
+maxIterations) within the 4M-pt cap builds exactly as before — zero overhead
+on the common case. A cap-TRUNCATED center now probes 16 full-width rows in
+f64 perturbation against the truncated prefix (probe counts that resolve
+within the prefix are EXACT: escapes and rebases are sound, only the
+end-of-orbit wrap is not and it returns negative) and relocates the reference
+to the longest-lived escaping pixel >= 100k pts (runt refs cap the BLA skip
+ladder). Escaped refs wrap soundly at ANY length — the reverted
+reference-selection experiment is the proof — so a minibrot-under-the-
+crosshair view costs ~2 prefix builds instead of a maxIterations-long one
+(measured, 1077-digit interior-centered view at maxIter 8M: 8M-pt center
+build -> 4M prefix + 3.97M relocated build; interior px IDENTICAL, 0.016% of
+px off <= 35 counts = cross-reference BLA speckle;
+mb-arith::relocated_reference_matches_center covers the engine fact). No
+escaper: the cap quadruples and rebuilds (ladder <= 1.33x the final prefix;
+whole-frame-deep KF views like the 2600-digit location have NO pixel under
+4M, a fixed trigger would never rescue them) up to the budget; an escaping
+center short-circuits any round (1b-view: escapes at 5.6M in round 2, full
+render, 0 unresolved); nothing at the budget = the old truncated-center
+behavior bit for bit. CANCELLATION: reference_orbit takes an optional
+per-65536-pt control hook (OrbitBuildCtl; cold outer-batch check, hot loop
+untouched). The server hook must STREAM A HEARTBEAT newline per batch
+(clients skip empty NDJSON lines): actix only notices a dead client on
+WRITE, so without it is_closed() stays false forever and an abandoned deep
+build pegs a core for hours (measured both ways: 100% CPU forever before,
+exit within ~3 s after). The hook also logs verbose build progress every
+10M pts. Browser tier unchanged (worker termination already kills builds).
 
 SHIPPED from this list (wasm v11): **floatexp deltas** — perturbation past
 f64's ~1e-308 pixel-scale floor (see the engine section above for mechanism

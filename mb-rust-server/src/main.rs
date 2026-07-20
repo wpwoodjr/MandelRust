@@ -438,6 +438,21 @@ fn orbit_cache_insert(key: OrbitKey, orbit: std::sync::Arc<CachedOrbit>) {
 // early-out. This replaces the old 32-row-jobs protocol for HP, which rebuilt
 // the orbit per band and idled through per-request round trips; legacy flags
 // (--no-perturb, --u32/64/128) do not apply here.
+// Reference selection: a center reference that hasn't escaped by the cap
+// would otherwise build to maxIterations -- hours at extreme depths when a
+// minibrot sits under the crosshair. Instead, probe PROBE_ROWS evenly-spaced
+// full-width rows against the truncated prefix and relocate the reference to
+// the longest-lived ESCAPING pixel found (escaped references wrap soundly at
+// any length -- the reverted reference-selection experiment proved short
+// escaped refs run at least as fast as full-coverage ones). The cap starts at
+// SELECT_TRIGGER_POINTS and escalates x4 up to the budget for views whose
+// every pixel outlives the first prefix (whole-frame-deep KF locations).
+// MIN_CAND_POINTS rejects runt references whose tiny BLA skip ladder
+// (max skip ~ orbit length) would slow every pixel.
+const SELECT_TRIGGER_POINTS: i32 = 4_000_000;
+const PROBE_ROWS: usize = 16;
+const MIN_CAND_POINTS: i32 = 100_000;
+
 async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpResponse {
     let coords = coords.into_inner();
     let (tx, rx) = tokio::sync::mpsc::channel::<std::result::Result<web::Bytes, std::convert::Infallible>>(64);
@@ -456,8 +471,14 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
         // (same reasoning as the browser's adaptive formula).
         let strip = rows.div_ceil(4*threads).clamp(4, 32);
 
+        let pool = match rayon::ThreadPoolBuilder::new().num_threads(threads).build() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+
+        let budget = orbit_budget();
         let key: OrbitKey = (coords.xmin.clone(), coords.dx.clone(), coords.ymax.clone(),
-            coords.dy.clone(), basis_rows, basis_columns, max_iter, orbit_budget());
+            coords.dy.clone(), basis_rows, basis_columns, max_iter, budget);
         let (cached, hit) = match orbit_cache_lookup(&key) {
             Some(c) => (c, true),
             None => {
@@ -467,9 +488,107 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                 let dx = u32_to_limbs64(&coords.dx);
                 let ymax = u32_to_limbs64(&coords.ymax);
                 let dy = u32_to_limbs64(&coords.dy);
-                let (orbit, dips, dx_fe, dy_fe, dcx0, _col_ref, row_ref) =
-                    perturb_setup_fe64(&xmin, &dx, &ymax, &dy, chunks, basis_rows, basis_columns, max_iter, orbit_budget());
-                let c = std::sync::Arc::new(CachedOrbit { orbit, dips, dx_fe, dy_fe, dcx0, row_ref });
+
+                // Build control hook: cancel when the client disconnects, and
+                // in verbose mode log progress -- deep builds are multi-minute
+                // and were silent. Runs once per 65536-point batch: free.
+                // DISCONNECT DETECTION NEEDS THE HEARTBEAT: actix only notices
+                // a dead connection when it WRITES, and nothing is written
+                // during the build -- an idle stream left is_closed() false
+                // forever (measured: a killed client's build thread stayed at
+                // 100% CPU). The empty NDJSON line is skipped by every client
+                // (worker: `if (line.length == 0) continue`); try_send never
+                // blocks (a full channel just skips a beat).
+                let progress_last = std::sync::atomic::AtomicUsize::new(0);
+                let ctl_fn = |pts: usize| -> bool {
+                    if unsafe { VERBOSE } {
+                        let last = progress_last.load(std::sync::atomic::Ordering::Relaxed);
+                        if pts >= last + 10_000_000 {
+                            progress_last.store(pts, std::sync::atomic::Ordering::Relaxed);
+                            println!("  orbit build: {} M pts...", pts / 1_000_000);
+                        }
+                    }
+                    let _ = tx.try_send(Ok(web::Bytes::from_static(b"\n")));
+                    !tx.is_closed()
+                };
+                let ctl: OrbitBuildCtl = Some(&ctl_fn);
+
+                // Center build with escalating reference selection. Round N
+                // builds the center reference capped at t points; a center
+                // that escapes (or runs the full maxIterations) within the cap
+                // is a finished reference -- the common case, zero overhead.
+                // A cap-truncated center means every pixel would outlive it,
+                // so probe the frame against the truncated prefix: any probe
+                // that escapes within it yields its TRUE count (escapes and
+                // rebases are exact; only the end-of-orbit wrap is not, and
+                // that comes back negative), and ANY escaping pixel works as
+                // the reference (escaped orbits wrap soundly at any length).
+                // No escaper yet: quadruple the cap and rebuild -- the
+                // geometric ladder costs <= 1.33x the final prefix, so a
+                // whole-frame-deep view pays ~4/3 of one build instead of a
+                // guessed trigger either missing the rescue or overpaying.
+                let mut t = budget.min(SELECT_TRIGGER_POINTS);
+                let c = loop {
+                    let (orbit, dips, dx_fe, dy_fe, dcx0, _col_ref, row_ref) = perturb_setup_fe64_at(
+                        &xmin, &dx, &ymax, &dy, chunks, basis_rows / 2, basis_columns / 2,
+                        max_iter, t, ctl);
+                    if tx.is_closed() {
+                        return; // cancelled: discard the partial orbit, never cache it
+                    }
+                    let cand = CachedOrbit { orbit, dips, dx_fe, dy_fe, dcx0, row_ref };
+                    let len = cand.orbit.len() as i32 - 1;
+                    if orbit_escaped(&cand.orbit) || len >= max_iter {
+                        break cand; // finished reference: escaped, or full-length interior
+                    }
+
+                    let best = {
+                        let table = bla_image_table(&cand.orbit, cand.dx_fe, cand.dy_fe,
+                            cand.dcx0, FE_ZERO, cand.row_ref, basis_rows, basis_columns);
+                        let mut probe_rows: Vec<usize> = (0..PROBE_ROWS)
+                            .map(|i| i * basis_rows.saturating_sub(1) / (PROBE_ROWS - 1).max(1))
+                            .collect();
+                        probe_rows.dedup();
+                        pool.install(|| {
+                            probe_rows.par_iter().map(|&r| {
+                                let mut out = vec![0i32; basis_columns];
+                                bla_strip_fe_with_table(&cand.orbit, &cand.dips, &table,
+                                    cand.dx_fe, cand.dy_fe, cand.dcx0, FE_ZERO, cand.row_ref,
+                                    r, 1, basis_columns, len, &mut out);
+                                out.iter().enumerate()
+                                    .map(|(col, &ct)| (ct, r, col))
+                                    .max()
+                                    .unwrap_or((-1, r, 0))
+                            }).max()
+                        }).filter(|&(ct, _, _)| ct >= MIN_CAND_POINTS)
+                    };
+                    if tx.is_closed() {
+                        return;
+                    }
+                    if let Some((count, pr, pc)) = best {
+                        if unsafe { VERBOSE } {
+                            println!("  center reference unresolved at {} pts: relocating to px ({}, {}), escapes at {}",
+                                len, pc, pr, count);
+                        }
+                        let (orbit, dips, dx_fe, dy_fe, dcx0, _c2, row_ref) = perturb_setup_fe64_at(
+                            &xmin, &dx, &ymax, &dy, chunks, pr, pc, max_iter, budget, ctl);
+                        if tx.is_closed() {
+                            return;
+                        }
+                        break CachedOrbit { orbit, dips, dx_fe, dy_fe, dcx0, row_ref };
+                    }
+                    if t >= budget {
+                        // no pixel escapes within the whole budget: no rescue
+                        // exists; the truncated center is the best sound
+                        // answer (outliving pixels come back -2, white)
+                        break cand;
+                    }
+                    t = t.saturating_mul(4).min(budget);
+                    if unsafe { VERBOSE } {
+                        println!("  no escaping probe within {} pts: extending center build to {} M pts",
+                            len, t / 1_000_000);
+                    }
+                };
+                let c = std::sync::Arc::new(c);
                 orbit_cache_insert(key, c.clone());
                 (c, false)
             }
@@ -502,10 +621,6 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
             None
         };
 
-        let pool = match rayon::ThreadPoolBuilder::new().num_threads(threads).build() {
-            Ok(p) => p,
-            Err(_) => return,
-        };
         let dead = std::sync::atomic::AtomicBool::new(false);
         pool.install(|| {
             let starts: Vec<usize> = (0..rows).step_by(strip).collect();

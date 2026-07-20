@@ -99,13 +99,25 @@ pub fn perturb_point(orbit: &[(f64, f64)], dcx: f64, dcy: f64, max_iterations: i
     -1
 }
 
-// did the reference orbit end because it escaped (wraps are sound) or because
-// it hit its point budget (wraps are NOT: pixels outliving it render black)?
+/// Did the reference orbit end because it escaped (wraps are sound) or because
+/// it hit its point budget (wraps are NOT: pixels outliving it come back -2)?
+/// Public so callers (server reference selection) can tell a finished escaping
+/// reference from a truncated one.
 #[inline]
-fn orbit_escaped(orbit: &[(f64, f64)]) -> bool {
+pub fn orbit_escaped(orbit: &[(f64, f64)]) -> bool {
     let (zr, zi) = orbit[orbit.len() - 1];
     zr * zr + zi * zi >= ESCAPE_R2
 }
+
+/// Periodic control hook for reference-orbit builds: called every
+/// `ORBIT_CTL_INTERVAL` points with the point count so far; return false to
+/// stop the build. The check lives OUTSIDE the iteration loop (once per batch),
+/// so a `None` costs nothing and a `Some` costs one indirect call per ~50 ms of
+/// deep-zoom work. An early-stopped orbit has budget-truncation semantics
+/// (outliving pixels come back -2, never wrong), but a cancelling caller
+/// normally discards it -- and must NOT cache it as if it were the full build.
+pub const ORBIT_CTL_INTERVAL: usize = 65_536;
+pub type OrbitBuildCtl<'a> = Option<&'a dyn Fn(usize) -> bool>;
 
 /// Compute one pixel row by perturbation. `dcx0` is dc.x of column 0, `dcx_step`
 /// is the per-column increment (the f64 pixel width), `dcy` is dc.y for the row.
@@ -1350,7 +1362,8 @@ macro_rules! perturb_engine {
      $hpdata:ident, $count_iterations:ident,
      $mag_to_f64:ident, $limbs_to_f64_scratch:ident, $limbs_to_f64:ident,
      $mag_to_fe:ident, $limbs_to_fe_scratch:ident, $limbs_to_fe:ident,
-     $reference_orbit:ident, $perturb_setup:ident, $perturb_setup_fe:ident,
+     $reference_orbit:ident, $reference_orbit_ctl:ident,
+     $perturb_setup:ident, $perturb_setup_fe:ident, $perturb_setup_fe_at:ident,
      $mandelbrot_perturb:ident, $mandelbrot_perturb_glitch:ident) => {
 
 /// Convert a magnitude (non-negative limb value: limb0 = integral part, limbs 1..
@@ -1471,6 +1484,20 @@ pub fn $limbs_to_fe(x: &[$limb]) -> FloatExp {
 ///
 /// `cx` / `cy` are the reference coordinate as limbs, each the same length.
 pub fn $reference_orbit(cx: &[$limb], cy: &[$limb], max_iterations: i32, max_points: i32) -> (Vec<(f64, f64)>, Vec<OrbitDip>) {
+    $reference_orbit_ctl(cx, cy, max_iterations, max_points, None)
+}
+
+/// `$reference_orbit` with a periodic control hook (see `OrbitBuildCtl`):
+/// cancellation and progress reporting for multi-minute deep builds. The hook
+/// runs once per `ORBIT_CTL_INTERVAL`-point batch; the iteration loop itself
+/// is unchanged.
+pub fn $reference_orbit_ctl(
+    cx: &[$limb],
+    cy: &[$limb],
+    max_iterations: i32,
+    max_points: i32,
+    ctl: OrbitBuildCtl,
+) -> (Vec<(f64, f64)>, Vec<OrbitDip>) {
     let max_iterations = max_iterations.min(max_points.max(2));
     let n = cx.len();
     let mut zx = vec![0 as $limb; n];
@@ -1488,37 +1515,47 @@ pub fn $reference_orbit(cx: &[$limb], cy: &[$limb], max_iterations: i32, max_poi
     // side table of points whose f64 image lost precision (see OrbitDip)
     let mut dips: Vec<OrbitDip> = Vec::new();
 
-    for _ in 0..max_iterations {
-        $sq(&zx, &mut w3, &mut w1); // w1 = zx^2
-        $sq(&zy, &mut w3, &mut w2); // w2 = zy^2
-        $add(&zx, &zx, &mut w4); // w4 = 2*zx  (capture before zx is overwritten)
-
-        // zx' = zx^2 - zy^2 + Cx
-        $sub(&w1, &w2, &mut w3);
-        $add(&w3, cx, &mut new_zx);
-        // zy' = 2*zx*zy + Cy
-        $multiply(&w4, &zy, &mut w1, &mut w3, &mut w2); // w2 = 2*zx*zy
-        $add(&w2, cy, &mut new_zy);
-
-        zx.copy_from_slice(&new_zx);
-        zy.copy_from_slice(&new_zy);
-
-        let zr = $limbs_to_f64_scratch(&zx, &mut scratch);
-        let zi = $limbs_to_f64_scratch(&zy, &mut scratch);
-        // a component that is subnormal/zero in f64 but nonzero in limbs has
-        // lost (or completely dropped) its value: record the true FloatExp
-        let zr_deg = zr.abs() < MIN_NORMAL_F64 && zx.iter().any(|&l| l != 0);
-        let zi_deg = zi.abs() < MIN_NORMAL_F64 && zy.iter().any(|&l| l != 0);
-        if zr_deg || zi_deg {
-            dips.push(OrbitDip {
-                index: (orbit.len()) as u32,
-                zr: $limbs_to_fe_scratch(&zx, &mut scratch),
-                zi: $limbs_to_fe_scratch(&zy, &mut scratch),
-            });
+    let mut remaining = max_iterations.max(0) as usize;
+    'build: while remaining > 0 {
+        if let Some(f) = ctl {
+            if !f(orbit.len() - 1) {
+                break 'build;
+            }
         }
-        orbit.push((zr, zi));
-        if zr * zr + zi * zi >= ESCAPE_R2 {
-            break;
+        let batch = ORBIT_CTL_INTERVAL.min(remaining);
+        remaining -= batch;
+        for _ in 0..batch {
+            $sq(&zx, &mut w3, &mut w1); // w1 = zx^2
+            $sq(&zy, &mut w3, &mut w2); // w2 = zy^2
+            $add(&zx, &zx, &mut w4); // w4 = 2*zx  (capture before zx is overwritten)
+
+            // zx' = zx^2 - zy^2 + Cx
+            $sub(&w1, &w2, &mut w3);
+            $add(&w3, cx, &mut new_zx);
+            // zy' = 2*zx*zy + Cy
+            $multiply(&w4, &zy, &mut w1, &mut w3, &mut w2); // w2 = 2*zx*zy
+            $add(&w2, cy, &mut new_zy);
+
+            zx.copy_from_slice(&new_zx);
+            zy.copy_from_slice(&new_zy);
+
+            let zr = $limbs_to_f64_scratch(&zx, &mut scratch);
+            let zi = $limbs_to_f64_scratch(&zy, &mut scratch);
+            // a component that is subnormal/zero in f64 but nonzero in limbs has
+            // lost (or completely dropped) its value: record the true FloatExp
+            let zr_deg = zr.abs() < MIN_NORMAL_F64 && zx.iter().any(|&l| l != 0);
+            let zi_deg = zi.abs() < MIN_NORMAL_F64 && zy.iter().any(|&l| l != 0);
+            if zr_deg || zi_deg {
+                dips.push(OrbitDip {
+                    index: (orbit.len()) as u32,
+                    zr: $limbs_to_fe_scratch(&zx, &mut scratch),
+                    zi: $limbs_to_fe_scratch(&zy, &mut scratch),
+                });
+            }
+            orbit.push((zr, zi));
+            if zr * zr + zi * zi >= ESCAPE_R2 {
+                break 'build;
+            }
         }
     }
     (orbit, dips)
@@ -1583,27 +1620,50 @@ pub fn $perturb_setup_fe(
     max_iterations: i32,
     orbit_budget: i32,
 ) -> (Vec<(f64, f64)>, Vec<OrbitDip>, FloatExp, FloatExp, FloatExp, usize, usize) {
-    let col_ref = columns / 2;
-    let row_ref = rows / 2;
+    $perturb_setup_fe_at(xmin, dx, ymax, dy, chunks, rows / 2, columns / 2,
+        max_iterations, orbit_budget, None)
+}
 
+/// `$perturb_setup_fe` with the reference at pixel (`ref_row`, `ref_col`)
+/// instead of the image center, plus a build control hook. This is the entry
+/// for reference SELECTION: any pixel of the grid works as the reference (the
+/// rebasing engine is glitch-free for a single reference anywhere), and an
+/// early-ESCAPING pixel is vastly cheaper to build than an interior center --
+/// escaped orbits wrap soundly at any length, so relocating off a minibrot
+/// turns a maxIterations-long build into an escape-count-long one. Returns the
+/// same tuple; `dcx0`/`row_ref` encode the reference position, so every strip
+/// engine works unchanged.
+#[allow(clippy::too_many_arguments)]
+pub fn $perturb_setup_fe_at(
+    xmin: &[$limb],
+    dx: &[$limb],
+    ymax: &[$limb],
+    dy: &[$limb],
+    chunks: usize,
+    ref_row: usize,
+    ref_col: usize,
+    max_iterations: i32,
+    orbit_budget: i32,
+    ctl: OrbitBuildCtl,
+) -> (Vec<(f64, f64)>, Vec<OrbitDip>, FloatExp, FloatExp, FloatExp, usize, usize) {
     let mut cx = xmin[..chunks].to_vec();
-    for _ in 0..col_ref {
+    for _ in 0..ref_col {
         $incr(&mut cx, &dx[..chunks]);
     }
     let mut dy_neg = vec![0 as $limb; chunks];
     $negate(&dy[..chunks], &mut dy_neg);
     let mut cy = ymax[..chunks].to_vec();
-    for _ in 0..row_ref {
+    for _ in 0..ref_row {
         $incr(&mut cy, &dy_neg);
     }
 
-    let (orbit, dips) = $reference_orbit(&cx, &cy, max_iterations, orbit_budget);
+    let (orbit, dips) = $reference_orbit_ctl(&cx, &cy, max_iterations, orbit_budget, ctl);
 
     let dx_fe = $limbs_to_fe(&dx[..chunks]);
     let dy_fe = $limbs_to_fe(&dy[..chunks]);
-    let dcx0 = dx_fe.mul_f64(-(col_ref as f64));
+    let dcx0 = dx_fe.mul_f64(-(ref_col as f64));
 
-    (orbit, dips, dx_fe, dy_fe, dcx0, col_ref, row_ref)
+    (orbit, dips, dx_fe, dy_fe, dcx0, ref_col, ref_row)
 }
 
 /// Compute a `rows` x `columns` block by perturbation, reference at block center.
@@ -1747,7 +1807,8 @@ perturb_engine!(u64,
     HPData64, count_iterations_hp64,
     mag_to_f64_64, limbs_to_f64_scratch_64, limbs64_to_f64,
     mag_to_fe_64, limbs_to_fe_scratch_64, limbs64_to_fe,
-    reference_orbit64, perturb_setup64, perturb_setup_fe64,
+    reference_orbit64, reference_orbit_ctl64,
+    perturb_setup64, perturb_setup_fe64, perturb_setup_fe64_at,
     mandelbrot_perturb64, mandelbrot_perturb_glitch64);
 
 perturb_engine!(u32,
@@ -1755,7 +1816,8 @@ perturb_engine!(u32,
     HPData32, count_iterations_hp32,
     mag_to_f64_32, limbs_to_f64_scratch_32, limbs32_to_f64,
     mag_to_fe_32, limbs_to_fe_scratch_32, limbs32_to_fe,
-    reference_orbit32, perturb_setup32, perturb_setup_fe32,
+    reference_orbit32, reference_orbit_ctl32,
+    perturb_setup32, perturb_setup_fe32, perturb_setup_fe32_at,
     mandelbrot_perturb32, mandelbrot_perturb_glitch32);
 
 /// Compute a block by BLA-accelerated perturbation (rebasing engine + skip
@@ -2072,6 +2134,83 @@ mod tests {
             .count();
         assert!(covered_mismatch * 200 <= full.len(),
             "covered pixels disagree: {covered_mismatch}");
+    }
+
+    // The orbit-build control hook stops the build on the first batch boundary
+    // where it returns false, and is called once per batch.
+    #[test]
+    fn orbit_ctl_cancels_build() {
+        // interior reference (0, 0): never escapes, so only the hook stops it
+        let cx = vec![0u32; 4];
+        let cy = vec![0u32; 4];
+        let calls = std::cell::Cell::new(0usize);
+        let ctl = |pts: usize| {
+            calls.set(calls.get() + 1);
+            pts < 200_000
+        };
+        let (orbit, _dips) = reference_orbit_ctl32(&cx, &cy, 1_000_000, 1_000_000, Some(&ctl));
+        // batch boundaries are multiples of ORBIT_CTL_INTERVAL (65536): the
+        // first at/after 200k points is 262144, where the hook refuses
+        assert_eq!(orbit.len() - 1, 262_144, "stopped at the wrong batch boundary");
+        assert_eq!(calls.get(), 262_144 / ORBIT_CTL_INTERVAL + 1);
+        // and a None hook changes nothing (same clamp/escape semantics)
+        let (o2, _d) = reference_orbit_ctl32(&cx, &cy, 500, 1_000_000, None);
+        let (o3, _d) = reference_orbit32(&cx, &cy, 500, 1_000_000);
+        assert_eq!(o2, o3);
+    }
+
+    // Reference selection soundness: the reference may sit at ANY grid pixel --
+    // here one that ESCAPES early -- and must reproduce the center-reference
+    // image (escaped orbits wrap soundly at any length; this is the engine
+    // fact server-side reference relocation rests on).
+    #[test]
+    fn relocated_reference_matches_center() {
+        // same fe-depth window as truncated_orbit_returns_unresolved: the
+        // center reference never escapes (runs the full max_iter), while many
+        // pixels escape at a few hundred to a few thousand counts
+        let n_digits = 81usize;
+        let frac0 = vec![0u32; n_digits];
+        let mut frac_dx = vec![0u32; n_digits];
+        frac_dx[79] = 1;
+        let xd = coord(0, &frac0);
+        let yd = coord(1, &frac0);
+        let dxd = coord(0, &frac_dx);
+        let dyd = coord(0, &frac_dx);
+        let (rows, columns, max_iter) = (32, 32, 8000);
+
+        let chunks = chunks32_for(xd.len());
+        let (dx, dy) = (u32_to_limbs32(&dxd), u32_to_limbs32(&dyd));
+        let mut xmin = u32_to_limbs32(&xd);
+        let mut dx_neg = vec![0u32; xmin.len()];
+        negate32(&dx, &mut dx_neg);
+        for _ in 0..columns / 2 { incr32(&mut xmin, &dx_neg); }
+        let mut ymax = u32_to_limbs32(&yd);
+        for _ in 0..rows / 2 { incr32(&mut ymax, &dy); }
+
+        let run = |ref_row: usize, ref_col: usize| -> Vec<i32> {
+            let (orbit, dips, dx_fe, dy_fe, dcx0, _c, row_ref) = perturb_setup_fe32_at(
+                &xmin, &dx, &ymax, &dy, chunks, ref_row, ref_col,
+                max_iter, DEFAULT_ORBIT_BUDGET, None);
+            let mut out = vec![0i32; rows * columns];
+            bla_strip_fe(&orbit, &dips, dx_fe, dy_fe, dcx0, FE_ZERO, row_ref,
+                0, rows, columns, max_iter, &mut out);
+            out
+        };
+        let center = run(rows / 2, columns / 2);
+
+        // pick an early-escaping pixel as the relocated reference
+        let cand = (0..center.len())
+            .find(|&i| center[i] >= 500 && center[i] <= 4000)
+            .expect("window should contain a moderate-count escaping pixel");
+        let relocated = run(cand / columns, cand % columns);
+
+        // an escaped reference resolves EVERY pixel: no -2 anywhere, and the
+        // image matches the center-reference run up to rare BLA boundary
+        // speckle (cross-reference tables differ; <= 2% of pixels)
+        assert!(relocated.iter().all(|&ct| ct != -2), "escaped ref produced unresolved px");
+        let mismatch = (0..center.len()).filter(|&i| center[i] != relocated[i]).count();
+        assert!(mismatch * 50 <= center.len(),
+            "relocated reference disagrees on {mismatch}/{} px", center.len());
     }
 
     // Sparse upper levels beyond a small table prefix must produce the same
