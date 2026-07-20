@@ -442,16 +442,45 @@ fn orbit_cache_insert(key: OrbitKey, orbit: std::sync::Arc<CachedOrbit>) {
 // would otherwise build to maxIterations -- hours at extreme depths when a
 // minibrot sits under the crosshair. Instead, probe PROBE_ROWS evenly-spaced
 // full-width rows against the truncated prefix and relocate the reference to
-// the longest-lived ESCAPING pixel found (escaped references wrap soundly at
-// any length -- the reverted reference-selection experiment proved short
-// escaped refs run at least as fast as full-coverage ones). The cap starts at
-// SELECT_TRIGGER_POINTS and escalates x4 up to the budget for views whose
-// every pixel outlives the first prefix (whole-frame-deep KF locations).
-// MIN_CAND_POINTS rejects runt references whose tiny BLA skip ladder
-// (max skip ~ orbit length) would slow every pixel.
+// the SHORTEST escaping pixel >= SHORT_REF_FLOOR (escaped references wrap
+// soundly at any length, and bench-refsel measured per-wrap render cost
+// PROPORTIONAL to reference length on the 2600-digit view -- 106 us/wrap at
+// a 4.6M ref vs 372 us at 15.6M, net render 2.14 vs 2.23 ms/px -- so wraps
+// are free and a shorter reference is a pure build-time win: 74 s vs 249 s
+// there). The cap starts at SELECT_TRIGGER_POINTS and doubles up to the
+// budget for views whose every pixel outlives the first prefix
+// (whole-frame-deep KF locations). SHORT_REF_FLOOR guards the regime below
+// the bench's evidence (per-wrap cost must have a fixed component that
+// surfaces at some small length); if only sub-floor escapers exist, the
+// LONGEST one >= MIN_CAND_POINTS still rescues (slower render beats
+// unresolved white).
+// Trigger (first probe point) CAP: like the rungs, the trigger is really a
+// TIME threshold -- 4M points of patience is 0.6 s at 116 digits but 64 s at
+// 2600 -- so a small measuring chunk establishes the depth's build rate and
+// the trigger becomes min(4M, max(1.5M, TRIGGER_SECONDS of build)). Only
+// expensive-build depths lower it; centers that escape never probe at all,
+// so fast views are untouched by construction.
 const SELECT_TRIGGER_POINTS: i32 = 4_000_000;
+const MEASURE_CHUNK_POINTS: i32 = 262_144;
+const TRIGGER_SECONDS: f64 = 20.0;
+const TRIGGER_MIN_POINTS: i32 = 1_500_000;
+// Ladder step cap = STEP_ROUND_FACTOR x the measured cost of a probe round
+// (with a floor): one extra round costs a round; a bigger step risks half a
+// step of wasted center build past the frame's shallowest escaper. Balancing
+// those puts the step's TIME budget at a few round-times -- self-tuning
+// across depths (116-digit: rounds ~2-4 s -> ~64-100M steps, matching the
+// measured 8.32 vs 7.2 rows/s win of a 64M increment over pure doubling on
+// 750M-iters.xml; 2600-digit: HP is ~100x costlier per point, so steps floor
+// at SELECT_MIN_STEP and the ladder creeps).
+const STEP_ROUND_FACTOR: f64 = 4.0;
+const STEP_SECONDS_FLOOR: f64 = 8.0;
+// termination guard only: the REAL floor is STEP_SECONDS_FLOOR of measured
+// build time, which converts to points via the live us/pt and so scales
+// with depth automatically (~500k pts at 2600 digits, tens of M at 116)
+const SELECT_MIN_STEP: i32 = 262_144;
 const PROBE_ROWS: usize = 16;
 const MIN_CAND_POINTS: i32 = 100_000;
+const SHORT_REF_FLOOR: i32 = 1_000_000;
 
 async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpResponse {
     let coords = coords.into_inner();
@@ -525,7 +554,11 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                 // exact; only the end-of-orbit wrap is not, and that comes
                 // back negative), and ANY escaping pixel works as the
                 // reference (escaped orbits wrap soundly at any length). No
-                // escaper yet: quadruple the cap and extend, up to the budget.
+                // escaper yet: grow the cap and extend, up to the budget --
+                // doubling, but with each step capped at ~STEP_SECONDS of
+                // measured build time (see the step sizing below). The build
+                // resumes, so finer rounds cost only probe passes
+                // (f64-cheap, ~2 s single-thread per 16M of prefix).
                 let dx_fe = limbs64_to_fe(&dx[..chunks]);
                 let dy_fe = limbs64_to_fe(&dy[..chunks]);
                 let center_row = basis_rows / 2;
@@ -533,8 +566,33 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                 let mut builder = OrbitBuilder64::at_grid(
                     &xmin, &dx, &ymax, &dy, chunks, center_row, basis_columns / 2);
                 let mut t = budget.min(SELECT_TRIGGER_POINTS);
+                // measured HP cost per orbit point, for the time-based step cap
+                let mut us_per_pt = 0.0f64;
+                // measuring chunk: learn the build rate, then time-scale the
+                // trigger (see the constants). Escape/cancel inside the chunk
+                // behaves identically to the main loop's extends.
+                {
+                    let t0 = std::time::Instant::now();
+                    builder.extend(max_iter.min(MEASURE_CHUNK_POINTS), ctl);
+                    let built = builder.orbit.len() - 1;
+                    if built > 0 {
+                        us_per_pt = t0.elapsed().as_secs_f64() * 1e6 / built as f64;
+                        let time_trigger = ((TRIGGER_SECONDS * 1e6 / us_per_pt) as i32)
+                            .max(TRIGGER_MIN_POINTS);
+                        t = t.min(time_trigger.max(2));
+                    }
+                    if tx.is_closed() {
+                        return;
+                    }
+                }
                 let c = loop {
+                    let before = builder.orbit.len();
+                    let t0 = std::time::Instant::now();
                     builder.extend(max_iter.min(t.max(2)), ctl);
+                    if builder.orbit.len() > before {
+                        us_per_pt = t0.elapsed().as_secs_f64() * 1e6
+                            / (builder.orbit.len() - before) as f64;
+                    }
                     if tx.is_closed() {
                         return; // cancelled: discard the partial orbit, never cache it
                     }
@@ -546,6 +604,7 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                             dx_fe, dy_fe, dcx0: center_dcx0, row_ref: center_row };
                     }
 
+                    let round_t0 = std::time::Instant::now();
                     let best = {
                         let table = bla_image_table(&builder.orbit, dx_fe, dy_fe,
                             center_dcx0, FE_ZERO, center_row, basis_rows, basis_columns);
@@ -553,26 +612,29 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                             .map(|i| i * basis_rows.saturating_sub(1) / (PROBE_ROWS - 1).max(1))
                             .collect();
                         probe_rows.dedup();
-                        pool.install(|| {
-                            probe_rows.par_iter().map(|&r| {
+                        let cands: Vec<(i32, usize, usize)> = pool.install(|| {
+                            probe_rows.par_iter().flat_map_iter(|&r| {
                                 // probes at a deep prefix can grind for a
                                 // while: bail per row on disconnect (and
                                 // heartbeat, so the disconnect is noticed)
                                 let _ = tx.try_send(Ok(web::Bytes::from_static(b"\n")));
-                                if tx.is_closed() {
-                                    return (-1, r, 0);
-                                }
                                 let mut out = vec![0i32; basis_columns];
-                                let probe_abort = || tx.is_closed();
-                                bla_strip_fe_with_table(&builder.orbit, &builder.dips, &table,
-                                    dx_fe, dy_fe, center_dcx0, FE_ZERO, center_row,
-                                    r, 1, basis_columns, len, &mut out, Some(&probe_abort));
-                                out.iter().enumerate()
-                                    .map(|(col, &ct)| (ct, r, col))
-                                    .max()
-                                    .unwrap_or((-1, r, 0))
-                            }).max()
-                        }).filter(|&(ct, _, _)| ct >= MIN_CAND_POINTS)
+                                if !tx.is_closed() {
+                                    let probe_abort = || tx.is_closed();
+                                    bla_strip_fe_with_table(&builder.orbit, &builder.dips, &table,
+                                        dx_fe, dy_fe, center_dcx0, FE_ZERO, center_row,
+                                        r, 1, basis_columns, len, &mut out, Some(&probe_abort));
+                                }
+                                out.into_iter().enumerate()
+                                    .filter(|&(_, ct)| ct >= MIN_CAND_POINTS)
+                                    .map(move |(col, ct)| (ct, r, col))
+                                    .collect::<Vec<_>>()
+                            }).collect()
+                        });
+                        // shortest above the floor; else the longest runt
+                        cands.iter().filter(|&&(ct, _, _)| ct >= SHORT_REF_FLOOR).min()
+                            .or_else(|| cands.iter().max())
+                            .copied()
                     };
                     if tx.is_closed() {
                         return;
@@ -602,10 +664,22 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                             dips: std::mem::take(&mut builder.dips),
                             dx_fe, dy_fe, dcx0: center_dcx0, row_ref: center_row };
                     }
-                    t = t.saturating_mul(4).min(budget);
+                    // Step sizing: double, but cap the step's BUILD TIME at a
+                    // few probe-round times (see the constants) -- a step's
+                    // cost is time, not points (64M pts is 10 s at 116 digits
+                    // but 17 min at 2600), and the probe round is what an
+                    // extra rung costs.
+                    let step_seconds =
+                        (STEP_ROUND_FACTOR * round_t0.elapsed().as_secs_f64()).max(STEP_SECONDS_FLOOR);
+                    let time_cap = if us_per_pt > 0.0 {
+                        ((step_seconds * 1e6 / us_per_pt) as i32).max(SELECT_MIN_STEP)
+                    } else {
+                        i32::MAX
+                    };
+                    t = t.saturating_add(t.min(time_cap)).min(budget);
                     if unsafe { VERBOSE } {
-                        println!("  no escaping probe within {} pts: extending center build to {} M pts",
-                            len, t / 1_000_000);
+                        println!("  no escaping probe within {} pts: extending center build to {:.1} M pts",
+                            len, t as f64 / 1e6);
                     }
                 };
                 let c = std::sync::Arc::new(c);

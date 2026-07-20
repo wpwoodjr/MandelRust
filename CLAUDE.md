@@ -302,15 +302,33 @@ on the common case. A cap-TRUNCATED center now probes 16 full-width rows in
 f64 perturbation against the truncated prefix (probe counts that resolve
 within the prefix are EXACT: escapes and rebases are sound, only the
 end-of-orbit wrap is not and it returns negative) and relocates the reference
-to the longest-lived escaping pixel >= 100k pts (runt refs cap the BLA skip
-ladder). Escaped refs wrap soundly at ANY length — the reverted
+to the SHORTEST escaping pixel >= 1M pts (fallback: longest >= 100k).
+Shortest-wins is MEASURED, not assumed: bench-refsel (mb-arith example; run
+it on any view's HP2 digit arrays) timed identical strips on the 2600-digit
+view against 4.6M/4.8M/15.6M refs — per-wrap render cost is PROPORTIONAL to
+ref length (106/111/372 us), so wraps are free, render is count-determined
+(2.14 vs 2.23 ms/px), and a shorter ref is a pure build-time win (74 s vs
+249 s). The 1M floor guards the untested regime where per-wrap fixed costs
+must surface. Escaped refs wrap soundly at ANY length — the reverted
 reference-selection experiment is the proof — so a minibrot-under-the-
 crosshair view costs ~2 prefix builds instead of a maxIterations-long one
 (measured, 1077-digit interior-centered view at maxIter 8M: 8M-pt center
-build -> 4M prefix + 3.97M relocated build; interior px IDENTICAL, 0.016% of
-px off <= 35 counts = cross-reference BLA speckle;
-mb-arith::relocated_reference_matches_center covers the engine fact). No
-escaper: the cap quadruples and the center build EXTENDS -- OrbitBuilder64/32
+build -> 4M prefix + 1.2M relocated build; interior px IDENTICAL, 0.032% of
+px off <= 44 counts = cross-reference BLA speckle, which grows mildly as the
+ref shortens; mb-arith::relocated_reference_matches_center covers the engine
+fact). No
+escaper: the cap doubles, with each step capped at ~4x the measured
+probe-round time (floor 8 s) of MEASURED build time -- the step is sized in
+seconds, not points, so it self-scales with depth (~64M/round at 116 digits,
+~500k at 2600; a fixed point step is 10 s at one depth and 17 min at the
+other) and bounds center overshoot past the frame's shallowest escaper at
+one time-bounded step. The TRIGGER (first probe point) is time-scaled the
+same way: a 256k measuring chunk learns the build rate, then the first
+probe fires at min(4M, max(1.5M, 20 s of build)) -- deepish probes at 1.5M
+(24 s in) instead of 4M; cheap-build depths evaluate to 4M exactly, and
+escaping centers never probe at all, so fast views are untouched by
+construction. The center build
+EXTENDS -- OrbitBuilder64/32
 keeps the full-precision z limbs alive between rounds, so no prefix is ever
 recomputed (bit-for-bit vs one-shot, mb-arith::resumed_build_matches_one_shot;
 the one-shot fn is now a thin wrapper over the builder, hot loop unmoved at
