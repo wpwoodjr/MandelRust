@@ -336,6 +336,7 @@ pub extern "C" fn compute_strip_with_orbit(
             bla_strip_fe_with_table(
                 orbit, &dips, table, dx, dy, dcx0, dcy_off, image_row_ref as usize,
                 strip_row0 as usize, strip_rows, columns, max_iterations, out,
+                None, // no mid-strip abort in workers: termination kills them
             );
         });
         return;

@@ -119,6 +119,14 @@ pub fn orbit_escaped(orbit: &[(f64, f64)]) -> bool {
 pub const ORBIT_CTL_INTERVAL: usize = 65_536;
 pub type OrbitBuildCtl<'a> = Option<&'a dyn Fn(usize) -> bool>;
 
+/// Per-ROW abort poll for strip computes (`bla_strip_fe_with_table`): return
+/// true to stop mid-strip, leaving the remaining `out` entries untouched --
+/// the caller must discard an aborted strip. Checked once per row (cold; a
+/// row is hundreds of pixels), so `None` and never-firing hooks cost nothing
+/// measurable. Lets a server drop a disconnected client's strip within one
+/// row instead of grinding out the whole strip before the send fails.
+pub type StripAbort<'a> = Option<&'a dyn Fn() -> bool>;
+
 /// Compute one pixel row by perturbation. `dcx0` is dc.x of column 0, `dcx_step`
 /// is the per-column increment (the f64 pixel width), `dcy` is dc.y for the row.
 pub fn perturb_row(
@@ -756,12 +764,18 @@ fn bla_grid_fe(
     columns: usize,
     max_iterations: i32,
     out: &mut [i32],
+    abort: StripAbort,
 ) {
     if orbit.len() < 2 {
         out[..rows * columns].fill(-1);
         return;
     }
     for i in 0..rows {
+        if let Some(f) = abort {
+            if f() {
+                return;
+            }
+        }
         let dcy = dcy_at(i);
         for j in 0..columns {
             let dcx = dcx0.add(dx.mul_f64(j as f64));
@@ -822,8 +836,14 @@ fn bla_grid_loop<const TAIL: bool>(
     columns: usize,
     max_iterations: i32,
     out: &mut [i32],
+    abort: StripAbort,
 ) {
     for i in 0..rows {
+        if let Some(f) = abort {
+            if f() {
+                return;
+            }
+        }
         let dcy = dcy_at(i);
         for j in 0..columns {
             let dcx = dcx0 + j as f64 * dx_f;
@@ -855,6 +875,7 @@ fn bla_grid(
     columns: usize,
     max_iterations: i32,
     out: &mut [i32],
+    abort: StripAbort,
 ) {
     if orbit.len() < 2 {
         out[..rows * columns].fill(-1);
@@ -871,16 +892,16 @@ fn bla_grid(
         let relax = bla.relax_radii(orbit);
         let r2_at = |idx: usize| unsafe { *relax.get_unchecked(idx) };
         if no_tail {
-            bla_grid_loop::<false>(orbit, bla, r2_at, dcx0, dx_f, dcy_at, rows, columns, max_iterations, out);
+            bla_grid_loop::<false>(orbit, bla, r2_at, dcx0, dx_f, dcy_at, rows, columns, max_iterations, out, abort);
         } else {
-            bla_grid_loop::<true>(orbit, bla, r2_at, dcx0, dx_f, dcy_at, rows, columns, max_iterations, out);
+            bla_grid_loop::<true>(orbit, bla, r2_at, dcx0, dx_f, dcy_at, rows, columns, max_iterations, out, abort);
         }
     } else {
         let r2_at = |idx: usize| unsafe { bla.entries.get_unchecked(idx).r2 };
         if no_tail {
-            bla_grid_loop::<false>(orbit, bla, r2_at, dcx0, dx_f, dcy_at, rows, columns, max_iterations, out);
+            bla_grid_loop::<false>(orbit, bla, r2_at, dcx0, dx_f, dcy_at, rows, columns, max_iterations, out, abort);
         } else {
-            bla_grid_loop::<true>(orbit, bla, r2_at, dcx0, dx_f, dcy_at, rows, columns, max_iterations, out);
+            bla_grid_loop::<true>(orbit, bla, r2_at, dcx0, dx_f, dcy_at, rows, columns, max_iterations, out, abort);
         }
     }
 }
@@ -925,7 +946,7 @@ pub fn bla_strip(
 
     let dcy_at =
         |i: usize| (image_row_ref as f64 - (strip_row0 + i) as f64) * dy_f + dcy_off;
-    bla_grid(orbit, &bla, dcx0, dx_f, dcy_at, strip_rows, columns, max_iterations, out);
+    bla_grid(orbit, &bla, dcx0, dx_f, dcy_at, strip_rows, columns, max_iterations, out, None);
 }
 
 // Pixel scales at/above this dx exponent use the plain f64 engine: dc values
@@ -977,7 +998,7 @@ pub fn bla_strip_fe(
     let dcy_at = |i: usize| {
         dy.mul_f64(image_row_ref as f64 - (strip_row0 + i) as f64).add(dcy_off)
     };
-    bla_grid_fe(orbit, dips, &bla, dcx0, dx, dcy_at, strip_rows, columns, max_iterations, out);
+    bla_grid_fe(orbit, dips, &bla, dcx0, dx, dcy_at, strip_rows, columns, max_iterations, out, None);
 }
 
 /// Build ONE BLA table for a whole image (dc_max over all rows), for sharing
@@ -1024,19 +1045,20 @@ pub fn bla_strip_fe_with_table(
     columns: usize,
     max_iterations: i32,
     out: &mut [i32],
+    abort: StripAbort,
 ) {
     if dx.e >= FE_CUTOVER_DX_E {
         let (dx_f, dy_f) = (dx.to_f64(), dy.to_f64());
         let (dcx0_f, dcy_off_f) = (dcx0.to_f64(), dcy_off.to_f64());
         let dcy_at =
             |i: usize| (image_row_ref as f64 - (strip_row0 + i) as f64) * dy_f + dcy_off_f;
-        bla_grid(orbit, bla, dcx0_f, dx_f, dcy_at, strip_rows, columns, max_iterations, out);
+        bla_grid(orbit, bla, dcx0_f, dx_f, dcy_at, strip_rows, columns, max_iterations, out, abort);
         return;
     }
     let dcy_at = |i: usize| {
         dy.mul_f64(image_row_ref as f64 - (strip_row0 + i) as f64).add(dcy_off)
     };
-    bla_grid_fe(orbit, dips, bla, dcx0, dx, dcy_at, strip_rows, columns, max_iterations, out);
+    bla_grid_fe(orbit, dips, bla, dcx0, dx, dcy_at, strip_rows, columns, max_iterations, out, abort);
 }
 
 // *** shared-index variant (SIMD-friendly) *** //

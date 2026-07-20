@@ -555,10 +555,18 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                         probe_rows.dedup();
                         pool.install(|| {
                             probe_rows.par_iter().map(|&r| {
+                                // probes at a deep prefix can grind for a
+                                // while: bail per row on disconnect (and
+                                // heartbeat, so the disconnect is noticed)
+                                let _ = tx.try_send(Ok(web::Bytes::from_static(b"\n")));
+                                if tx.is_closed() {
+                                    return (-1, r, 0);
+                                }
                                 let mut out = vec![0i32; basis_columns];
+                                let probe_abort = || tx.is_closed();
                                 bla_strip_fe_with_table(&builder.orbit, &builder.dips, &table,
                                     dx_fe, dy_fe, center_dcx0, FE_ZERO, center_row,
-                                    r, 1, basis_columns, len, &mut out);
+                                    r, 1, basis_columns, len, &mut out, Some(&probe_abort));
                                 out.iter().enumerate()
                                     .map(|(col, &ct)| (ct, r, col))
                                     .max()
@@ -637,17 +645,28 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
         pool.install(|| {
             let starts: Vec<usize> = (0..rows).step_by(strip).collect();
             starts.par_iter().for_each(|&r0| {
-                if dead.load(std::sync::atomic::Ordering::Relaxed) {
+                // dead trips on a failed send; is_closed catches a disconnect
+                // noticed elsewhere (e.g. a build heartbeat) before any strip
+                // send has had a chance to fail
+                if dead.load(std::sync::atomic::Ordering::Relaxed) || tx.is_closed() {
+                    dead.store(true, std::sync::atomic::Ordering::Relaxed);
                     return;
                 }
                 let h = strip.min(rows - r0);
                 let mut out = vec![0i32; h*columns];
+                // per-row abort inside the strip engine: a deep strip can
+                // grind for minutes, so don't wait for the send to fail
+                let strip_abort = || dead.load(std::sync::atomic::Ordering::Relaxed) || tx.is_closed();
                 match &shared_table {
                     Some(t) => bla_strip_fe_with_table(&cached.orbit, &cached.dips, t,
                         cached.dx_fe, cached.dy_fe, dcx0_eff, dcy_off,
-                        cached.row_ref, r0, h, columns, max_iter, &mut out),
+                        cached.row_ref, r0, h, columns, max_iter, &mut out, Some(&strip_abort)),
                     None => bla_strip_fe(&cached.orbit, &cached.dips, cached.dx_fe, cached.dy_fe,
                         dcx0_eff, dcy_off, cached.row_ref, r0, h, columns, max_iter, &mut out),
+                }
+                if strip_abort() {
+                    dead.store(true, std::sync::atomic::Ordering::Relaxed);
+                    return; // aborted mid-strip: out is partial garbage, drop it
                 }
                 let counts: Vec<&[i32]> = out.chunks(columns).collect();
                 let line = format!(
