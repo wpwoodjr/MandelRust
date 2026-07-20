@@ -303,10 +303,10 @@
   </style>
 </style>
 
-<script src="BigDecimal-all-last.min.js?v=b0bed4ea2c"></script>
-<script src="slider.js?v=b0bed4ea2c"></script>
-<script src="touch.js?v=b0bed4ea2c"></script>
-<script src="percentage-complete.js?v=b0bed4ea2c"></script>
+<script src="BigDecimal-all-last.min.js?v=9674befb04"></script>
+<script src="slider.js?v=9674befb04"></script>
+<script src="touch.js?v=9674befb04"></script>
+<script src="percentage-complete.js?v=9674befb04"></script>
 <script>
 
 "use strict";
@@ -465,7 +465,7 @@ var log2of10 = Math.log(10)/Math.log(2);
 // URLs is what stops a cached worker from outliving the binary it drives.
 // Stamped from the assets' contents by stamp-assets.sh at build time -- do not
 // edit by hand. Distinct from EXPECTED_WASM_VERSION, which pins the wasm ABI.
-const ASSET_VERSION = "b0bed4ea2c";
+const ASSET_VERSION = "9674befb04";
 
 let compute_mandelbrot;
 WebAssembly
@@ -775,7 +775,11 @@ let USE_ORBIT_BROADCAST = true;
 // the server chooses its own budget (--orbit-points), so remote mode
 // is the home for extreme counts.
 const ORBIT_RAM_BUDGET_BYTES = 4 * 1024 * 1024 * 1024; // across all workers
-const ORBIT_WORKER_CEILING_POINTS = 150000000;         // wasm32 address space
+// Rust caps any single allocation at isize::MAX (2 GB) on wasm32, so the
+// orbit Vec tops out at ~134M points x 16 B; 128M leaves headroom. (150M =
+// 2.4 GB was never actually allocatable -- a latent trap, unexercised until
+// the v14 ladder pre-reserved it.)
+const ORBIT_WORKER_CEILING_POINTS = 128000000;
 function orbitBudgetPoints() {
     // Per-worker memory model (measured, not just the orbit -- ignoring the
     // BLA table undercounted by ~6x and OOM-killed 32-worker deep renders):

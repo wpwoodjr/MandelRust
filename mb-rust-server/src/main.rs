@@ -649,8 +649,12 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                         // (256M center + 256M candidate = ~8 GB peak)
                         drop(std::mem::take(&mut builder.orbit));
                         drop(std::mem::take(&mut builder.dips));
+                        // the probe certified the escape count: cap the build
+                        // there (+ slack for probe speckle) instead of at the
+                        // budget -- the builder RESERVES its target up front
+                        let cap = budget.min(count.saturating_add(1_048_576));
                         let (orbit, dips, dx_fe, dy_fe, dcx0, _c2, row_ref) = perturb_setup_fe64_at(
-                            &xmin, &dx, &ymax, &dy, chunks, pr, pc, max_iter, budget, ctl);
+                            &xmin, &dx, &ymax, &dy, chunks, pr, pc, max_iter, cap, ctl);
                         if tx.is_closed() {
                             return;
                         }

@@ -4,6 +4,10 @@ let compute_mandelbrot = null, compute_mandelbrot_hp = null, compute_mandelbrot_
 let malloc, dalloc;
 // orbit sharing (v8): build one reference orbit per image, reuse across strips
 let build_reference_orbit = null, compute_strip_with_orbit = null, malloc_f64 = null, free_f64 = null;
+// reference selection (v14): resumable builder driven by the ladder below
+let reference_builder_start = null, reference_builder_extend = null,
+    reference_builder_escaped = null, reference_builder_orbit_ptr = null,
+    reference_builder_dips = null, reference_builder_finish = null;
 // cached orbit for the image this worker is currently rendering
 let cachedImageId = null, cachedOrbit = null; // {ptr, len, meta: Float64Array(6) copy, rowRef}
 // meta = [dx_m, dx_e, dy_m, dy_e, dcx0_m, dcx0_e]: FloatExp mantissa/exponent
@@ -21,11 +25,13 @@ let hpMsAccum = 0, hpStripAccum = 0;
 // Must match mb_wasm_version() in mb-wasm/src/lib.rs. Bump both together, and
 // bump ASSET_VERSION in MB.html so caches can't pair a new worker with an old
 // binary (or vice versa).
-const EXPECTED_WASM_VERSION = 13;
+const EXPECTED_WASM_VERSION = 14;
 
 function wasmReady() {
     return compute_mandelbrot && compute_mandelbrot_hp && compute_mandelbrot_hp_perturb
-        && build_reference_orbit && compute_strip_with_orbit && malloc_f64 && free_f64;
+        && build_reference_orbit && compute_strip_with_orbit && malloc_f64 && free_f64
+        && reference_builder_start && reference_builder_extend && reference_builder_escaped
+        && reference_builder_orbit_ptr && reference_builder_dips && reference_builder_finish;
 }
 
 async function waitForWasm(workerNumber, jobNumber) {
@@ -51,13 +57,15 @@ class WasmMemory {
         // console.log(`creating new WasmMemory32 with capacity ${this.capacity}`)
     }
     newArrayU32(length,log) {
-        let ptr = malloc(length*Uint32Array.BYTES_PER_ELEMENT);
+        // >>> 0: wasm pointers cross the FFI as SIGNED i32 -- above the
+        // 2 GB line (big orbits) they arrive negative and break view offsets
+        let ptr = malloc(length*Uint32Array.BYTES_PER_ELEMENT) >>> 0;
         // if (log) console.log(ptr, length, this.memory.buffer.byteLength);
         let array = new Uint32Array(this.memory.buffer, ptr, length);
         return array;
     }
     newArrayI32(length) {
-        let ptr = malloc(length*Int32Array.BYTES_PER_ELEMENT);
+        let ptr = malloc(length*Int32Array.BYTES_PER_ELEMENT) >>> 0;
         let array = new Int32Array(this.memory.buffer, ptr, length);
         return array;
     }
@@ -73,7 +81,61 @@ class WasmMemory {
 
 let wasmMemory;
 
+// Reference-selection ladder constants -- mirror the server's (main.rs). All
+// budgets are in MEASURED build time: wasm has no clock, so the timing lives
+// here in JS. See the server's constants for the full rationale.
+const SELECT_TRIGGER_POINTS = 4000000;   // trigger cap (points)
+const MEASURE_CHUNK_POINTS = 262144;     // learn us/pt on this before choosing
+const TRIGGER_SECONDS = 20;              // first probe at most this far in
+const TRIGGER_MIN_POINTS = 1500000;
+const STEP_ROUND_FACTOR = 4;             // rung cap ~ 4x measured round time
+const STEP_SECONDS_FLOOR = 8;
+const SELECT_MIN_STEP = 262144;          // termination guard only
+const PROBE_ROWS = 16;
+const MIN_CAND_POINTS = 100000;          // reject runt refs (skip ladder)
+const SHORT_REF_FLOOR = 1000000;         // shortest-wins evidence floor
+
+// Probe PROBE_ROWS evenly-spaced full-width rows against the builder's
+// truncated prefix (max_iterations = its point count, so every non-negative
+// count is an EXACT escape the prefix can certify; the end-of-orbit wrap
+// returns negative). Returns the shortest escaper >= SHORT_REF_FLOOR, else
+// the longest >= MIN_CAND_POINTS, else null.
+function probeForCandidate(points, metaPtr, rowRef, basisCols, basisRows) {
+    let dipsLenPtr = malloc(4) >>> 0;
+    let dipsPtr = reference_builder_dips(dipsLenPtr) >>> 0;
+    let dipsLen = new Uint32Array(wasmMemory.memory.buffer, dipsLenPtr, 1)[0];
+    dalloc(dipsLenPtr, 4);
+    let meta = new Float64Array(wasmMemory.memory.buffer, metaPtr, 6);
+    let outPtr = wasmMemory.newArrayI32(basisCols).byteOffset;
+    let short = null, long = null;
+    for (let p = 0; p < PROBE_ROWS; p++) {
+        let r = Math.floor(p * (basisRows - 1) / (PROBE_ROWS - 1));
+        // re-fetch per row: table allocation inside can grow/detach memory
+        let orbitPtr = reference_builder_orbit_ptr() >>> 0;
+        compute_strip_with_orbit(orbitPtr, points + 1, dipsPtr, dipsLen,
+            meta[0], meta[1], meta[2], meta[3], meta[4], meta[5],
+            0, 0, rowRef, r, 1, basisCols, points, outPtr);
+        meta = new Float64Array(wasmMemory.memory.buffer, metaPtr, 6);
+        let counts = new Int32Array(wasmMemory.memory.buffer, outPtr, basisCols);
+        for (let c = 0; c < basisCols; c++) {
+            let ct = counts[c];
+            if (ct >= MIN_CAND_POINTS) {
+                if (ct >= SHORT_REF_FLOOR && (!short || ct < short.count)) short = { count: ct, r: r, c: c };
+                if (!long || ct > long.count) long = { count: ct, r: r, c: c };
+            }
+        }
+    }
+    dalloc(outPtr, basisCols * 4);
+    return short || long;
+}
+
 // Build the whole-image reference orbit from the basis grid coords and cache it.
+// v14: runs the escalating reference-selection ladder (see the server's
+// compute_mandelbrot_hp2 for the design and the measured findings) instead of
+// a one-shot center build -- a center that escapes behaves exactly as before;
+// a cap-truncated one probes the frame and relocates to a short escaping
+// pixel, turning maxIterations-long interior-center builds into ~two small
+// ones and unresolved-white frames into complete renders.
 // Pointers are captured as numbers: the build grows wasm memory (detaching views).
 function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows, orbitBudget) {
     if (cachedOrbit) {
@@ -81,17 +143,67 @@ function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows, orbitBudg
         if (cachedOrbit.dipsLen > 0) free_f64(cachedOrbit.dipsPtr, cachedOrbit.dipsLen * 5);
         cachedOrbit = null;
     }
+    let budget = orbitBudget || 4000000;
     let len = xmin.length;
     let xminPtr = wasmMemory.copyFromArrayU32(xmin).byteOffset;
     let dxPtr = wasmMemory.copyFromArrayU32(dx).byteOffset;
     let ymaxPtr = wasmMemory.copyFromArrayU32(ymax).byteOffset;
     let dyPtr = wasmMemory.copyFromArrayU32(dy).byteOffset;
-    let lenPtr = malloc(4);
-    let metaPtr = malloc_f64(6);
-    let dipsPtrPtr = malloc(4), dipsLenPtr = malloc(4);
+    let metaPtr = malloc_f64(6) >>> 0;
     let _tb = performance.now();
-    let orbitPtr = build_reference_orbit(xminPtr, dxPtr, ymaxPtr, dyPtr, len,
-        basisCols, basisRows, maxIterations, orbitBudget || 0, lenPtr, metaPtr, dipsPtrPtr, dipsLenPtr);
+
+    let refRow = basisRows >>> 1;
+    // capacity = the ladder's ceiling: reserve ONCE so extends never realloc
+    // (the 2x realloc transient plus per-round table churn OOMed a 100M-budget
+    // ladder on wasm32; v13's one-shot build reserved up front too)
+    reference_builder_start(xminPtr, dxPtr, ymaxPtr, dyPtr, len, basisCols >>> 1, refRow,
+        Math.min(maxIterations, budget), metaPtr);
+    // measuring chunk: learn the depth's build rate, then time-scale the trigger
+    let t0 = performance.now();
+    let points = reference_builder_extend(Math.min(maxIterations, MEASURE_CHUNK_POINTS));
+    let usPerPt = points > 0 ? (performance.now() - t0) * 1000 / points : 0;
+    let t = Math.min(budget, SELECT_TRIGGER_POINTS);
+    if (usPerPt > 0) {
+        t = Math.min(t, Math.max(TRIGGER_MIN_POINTS, Math.round(TRIGGER_SECONDS * 1e6 / usPerPt)));
+    }
+    let relocated = false;
+    for (;;) {
+        let before = points;
+        let e0 = performance.now();
+        points = reference_builder_extend(Math.min(maxIterations, Math.max(t, 2)));
+        if (points > before) usPerPt = (performance.now() - e0) * 1000 / (points - before);
+        if (reference_builder_escaped() || points >= maxIterations || relocated) {
+            break; // finished reference: escaped, full-length interior, or the candidate
+        }
+        let r0 = performance.now();
+        let cand = probeForCandidate(points, metaPtr, refRow, basisCols, basisRows);
+        let roundSecs = (performance.now() - r0) / 1000;
+        if (cand) {
+            console.log(`[mb w${workerNumber}] center unresolved at ${points} pts: relocating to px (${cand.c}, ${cand.r}), escapes at ${cand.count}`);
+            // the probe certified the escape count, so target THAT (+ slack
+            // for probe speckle), never the budget -- a budget-sized
+            // reservation can exceed the wasm32 heap. Restarting the builder
+            // drops the center prefix before the candidate allocates.
+            t = Math.min(budget, cand.count + 1048576);
+            reference_builder_start(xminPtr, dxPtr, ymaxPtr, dyPtr, len, cand.c, cand.r,
+                Math.min(maxIterations, t), metaPtr);
+            refRow = cand.r;
+            points = 0;
+            relocated = true; // next extend runs to its escape, then we break
+            continue;
+        }
+        if (t >= budget) {
+            break; // no rescue exists: truncated center (outliving px -> white)
+        }
+        let stepSecs = Math.max(STEP_SECONDS_FLOOR, STEP_ROUND_FACTOR * roundSecs);
+        let cap = usPerPt > 0 ? Math.max(SELECT_MIN_STEP, Math.round(stepSecs * 1e6 / usPerPt)) : 0x7fffffff;
+        t = Math.min(budget, t + Math.min(t, cap));
+        console.log(`[mb w${workerNumber}] no escaping probe within ${points} pts: extending center build to ${(t / 1e6).toFixed(1)} M pts`);
+    }
+
+    let lenPtr = malloc(4) >>> 0;
+    let dipsPtrPtr = malloc(4) >>> 0, dipsLenPtr = malloc(4) >>> 0;
+    let orbitPtr = reference_builder_finish(lenPtr, metaPtr, dipsPtrPtr, dipsLenPtr) >>> 0;
     let orbitLen = new Uint32Array(wasmMemory.memory.buffer, lenPtr, 1)[0];
     // copy the meta out of wasm memory (later allocations may grow/detach it)
     let meta = Float64Array.from(new Float64Array(wasmMemory.memory.buffer, metaPtr, 6));
@@ -100,7 +212,7 @@ function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows, orbitBudg
     let dipsPtr = new Uint32Array(wasmMemory.memory.buffer, dipsPtrPtr, 1)[0];
     let dipsLen = new Uint32Array(wasmMemory.memory.buffer, dipsLenPtr, 1)[0];
     cachedOrbit = { ptr: orbitPtr, len: orbitLen, meta: meta,
-        dipsPtr: dipsPtr, dipsLen: dipsLen, rowRef: basisRows >>> 1 };
+        dipsPtr: dipsPtr, dipsLen: dipsLen, rowRef: refRow };
     cachedImageId = imageId;
     // always logged: builds are rare and expensive, and a build where a cache
     // hit was expected is the first thing to look for when a view is slow
@@ -239,7 +351,16 @@ onmessage = function(msg) {
         waitForWasm(workerNumber, jobNumber).then(() => {
             let imageId = data[1];
             if (cachedImageId !== imageId) {
-                buildOrbit(imageId, data[2], data[3], data[4], data[5], data[6], data[7], data[8]);
+                try {
+                    buildOrbit(imageId, data[2], data[3], data[4], data[5], data[6], data[7], data[8]);
+                } catch (err) {
+                    // same failure mode as the task path: a trap here is almost
+                    // always memory.grow denied. Without this catch the promise
+                    // swallowed the error and the page waited forever.
+                    postMessage(["fatal", `Worker ${workerNumber}: high-precision compute failed (${err}). ` +
+                        `Likely out of memory: reduce the number of workers or Max Iterations.`]);
+                    return;
+                }
             }
             let o = cachedOrbit;
             // copy out of wasm memory (the view may not be transferred directly)
@@ -267,12 +388,12 @@ onmessage = function(msg) {
                 if (cachedOrbit.dipsLen > 0) free_f64(cachedOrbit.dipsPtr, cachedOrbit.dipsLen * 5);
                 cachedOrbit = null;
             }
-            let ptr = malloc_f64(arr.length);
+            let ptr = malloc_f64(arr.length) >>> 0;
             new Float64Array(wasmMemory.memory.buffer, ptr, arr.length).set(arr);
             let dipsLen = meta.dips ? meta.dips.length / 5 : 0;
             let dipsPtr = 0;
             if (dipsLen > 0) {
-                dipsPtr = malloc_f64(meta.dips.length);
+                dipsPtr = malloc_f64(meta.dips.length) >>> 0;
                 new Float64Array(wasmMemory.memory.buffer, dipsPtr, meta.dips.length).set(meta.dips);
             }
             cachedOrbit = { ptr: ptr, len: meta.len,
@@ -314,6 +435,12 @@ onmessage = function(msg) {
                 compute_strip_with_orbit = instance.exports.compute_strip_with_orbit;
                 malloc_f64 = instance.exports.malloc_f64;
                 free_f64 = instance.exports.free_f64;
+                reference_builder_start = instance.exports.reference_builder_start;
+                reference_builder_extend = instance.exports.reference_builder_extend;
+                reference_builder_escaped = instance.exports.reference_builder_escaped;
+                reference_builder_orbit_ptr = instance.exports.reference_builder_orbit_ptr;
+                reference_builder_dips = instance.exports.reference_builder_dips;
+                reference_builder_finish = instance.exports.reference_builder_finish;
             });
     }
 }

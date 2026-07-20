@@ -74,8 +74,17 @@ pub extern "C"  fn dalloc(ptr: *mut u8, size: u32) {
 //      Orbits over 2M points cache ONE whole-image BLA table per worker per
 //      view (per-strip table churn ratcheted the wasm heap until memory.grow
 //      failed mid-render on 4M-orbit views at high worker counts).
+// 14 = reference selection: a resumable orbit builder (reference_builder_*)
+//      lets the worker run the server's escalating-selection ladder -- build
+//      the center to a cap, probe rows against the truncated prefix via
+//      compute_strip_with_orbit, relocate to the shortest escaping pixel
+//      >= 1M pts (escaped refs wrap soundly at any length; per-wrap render
+//      cost is proportional to ref length, so shortest wins -- see
+//      bench-refsel). Ladder TIMING lives in worker JS (wasm32 has no
+//      clock); finish() emits build_reference_orbit's exact output shape so
+//      broadcast and strips are unchanged.
 #[no_mangle]
-pub extern "C" fn mb_wasm_version() -> u32 { 13 }
+pub extern "C" fn mb_wasm_version() -> u32 { 14 }
 
 
 use mb_arith::*;
@@ -217,22 +226,38 @@ pub extern "C" fn build_reference_orbit(
         if orbit_budget > 0 { orbit_budget } else { DEFAULT_ORBIT_BUDGET },
     );
 
-    // dip side table as 5 f64 per entry: [index, zr_m, zr_e, zi_m, zi_e].
+    finish_orbit(orbit, &dips, dx_fe, dy_fe, dcx0, out_len, out_meta, out_dips_ptr, out_dips_len)
+}
+
+// dip side table as 5 f64 per entry: [index, zr_m, zr_e, zi_m, zi_e]
+fn serialize_dips_into(dips: &[OrbitDip], p: *mut f64) {
+    for (i, d) in dips.iter().enumerate() {
+        unsafe {
+            *p.add(i * 5) = d.index as f64;
+            *p.add(i * 5 + 1) = d.zr.m;
+            *p.add(i * 5 + 2) = d.zr.e as f64;
+            *p.add(i * 5 + 3) = d.zi.m;
+            *p.add(i * 5 + 4) = d.zi.e as f64;
+        }
+    }
+}
+
+// shared tail of build_reference_orbit / reference_builder_finish: hand the
+// orbit + dips to JS in the v8 buffer convention (see build_reference_orbit)
+#[allow(clippy::too_many_arguments)]
+fn finish_orbit(
+    orbit: Vec<(f64, f64)>, dips: &[OrbitDip],
+    dx_fe: FloatExp, dy_fe: FloatExp, dcx0: FloatExp,
+    out_len: *mut u32, out_meta: *mut f64,
+    out_dips_ptr: *mut u32, out_dips_len: *mut u32,
+) -> *mut f64 {
     // Freed by JS with free_f64(ptr, 5*len); len 0 => ptr 0, nothing to free.
     let n_dips = dips.len();
     let dips_ptr = if n_dips == 0 {
         std::ptr::null_mut()
     } else {
         let p = malloc_f64((n_dips * 5) as u32);
-        for (i, d) in dips.iter().enumerate() {
-            unsafe {
-                *p.add(i * 5) = d.index as f64;
-                *p.add(i * 5 + 1) = d.zr.m;
-                *p.add(i * 5 + 2) = d.zr.e as f64;
-                *p.add(i * 5 + 3) = d.zi.m;
-                *p.add(i * 5 + 4) = d.zi.e as f64;
-            }
-        }
+        serialize_dips_into(dips, p);
         p
     };
 
@@ -254,6 +279,141 @@ pub extern "C" fn build_reference_orbit(
         *out_dips_len = n_dips as u32;
     }
     ptr
+}
+
+// *** v14: resumable reference builder (worker-side selection ladder) *** //
+//
+// The worker drives the same escalating ladder the server runs: start the
+// builder at the image center, extend it in rounds (TIMED IN JS -- wasm32 has
+// no clock, and the ladder's trigger/rungs are sized in measured build time),
+// probe rows against the truncated prefix with compute_strip_with_orbit
+// (max_iterations = current point count, so probes certify only what the
+// prefix can prove; the end-of-orbit wrap returns negative), and on finding
+// an escaping pixel start() again there (dropping the center prefix) and
+// extend to the budget -- the candidate escapes at its known count.
+// finish() emits exactly build_reference_orbit's outputs, so the broadcast
+// protocol and every strip path are untouched.
+struct RefBuilderState {
+    b: OrbitBuilder32,
+    dx_fe: FloatExp,
+    dy_fe: FloatExp,
+    dcx0: FloatExp,
+    dips_buf: Vec<f64>, // serialized dips scratch for probe calls
+}
+thread_local! {
+    static REF_BUILDER: std::cell::RefCell<Option<RefBuilderState>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// `capacity_points`: reserve the orbit's FINAL expected size up front (the
+/// caller's min(maxIterations, budget), or probed count + slack for a
+/// candidate). Incremental extends otherwise realloc the Vec with a 2x
+/// transient -- on a ladder that reaches 100M points that transient plus the
+/// per-round table churn ratchets the wasm heap until memory.grow is denied
+/// (v13's one-shot build never had this: it reserved once).
+#[no_mangle]
+pub extern "C" fn reference_builder_start(
+    xmin: *const u32, dx: *const u32, ymax: *const u32, dy: *const u32, len: u32,
+    ref_col: u32, ref_row: u32, capacity_points: i32, out_meta: *mut f64,
+) {
+    let len = len as usize;
+    let xmin = unsafe { std::slice::from_raw_parts(xmin, len) };
+    let dx = unsafe { std::slice::from_raw_parts(dx, len) };
+    let ymax = unsafe { std::slice::from_raw_parts(ymax, len) };
+    let dy = unsafe { std::slice::from_raw_parts(dy, len) };
+    let chunks = 1 + (len - 1 + 1) / 2;
+
+    let xmin = u32_to_limbs32(xmin);
+    let dx = u32_to_limbs32(dx);
+    let ymax = u32_to_limbs32(ymax);
+    let dy = u32_to_limbs32(dy);
+
+    let mut b = OrbitBuilder32::at_grid(&xmin, &dx, &ymax, &dy, chunks,
+        ref_row as usize, ref_col as usize);
+    if capacity_points > 0 {
+        // clamp to the REAL wasm32 orbit ceiling: Rust caps any single
+        // allocation at isize::MAX (2 GB), so an orbit Vec tops out at
+        // ~134M points x 16 B -- 128M leaves headroom. (The old 150M
+        // "ceiling" was 2.4 GB and would have trapped v13's one-shot
+        // with_capacity identically; it was just never exercised.) A
+        // bogus budget-sized request must not trap the whole worker.
+        let want = (capacity_points as usize).min(128_000_000) + 1;
+        if want > b.orbit.capacity() {
+            b.orbit.reserve(want - b.orbit.len());
+        }
+    }
+    let dx_fe = limbs32_to_fe(&dx[..chunks]);
+    let dy_fe = limbs32_to_fe(&dy[..chunks]);
+    let dcx0 = dx_fe.mul_f64(-(ref_col as f64));
+    unsafe {
+        *out_meta.add(0) = dx_fe.m;
+        *out_meta.add(1) = dx_fe.e as f64;
+        *out_meta.add(2) = dy_fe.m;
+        *out_meta.add(3) = dy_fe.e as f64;
+        *out_meta.add(4) = dcx0.m;
+        *out_meta.add(5) = dcx0.e as f64;
+    }
+    REF_BUILDER.with(|c| {
+        *c.borrow_mut() = Some(RefBuilderState { b, dx_fe, dy_fe, dcx0, dips_buf: Vec::new() });
+    });
+}
+
+/// Extend to `target_points` orbit points; returns the point count reached
+/// (orbit entries - 1). Escape ends the build early (see _escaped).
+#[no_mangle]
+pub extern "C" fn reference_builder_extend(target_points: i32) -> i32 {
+    REF_BUILDER.with(|c| {
+        let mut s = c.borrow_mut();
+        let s = s.as_mut().expect("reference_builder_start not called");
+        s.b.extend(target_points, None);
+        (s.b.orbit.len() - 1) as i32
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn reference_builder_escaped() -> i32 {
+    REF_BUILDER.with(|c| {
+        let s = c.borrow();
+        orbit_escaped(&s.as_ref().expect("no builder").b.orbit) as i32
+    })
+}
+
+/// Pointer to the current orbit buffer (interleaved f64 pairs; entries =
+/// points + 1). Re-fetch after every extend: the Vec may reallocate.
+#[no_mangle]
+pub extern "C" fn reference_builder_orbit_ptr() -> *const f64 {
+    REF_BUILDER.with(|c| {
+        let s = c.borrow();
+        s.as_ref().expect("no builder").b.orbit.as_ptr() as *const f64
+    })
+}
+
+/// Serialize the current dip table (5 f64/entry, same format as
+/// build_reference_orbit's); writes the entry count and returns the buffer
+/// (owned by the builder -- valid until the next builder call).
+#[no_mangle]
+pub extern "C" fn reference_builder_dips(out_len: *mut u32) -> *const f64 {
+    REF_BUILDER.with(|c| {
+        let mut s = c.borrow_mut();
+        let s = s.as_mut().expect("no builder");
+        let n = s.b.dips.len();
+        s.dips_buf.resize(n * 5, 0.0);
+        serialize_dips_into(&s.b.dips, s.dips_buf.as_mut_ptr());
+        unsafe { *out_len = n as u32 };
+        s.dips_buf.as_ptr()
+    })
+}
+
+/// Consume the builder and hand its orbit to JS in build_reference_orbit's
+/// exact output convention (buffer + meta + dips; free with free_f64).
+#[no_mangle]
+pub extern "C" fn reference_builder_finish(
+    out_len: *mut u32, out_meta: *mut f64,
+    out_dips_ptr: *mut u32, out_dips_len: *mut u32,
+) -> *mut f64 {
+    let s = REF_BUILDER.with(|c| c.borrow_mut().take()).expect("no builder");
+    finish_orbit(s.b.orbit, &s.b.dips, s.dx_fe, s.dy_fe, s.dcx0,
+        out_len, out_meta, out_dips_ptr, out_dips_len)
 }
 
 // Grind image rows [strip_row0, strip_row0+strip_rows) against a shared orbit

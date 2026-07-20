@@ -276,7 +276,9 @@ Next steps (after the `BLA` branch):
 SHIPPED from this list (wasm v13, `deep-iterations` branch): **deep iteration
 counts** — the 4M cap is gone. reference_orbit takes a runtime point budget
 (16 B/pt; server --orbit-points in millions, browser = a 4 GB RAM allowance /
-workerCount clamped to a ~150M-pt wasm32 ceiling — fewer workers render
+workerCount clamped to a 128M-pt wasm32 ceiling (Rust caps a single
+allocation at isize::MAX = 2 GB, so the orbit Vec tops out at ~134M pts;
+the original 150M constant was never allocatable) — fewer workers render
 deeper); pixels that outlive a budget-truncated non-escaped reference return
 count -2, rendered WHITE (distinct from interior black), never wrong (the
 flat-blob unsoundness is structurally impossible now),
@@ -345,7 +347,34 @@ untouched). The server hook must STREAM A HEARTBEAT newline per batch
 WRITE, so without it is_closed() stays false forever and an abandoned deep
 build pegs a core for hours (measured both ways: 100% CPU forever before,
 exit within ~3 s after). The hook also logs verbose build progress every
-10M pts. Browser tier unchanged (worker termination already kills builds).
+10M pts. BROWSER TIER (wasm v14): the same ladder runs in the worker --
+reference_builder_* FFI (resumable OrbitBuilder32 behind thread_local state)
+driven by ladder logic in mandelbrot-worker-local-wasm.js (TIMING lives in
+JS: wasm32 has no clock); probes reuse compute_strip_with_orbit against the
+partial orbit (max_iterations = prefix points), and finish() emits
+build_reference_orbit's exact output shape so broadcast + strips are
+untouched (the broadcast already carried rowRef/meta). The candidate build
+targets its PROBED COUNT + 1M slack, never the budget (the server got the
+same cap for hygiene -- identical output, no 9.6 GB virtual reservation),
+and the CENTER pre-reserves min(maxIter, budget, 128M) ONCE at start: the
+ladder's incremental extends otherwise realloc the orbit Vec with a 2x
+transient which, plus per-round probe-table churn, ratcheted a 100M-budget
+ladder's heap until memory.grow was denied (user repro: 2-worker
+750M-iters trap; node repro of the same ladder now finishes clean in 32 s).
+Browser testing surfaced two LATENT pre-v14 bugs the ladder exercised:
+the 150M worker ceiling exceeded Rust's 2 GB single-allocation cap (now
+128M everywhere), and wasm pointers cross the FFI as SIGNED i32 -- above
+the 2 GB heap line they arrive negative and break JS view offsets, so every
+pointer source in the worker now masks with >>> 0 (this plausibly explains
+some historical big-heap "out of memory" fatals). The broadcast buildOrbit
+path also gained the try/catch the task path had -- a trap there was
+swallowed by the promise and hung the page. Validated (node, deployed
+wasm, deepish): identical ladder trace and relocation target as the server
+(px (0,0) escapes 4,619,098; trigger 1.5M, ~370k rungs at 22.5 us/pt), and
+strip counts vs the server grid show only the known cross-tier u32/u64
+speckle -- calm rows 0.039% <= 5 counts; near-interior chaotic px can shift
+by a fraction of the local 100M+ count gradient (0.6% of the worst rows),
+0 interior flips, 0 white. Cancellation stays worker-termination.
 
 SHIPPED from this list (wasm v11): **floatexp deltas** — perturbation past
 f64's ~1e-308 pixel-scale floor (see the engine section above for mechanism
