@@ -644,3 +644,36 @@ BMarks
         budget 128M (2 GB): 30 s total, counts 154M..749.8M, 17.8% black;
         budget 750M (12 GB orbit): 112 s, black down to 7.0%.
       The view is aptly named: minimum escaping count in frame is 154M.
+
+20 Jul 2026 - ESCALATING REFERENCE SELECTION + CANCELLATION (deep-iterations,
+    server; commits: white sentinel, selection+cancellation, resumable builds,
+    cancellation coverage, time-scaled ladder). Unresolved px now WHITE
+    (count -2, distinct from interior -1 black).
+    THE REGIME FINDING (bench-refsel, new mb-arith example, 2600-digit view,
+    single-thread): per-wrap render cost is PROPORTIONAL to reference length
+    (106/111/372 us per wrap at 4.6M/4.8M/15.6M escaped refs; net render
+    2.14/2.15/2.23 ms/px). Wraps are FREE; render time is count-determined;
+    the SHORTEST escaped reference always wins (build 74 s vs 249 s at equal
+    render). Selection picks shortest >= 1M (fallback longest >= 100k).
+    Ladder is sized in TIME via live us/pt (256k measuring chunk): trigger
+    min(4M, max(1.5M, 20 s build)); rungs double, capped at ~4x measured
+    probe-round time (floor 8 s) -> ~64-78M rungs at 116 digits, ~500k at
+    2600. Escaping centers never probe: fast views untouched by construction.
+    Beast (WSL), 16 browser threads, remote server --orbit-points 600:
+      deepish.xml (2600 digits, maxIter 591M, whole frame > 4M counts):
+        0.68 rows/s (first impl: 16M prefix + 15.1M longest cand, ~10 min
+        preamble) -> 1.79 (x2 ladder + resumable) -> 2.34-2.36 (shortest
+        cand 4.62M, trigger 1.5M, ~500k rungs, center stops 5.0M). First
+        strip 208 -> 158-160 s at 32 threads; COMPLETE render (0 white).
+      750M-iters.xml (116 digits, maxIter 750M, min frame count 154.3M):
+        8.17-8.32 rows/s (ladder stops ~192-206M, relocates to the frame-
+        minimum 154.3M ref = optimal). COMPLETE render, 2.35 GB orbit --
+        vs 17 Jul full-750M budget: 112 s build, 12 GB, 7% black.
+      1077-digit interior-centered A/B vs pre-selection binary: interior px
+        IDENTICAL, 0.032% speckle <= 44 counts (grows mildly as ref
+        shortens; 0.016% <= 35 at a 3.97M ref).
+    CANCELLATION: abandoned builds/probes/strips die within ~3 s of client
+    disconnect. Actix only notices a dead client on WRITE: the build hook
+    streams a heartbeat newline per 65536-pt batch (clients skip empty NDJSON
+    lines); probes bail per row; strips take a per-row StripAbort hook.
+    Before: a killed client's 600M-pt build pegged a core indefinitely.
