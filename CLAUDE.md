@@ -310,12 +310,17 @@ crosshair view costs ~2 prefix builds instead of a maxIterations-long one
 build -> 4M prefix + 3.97M relocated build; interior px IDENTICAL, 0.016% of
 px off <= 35 counts = cross-reference BLA speckle;
 mb-arith::relocated_reference_matches_center covers the engine fact). No
-escaper: the cap quadruples and rebuilds (ladder <= 1.33x the final prefix;
-whole-frame-deep KF views like the 2600-digit location have NO pixel under
-4M, a fixed trigger would never rescue them) up to the budget; an escaping
+escaper: the cap quadruples and the center build EXTENDS -- OrbitBuilder64/32
+keeps the full-precision z limbs alive between rounds, so no prefix is ever
+recomputed (bit-for-bit vs one-shot, mb-arith::resumed_build_matches_one_shot;
+the one-shot fn is now a thin wrapper over the builder, hot loop unmoved at
+16.9 s/1M pts on the 2600-digit view) -- up to the budget
+(whole-frame-deep KF views like the 2600-digit location have NO pixel under
+4M, a fixed trigger would never rescue them); an escaping
 center short-circuits any round (1b-view: escapes at 5.6M in round 2, full
 render, 0 unresolved); nothing at the budget = the old truncated-center
-behavior bit for bit. CANCELLATION: reference_orbit takes an optional
+behavior bit for bit. The relocated candidate build is one-shot (its length
+is known from the probe); only the center ladder resumes. CANCELLATION: reference_orbit takes an optional
 per-65536-pt control hook (OrbitBuildCtl; cold outer-batch check, hot loop
 untouched). The server hook must STREAM A HEARTBEAT newline per batch
 (clients skip empty NDJSON lines): actix only notices a dead client on

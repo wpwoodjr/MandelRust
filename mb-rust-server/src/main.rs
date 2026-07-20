@@ -514,36 +514,41 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                 let ctl: OrbitBuildCtl = Some(&ctl_fn);
 
                 // Center build with escalating reference selection. Round N
-                // builds the center reference capped at t points; a center
-                // that escapes (or runs the full maxIterations) within the cap
-                // is a finished reference -- the common case, zero overhead.
-                // A cap-truncated center means every pixel would outlive it,
-                // so probe the frame against the truncated prefix: any probe
-                // that escapes within it yields its TRUE count (escapes and
-                // rebases are exact; only the end-of-orbit wrap is not, and
-                // that comes back negative), and ANY escaping pixel works as
-                // the reference (escaped orbits wrap soundly at any length).
-                // No escaper yet: quadruple the cap and rebuild -- the
-                // geometric ladder costs <= 1.33x the final prefix, so a
-                // whole-frame-deep view pays ~4/3 of one build instead of a
-                // guessed trigger either missing the rescue or overpaying.
+                // EXTENDS the center reference to t points (the builder keeps
+                // the full-precision z alive, so each round appends -- no
+                // prefix is ever recomputed); a center that escapes (or runs
+                // the full maxIterations) within the cap is a finished
+                // reference -- the common case, zero overhead. A cap-truncated
+                // center means every pixel would outlive it, so probe the
+                // frame against the truncated prefix: any probe that escapes
+                // within it yields its TRUE count (escapes and rebases are
+                // exact; only the end-of-orbit wrap is not, and that comes
+                // back negative), and ANY escaping pixel works as the
+                // reference (escaped orbits wrap soundly at any length). No
+                // escaper yet: quadruple the cap and extend, up to the budget.
+                let dx_fe = limbs64_to_fe(&dx[..chunks]);
+                let dy_fe = limbs64_to_fe(&dy[..chunks]);
+                let center_row = basis_rows / 2;
+                let center_dcx0 = dx_fe.mul_f64(-((basis_columns / 2) as f64));
+                let mut builder = OrbitBuilder64::at_grid(
+                    &xmin, &dx, &ymax, &dy, chunks, center_row, basis_columns / 2);
                 let mut t = budget.min(SELECT_TRIGGER_POINTS);
                 let c = loop {
-                    let (orbit, dips, dx_fe, dy_fe, dcx0, _col_ref, row_ref) = perturb_setup_fe64_at(
-                        &xmin, &dx, &ymax, &dy, chunks, basis_rows / 2, basis_columns / 2,
-                        max_iter, t, ctl);
+                    builder.extend(max_iter.min(t.max(2)), ctl);
                     if tx.is_closed() {
                         return; // cancelled: discard the partial orbit, never cache it
                     }
-                    let cand = CachedOrbit { orbit, dips, dx_fe, dy_fe, dcx0, row_ref };
-                    let len = cand.orbit.len() as i32 - 1;
-                    if orbit_escaped(&cand.orbit) || len >= max_iter {
-                        break cand; // finished reference: escaped, or full-length interior
+                    let len = builder.orbit.len() as i32 - 1;
+                    if orbit_escaped(&builder.orbit) || len >= max_iter {
+                        // finished reference: escaped, or full-length interior
+                        break CachedOrbit { orbit: std::mem::take(&mut builder.orbit),
+                            dips: std::mem::take(&mut builder.dips),
+                            dx_fe, dy_fe, dcx0: center_dcx0, row_ref: center_row };
                     }
 
                     let best = {
-                        let table = bla_image_table(&cand.orbit, cand.dx_fe, cand.dy_fe,
-                            cand.dcx0, FE_ZERO, cand.row_ref, basis_rows, basis_columns);
+                        let table = bla_image_table(&builder.orbit, dx_fe, dy_fe,
+                            center_dcx0, FE_ZERO, center_row, basis_rows, basis_columns);
                         let mut probe_rows: Vec<usize> = (0..PROBE_ROWS)
                             .map(|i| i * basis_rows.saturating_sub(1) / (PROBE_ROWS - 1).max(1))
                             .collect();
@@ -551,8 +556,8 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                         pool.install(|| {
                             probe_rows.par_iter().map(|&r| {
                                 let mut out = vec![0i32; basis_columns];
-                                bla_strip_fe_with_table(&cand.orbit, &cand.dips, &table,
-                                    cand.dx_fe, cand.dy_fe, cand.dcx0, FE_ZERO, cand.row_ref,
+                                bla_strip_fe_with_table(&builder.orbit, &builder.dips, &table,
+                                    dx_fe, dy_fe, center_dcx0, FE_ZERO, center_row,
                                     r, 1, basis_columns, len, &mut out);
                                 out.iter().enumerate()
                                     .map(|(col, &ct)| (ct, r, col))
@@ -569,6 +574,11 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                             println!("  center reference unresolved at {} pts: relocating to px ({}, {}), escapes at {}",
                                 len, pc, pr, count);
                         }
+                        // free the center prefix before the candidate build:
+                        // a deep rescue holds two near-budget orbits otherwise
+                        // (256M center + 256M candidate = ~8 GB peak)
+                        drop(std::mem::take(&mut builder.orbit));
+                        drop(std::mem::take(&mut builder.dips));
                         let (orbit, dips, dx_fe, dy_fe, dcx0, _c2, row_ref) = perturb_setup_fe64_at(
                             &xmin, &dx, &ymax, &dy, chunks, pr, pc, max_iter, budget, ctl);
                         if tx.is_closed() {
@@ -580,7 +590,9 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                         // no pixel escapes within the whole budget: no rescue
                         // exists; the truncated center is the best sound
                         // answer (outliving pixels come back -2, white)
-                        break cand;
+                        break CachedOrbit { orbit: std::mem::take(&mut builder.orbit),
+                            dips: std::mem::take(&mut builder.dips),
+                            dx_fe, dy_fe, dcx0: center_dcx0, row_ref: center_row };
                     }
                     t = t.saturating_mul(4).min(budget);
                     if unsafe { VERBOSE } {

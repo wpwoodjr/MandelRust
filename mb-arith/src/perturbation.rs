@@ -1362,7 +1362,7 @@ macro_rules! perturb_engine {
      $hpdata:ident, $count_iterations:ident,
      $mag_to_f64:ident, $limbs_to_f64_scratch:ident, $limbs_to_f64:ident,
      $mag_to_fe:ident, $limbs_to_fe_scratch:ident, $limbs_to_fe:ident,
-     $reference_orbit:ident, $reference_orbit_ctl:ident,
+     $reference_orbit:ident, $reference_orbit_ctl:ident, $orbit_builder:ident,
      $perturb_setup:ident, $perturb_setup_fe:ident, $perturb_setup_fe_at:ident,
      $mandelbrot_perturb:ident, $mandelbrot_perturb_glitch:ident) => {
 
@@ -1498,67 +1498,144 @@ pub fn $reference_orbit_ctl(
     max_points: i32,
     ctl: OrbitBuildCtl,
 ) -> (Vec<(f64, f64)>, Vec<OrbitDip>) {
-    let max_iterations = max_iterations.min(max_points.max(2));
-    let n = cx.len();
-    let mut zx = vec![0 as $limb; n];
-    let mut zy = vec![0 as $limb; n];
-    let mut w1 = vec![0 as $limb; n];
-    let mut w2 = vec![0 as $limb; n];
-    let mut w3 = vec![0 as $limb; n];
-    let mut w4 = vec![0 as $limb; n];
-    let mut new_zx = vec![0 as $limb; n];
-    let mut new_zy = vec![0 as $limb; n];
-    let mut scratch = vec![0 as $limb; n];
+    let mut b = $orbit_builder::new(cx, cy);
+    b.extend(max_iterations.min(max_points.max(2)), ctl);
+    (b.orbit, b.dips)
+}
 
-    let mut orbit = Vec::with_capacity(max_iterations.max(0) as usize + 1);
-    orbit.push((0.0, 0.0)); // Z_0 = 0
-    // side table of points whose f64 image lost precision (see OrbitDip)
-    let mut dips: Vec<OrbitDip> = Vec::new();
+/// RESUMABLE reference-orbit builder. `$reference_orbit` keeps only the
+/// f64-rounded orbit points, so a truncated build cannot be continued -- the
+/// full-precision z was dropped on return, and re-deriving it from the f64
+/// points is impossible. This struct keeps the limb state (`zx`/`zy`) alive
+/// between calls, so the reference-selection ladder EXTENDS the center build
+/// (4M -> 16M -> ... appends new points) instead of rebuilding each prefix
+/// from iteration 0. The iteration body is identical to the one-shot path
+/// (which is now a thin wrapper over this), so orbits are bit-for-bit the
+/// same however they are grown.
+pub struct $orbit_builder {
+    cx: Vec<$limb>,
+    cy: Vec<$limb>,
+    zx: Vec<$limb>,
+    zy: Vec<$limb>,
+    w1: Vec<$limb>,
+    w2: Vec<$limb>,
+    w3: Vec<$limb>,
+    w4: Vec<$limb>,
+    new_zx: Vec<$limb>,
+    new_zy: Vec<$limb>,
+    scratch: Vec<$limb>,
+    pub orbit: Vec<(f64, f64)>,
+    pub dips: Vec<OrbitDip>,
+    escaped: bool,
+}
 
-    let mut remaining = max_iterations.max(0) as usize;
-    'build: while remaining > 0 {
-        if let Some(f) = ctl {
-            if !f(orbit.len() - 1) {
-                break 'build;
-            }
+impl $orbit_builder {
+    pub fn new(cx: &[$limb], cy: &[$limb]) -> Self {
+        let n = cx.len();
+        let mut orbit = Vec::new();
+        orbit.push((0.0, 0.0)); // Z_0 = 0
+        Self {
+            cx: cx.to_vec(),
+            cy: cy.to_vec(),
+            zx: vec![0 as $limb; n],
+            zy: vec![0 as $limb; n],
+            w1: vec![0 as $limb; n],
+            w2: vec![0 as $limb; n],
+            w3: vec![0 as $limb; n],
+            w4: vec![0 as $limb; n],
+            new_zx: vec![0 as $limb; n],
+            new_zy: vec![0 as $limb; n],
+            scratch: vec![0 as $limb; n],
+            orbit,
+            // side table of points whose f64 image lost precision (see OrbitDip)
+            dips: Vec::new(),
+            escaped: false,
         }
-        let batch = ORBIT_CTL_INTERVAL.min(remaining);
-        remaining -= batch;
-        for _ in 0..batch {
-            $sq(&zx, &mut w3, &mut w1); // w1 = zx^2
-            $sq(&zy, &mut w3, &mut w2); // w2 = zy^2
-            $add(&zx, &zx, &mut w4); // w4 = 2*zx  (capture before zx is overwritten)
+    }
 
-            // zx' = zx^2 - zy^2 + Cx
-            $sub(&w1, &w2, &mut w3);
-            $add(&w3, cx, &mut new_zx);
-            // zy' = 2*zx*zy + Cy
-            $multiply(&w4, &zy, &mut w1, &mut w3, &mut w2); // w2 = 2*zx*zy
-            $add(&w2, cy, &mut new_zy);
+    /// Like `new`, with the reference at grid pixel (`ref_row`, `ref_col`) of
+    /// the block described by `xmin`/`dx`/`ymax`/`dy` (the same coordinate
+    /// arithmetic as `$perturb_setup_fe_at`).
+    pub fn at_grid(
+        xmin: &[$limb],
+        dx: &[$limb],
+        ymax: &[$limb],
+        dy: &[$limb],
+        chunks: usize,
+        ref_row: usize,
+        ref_col: usize,
+    ) -> Self {
+        let mut cx = xmin[..chunks].to_vec();
+        for _ in 0..ref_col {
+            $incr(&mut cx, &dx[..chunks]);
+        }
+        let mut dy_neg = vec![0 as $limb; chunks];
+        $negate(&dy[..chunks], &mut dy_neg);
+        let mut cy = ymax[..chunks].to_vec();
+        for _ in 0..ref_row {
+            $incr(&mut cy, &dy_neg);
+        }
+        Self::new(&cx, &cy)
+    }
 
-            zx.copy_from_slice(&new_zx);
-            zy.copy_from_slice(&new_zy);
-
-            let zr = $limbs_to_f64_scratch(&zx, &mut scratch);
-            let zi = $limbs_to_f64_scratch(&zy, &mut scratch);
-            // a component that is subnormal/zero in f64 but nonzero in limbs has
-            // lost (or completely dropped) its value: record the true FloatExp
-            let zr_deg = zr.abs() < MIN_NORMAL_F64 && zx.iter().any(|&l| l != 0);
-            let zi_deg = zi.abs() < MIN_NORMAL_F64 && zy.iter().any(|&l| l != 0);
-            if zr_deg || zi_deg {
-                dips.push(OrbitDip {
-                    index: (orbit.len()) as u32,
-                    zr: $limbs_to_fe_scratch(&zx, &mut scratch),
-                    zi: $limbs_to_fe_scratch(&zy, &mut scratch),
-                });
+    /// Grow the orbit to `target_points` points (i.e. iterations; the stored
+    /// vec gains up to `target_points + 1 - len` entries). Stops early on
+    /// escape or when `ctl` refuses; both leave the builder consistent, and
+    /// extending an escaped or already-long-enough orbit is a no-op.
+    pub fn extend(&mut self, target_points: i32, ctl: OrbitBuildCtl) {
+        if self.escaped {
+            return;
+        }
+        let target = target_points.max(0) as usize + 1;
+        if target <= self.orbit.len() {
+            return;
+        }
+        let mut remaining = target - self.orbit.len();
+        self.orbit.reserve(remaining);
+        'build: while remaining > 0 {
+            if let Some(f) = ctl {
+                if !f(self.orbit.len() - 1) {
+                    break 'build;
+                }
             }
-            orbit.push((zr, zi));
-            if zr * zr + zi * zi >= ESCAPE_R2 {
-                break 'build;
+            let batch = ORBIT_CTL_INTERVAL.min(remaining);
+            remaining -= batch;
+            for _ in 0..batch {
+                $sq(&self.zx, &mut self.w3, &mut self.w1); // w1 = zx^2
+                $sq(&self.zy, &mut self.w3, &mut self.w2); // w2 = zy^2
+                $add(&self.zx, &self.zx, &mut self.w4); // w4 = 2*zx  (capture before zx is overwritten)
+
+                // zx' = zx^2 - zy^2 + Cx
+                $sub(&self.w1, &self.w2, &mut self.w3);
+                $add(&self.w3, &self.cx, &mut self.new_zx);
+                // zy' = 2*zx*zy + Cy
+                $multiply(&self.w4, &self.zy, &mut self.w1, &mut self.w3, &mut self.w2); // w2 = 2*zx*zy
+                $add(&self.w2, &self.cy, &mut self.new_zy);
+
+                self.zx.copy_from_slice(&self.new_zx);
+                self.zy.copy_from_slice(&self.new_zy);
+
+                let zr = $limbs_to_f64_scratch(&self.zx, &mut self.scratch);
+                let zi = $limbs_to_f64_scratch(&self.zy, &mut self.scratch);
+                // a component that is subnormal/zero in f64 but nonzero in limbs has
+                // lost (or completely dropped) its value: record the true FloatExp
+                let zr_deg = zr.abs() < MIN_NORMAL_F64 && self.zx.iter().any(|&l| l != 0);
+                let zi_deg = zi.abs() < MIN_NORMAL_F64 && self.zy.iter().any(|&l| l != 0);
+                if zr_deg || zi_deg {
+                    self.dips.push(OrbitDip {
+                        index: (self.orbit.len()) as u32,
+                        zr: $limbs_to_fe_scratch(&self.zx, &mut self.scratch),
+                        zi: $limbs_to_fe_scratch(&self.zy, &mut self.scratch),
+                    });
+                }
+                self.orbit.push((zr, zi));
+                if zr * zr + zi * zi >= ESCAPE_R2 {
+                    self.escaped = true;
+                    break 'build;
+                }
             }
         }
     }
-    (orbit, dips)
 }
 
 /// Build everything needed to perturb a block: the reference orbit (taken at the
@@ -1807,7 +1884,7 @@ perturb_engine!(u64,
     HPData64, count_iterations_hp64,
     mag_to_f64_64, limbs_to_f64_scratch_64, limbs64_to_f64,
     mag_to_fe_64, limbs_to_fe_scratch_64, limbs64_to_fe,
-    reference_orbit64, reference_orbit_ctl64,
+    reference_orbit64, reference_orbit_ctl64, OrbitBuilder64,
     perturb_setup64, perturb_setup_fe64, perturb_setup_fe64_at,
     mandelbrot_perturb64, mandelbrot_perturb_glitch64);
 
@@ -1816,7 +1893,7 @@ perturb_engine!(u32,
     HPData32, count_iterations_hp32,
     mag_to_f64_32, limbs_to_f64_scratch_32, limbs32_to_f64,
     mag_to_fe_32, limbs_to_fe_scratch_32, limbs32_to_fe,
-    reference_orbit32, reference_orbit_ctl32,
+    reference_orbit32, reference_orbit_ctl32, OrbitBuilder32,
     perturb_setup32, perturb_setup_fe32, perturb_setup_fe32_at,
     mandelbrot_perturb32, mandelbrot_perturb_glitch32);
 
@@ -2157,6 +2234,30 @@ mod tests {
         let (o2, _d) = reference_orbit_ctl32(&cx, &cy, 500, 1_000_000, None);
         let (o3, _d) = reference_orbit32(&cx, &cy, 500, 1_000_000);
         assert_eq!(o2, o3);
+    }
+
+    // A resumed build must be bit-for-bit the orbit a one-shot build produces:
+    // the builder keeps the limb state alive between extends, so growing
+    // 200 -> 500 -> 200000 appends exactly the points a fresh 200000-point
+    // build computes. Covers both a never-escaping and an escaping reference
+    // (the latter also checks extend-after-escape is a no-op).
+    #[test]
+    fn resumed_build_matches_one_shot() {
+        let interior = (vec![0u32; 4], vec![0u32; 4]); // (0, 0): never escapes
+        let mut esc_cy = vec![0u32; 4];
+        esc_cy[0] = 1;
+        esc_cy[1] = 0x8000;
+        let escaping = (vec![0u32; 4], esc_cy); // (0, 1.5): escapes fast
+        for (cx, cy) in [interior, escaping] {
+            let (full, full_dips) = reference_orbit32(&cx, &cy, 200_000, 1_000_000);
+            let mut b = OrbitBuilder32::new(&cx, &cy);
+            b.extend(200, None);
+            b.extend(500, None);
+            b.extend(200_000, None);
+            b.extend(200_000, None); // no-op
+            assert_eq!(b.orbit, full);
+            assert_eq!(b.dips.len(), full_dips.len());
+        }
     }
 
     // Reference selection soundness: the reference may sit at ANY grid pixel --
