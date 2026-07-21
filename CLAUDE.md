@@ -504,17 +504,22 @@ on x86:
 2. `cargo run --release --example bench-perturb` — single-pixel vs 2-lane vs
    4-lane scalar kernels (the NEON section auto-skips on x86). Answers how much
    lane ILP x86 extracts; on ARM this ranged 1.2x (A720) to 2.2x (X925).
-3. **The AVX2 question — ANSWERED (21 Jul 2026, bench-strip-ab)**:
-   `target-cpu=native` changes NOTHING for BLA strips or builds (within
-   noise). The surprise is bigger: V8's wasm->x64 codegen beats LLVM's
-   native x64 by 1.57x on the latency-bound f64 BLA delta chain (identical
-   single-thread strips: 3.18 s native vs 2.02 s wasm on the 750M-iters
-   view) -- the ARM-era "wasm = 83-86% of native" law INVERTS for strips on
-   x86, while builds stay native-dominated (0.119 vs 0.37 us/pt, 3.1x). So
-   per-thread browser strips BEAT server strips on this box; the server's
-   advantage is thread count. No build-flag change warranted. Future lever:
-   diff V8's emitted loop against LLVM's for bla_drive and fix the native
-   schedule at source level.
+3. **The AVX2 question — RESOLVED (21 Jul 2026, bench-strip-ab)**:
+   `target-cpu=native` changes NOTHING. The real finding: LLVM's SLP
+   vectorizer packs the latency-bound f64 BLA delta chain into
+   shuffle-laden <2 x double> (unpckhpd dances lengthen the serial critical
+   path -- the same pathology this project measured for hand-written SIMD
+   kernels, inflicted automatically), making V8's plain-scalar wasm codegen
+   BEAT native by 1.57x on identical strips (3.18 s vs 2.02 s). Root-caused
+   by disassembly diff, fixed by `.cargo/config.toml` in mb-rust-server and
+   mb-arith: `-C llvm-args=-slp-threshold=999999`. With SLP off: f64 strips
+   1.71x faster (native 1.87 s, beating wasm's 2.02), fe path unchanged,
+   orbit builds unchanged, outputs identical; server-level 2-thread
+   750M-iters run 112-118 s -> 62.6 s (1.83x). mb-wasm has NO such config:
+   LLVM's wasm backend leaves the loop scalar on its own. Builds stay
+   native-dominated (0.119 vs 0.37 us/pt). Fourth hot-loop-law sighting,
+   first compiler-inflicted one: any addition to the serial chain is
+   suspect, including additions made by the optimizer.
 4. `node mb-wasm/bench-wasm.js` — wasm-vs-native ratio under x86 V8. On ARM,
    wasm runs ~83-86% of native for every engine; wasm SIMD is capped at 128-bit
    regardless of host, so the gap may widen on x86 wherever native got AVX2.

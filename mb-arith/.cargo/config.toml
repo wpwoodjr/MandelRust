@@ -1,0 +1,10 @@
+# Disable LLVM's SLP vectorizer so bench numbers match the server build --
+# see mb-rust-server/.cargo/config.toml for the full story (SLP packs the
+# BLA delta chain into shuffle-laden <2 x double>, costing 1.76x on strips).
+# mb-wasm deliberately has NO such config: LLVM's wasm backend leaves this
+# loop scalar on its own, and V8 compiles it well.
+# x86_64 only: the aarch64 backend does NOT pack this chain (CB @1 thread:
+# wasm 3.41 vs native 4.28 rows/s = the normal 80% ratio, no anomaly), so
+# ARM builds stay exactly as measured.
+[target.'cfg(target_arch = "x86_64")']
+rustflags = ["-C", "llvm-args=-slp-threshold=999999"]

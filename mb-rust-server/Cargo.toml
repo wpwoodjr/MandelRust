@@ -1,3 +1,7 @@
+# NOTE: .cargo/config.toml beside this manifest disables LLVM's SLP
+# vectorizer on x86_64 (1.7x on BLA strips -- see that file and
+# bmarks.txt 21 Jul 2026). Cargo has no stable way to set rustflags
+# from Cargo.toml, so it lives there; this note is the signpost.
 [package]
 name = "mb-rust-server"
 version = "0.1.0"

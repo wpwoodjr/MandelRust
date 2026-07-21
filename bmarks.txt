@@ -699,3 +699,14 @@ BMarks
       deepish 8w: 1.7-1.76 rows/s (ladder + relocation in worker, complete
       render); 750M-iters 2w: 7.83-7.85 (white spots: no in-browser rescue
       possible, frame min 154.3M > 128M wasm ceiling), 1w: 4.43-4.51.
+
+21 Jul 2026 (later) - SLP ROOT CAUSE + FIX: disassembly diff (native
+    objdump vs node --print-wasm-code) showed LLVM SLP-vectorizing the BLA
+    delta chain into shuffle-laden <2 x double> (unpckhpd on the critical
+    path) while V8 emits plain scalar. -C llvm-args=-slp-threshold=999999
+    (now in mb-rust-server/.cargo/config.toml + mb-arith's, NOT mb-wasm):
+      f64 strips 3.20 -> 1.87 s (1.71x; native now beats wasm's 2.02 s),
+      fe strips unchanged (2.65 vs 2.71 s), builds unchanged, outputs
+      IDENTICAL. Server-level (800x600 750M-iters, threads 2, budget 100M):
+      112-118 s -> 62.6 s total (1.83x), first strip 25.3 -> 20.2 s.
+    Fourth hot-loop-law sighting, first one inflicted by the compiler.

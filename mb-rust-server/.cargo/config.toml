@@ -1,0 +1,13 @@
+# Disable LLVM's SLP vectorizer for server builds (and the mb-arith dep):
+# the BLA delta loop is a latency-bound serial f64 chain, and SLP packs it
+# into shuffle-laden <2 x double> that costs 1.76x on strip throughput
+# (bench-strip-ab, 21 Jul 2026: 3.18 s -> 1.81 s on identical strips; V8's
+# scalar wasm codegen was BEATING the native server until this). Same
+# pathology this project measured for hand-written SIMD kernels -- packed
+# shuffles lengthen the critical path -- inflicted automatically. An LLVM
+# flag rename fails the build loudly, not silently.
+# x86_64 only: the aarch64 backend does NOT pack this chain (CB @1 thread:
+# wasm 3.41 vs native 4.28 rows/s = the normal 80% ratio, no anomaly), so
+# ARM builds stay exactly as measured.
+[target.'cfg(target_arch = "x86_64")']
+rustflags = ["-C", "llvm-args=-slp-threshold=999999"]
