@@ -1,5 +1,6 @@
 let jobNumber, workerNumber;
 const retryLimit = 7;
+let interlacedDrawing = false;
 
 function doIterationCounts(coords, url, retryCount, thisJobNum) {
     let iterationCounts;
@@ -158,6 +159,7 @@ onmessage = function(msg) {
         highPrecision = data[3];
         workerNumber = data[4];
         threadCount = data[5] || threadCount;
+        interlacedDrawing = !!data[6];
     } else if ( data[0] == "task" ) {
         let firstRow = data[1];
         let columns = data[2];
@@ -179,7 +181,10 @@ onmessage = function(msg) {
             let body = {
                 xmin: xmin, dx: dx, columns: columns, ymax: ymax, dy: dy,
                 firstRow: firstRow, rows: nrows, maxIterations: maxIterations,
-                threads: threadCount
+                // pass 2 (nonzero grid offset) streams sequentially like the
+                // local tier: it refines a complete image, and out-of-order
+                // refinement shows as roaming speckle instead of a sweep
+                threads: threadCount, interleaved: interlacedDrawing && !ox && !oy
             };
             if (imageRows !== undefined) {
                 body.basisRows = imageRows;

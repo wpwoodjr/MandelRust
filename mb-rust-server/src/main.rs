@@ -371,6 +371,11 @@ struct MandelbrotCoordsHP2 {
     ox: f64,
     #[serde(default)]
     oy: f64,
+    // dispatch strips in bit-reversed order so the stream sketches the whole
+    // image early (the client's Interlaced Drawing checkbox; local rendering
+    // reorders its job list, but HP2's strip order is the server's choice)
+    #[serde(default)]
+    interleaved: bool,
 }
 
 // Reference-orbit cache: a byte-budgeted LRU keyed by the basis coordinates
@@ -721,7 +726,37 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
 
         let dead = std::sync::atomic::AtomicBool::new(false);
         pool.install(|| {
-            let starts: Vec<usize> = (0..rows).step_by(strip).collect();
+            let mut starts: Vec<usize> = (0..rows).step_by(strip).collect();
+            if coords.interleaved {
+                // Pure reordering: same strips, same work, out-of-order
+                // streaming is already the protocol -- only the perceived
+                // progressiveness changes. EXACT port of the local tier's
+                // ordering (MB.html): the 128-slot interlaceOrder pattern,
+                // expanded by stride over the REVERSED strip list, then
+                // reversed again because local workers pop jobs from the
+                // array end -- so both tiers sweep identically.
+                let mut rev = starts.clone();
+                rev.reverse();
+                let mut order: Vec<usize> = vec![127];
+                let mut step = 64usize;
+                while step >= 1 {
+                    for j in 0..order.len() {
+                        let v = order[j] - step;
+                        order.push(v);
+                    }
+                    step /= 2;
+                }
+                let mut disp: Vec<usize> = Vec::with_capacity(rev.len());
+                for &o in &order {
+                    let mut j = o;
+                    while j < rev.len() {
+                        disp.push(rev[j]);
+                        j += order.len();
+                    }
+                }
+                disp.reverse();
+                starts = disp;
+            }
             starts.par_iter().for_each(|&r0| {
                 // dead trips on a failed send; is_closed catches a disconnect
                 // noticed elsewhere (e.g. a build heartbeat) before any strip

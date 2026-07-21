@@ -677,3 +677,25 @@ BMarks
     streams a heartbeat newline per 65536-pt batch (clients skip empty NDJSON
     lines); probes bail per row; strips take a per-row StripAbort hook.
     Before: a killed client's 600M-pt build pegged a core indefinitely.
+
+21 Jul 2026 - THE x86 STRIP CODEGEN FINDING (bench-strip-ab, new mb-arith
+    example; Beast/WSL2, single thread, 750M-iters view, 100M truncated
+    center, rows 296-303, identical outputs both sides):
+      native strips 3.18 s (2.51 rows/s) vs WASM 2.02 s (3.97 rows/s):
+      V8's wasm->x64 codegen beats LLVM's native x64 by 1.57x on the
+      latency-bound f64 BLA delta chain. target-cpu=native changes NOTHING
+      (3.24 s strips, builds within noise) -- not an AVX/SSE2 issue; pure
+      instruction scheduling on the serial dependency chain. The ARM-era
+      "wasm = 83-86% of native" law INVERTS for strips on x86.
+      Builds stay native-dominated: 0.119 us/pt native vs 0.37 wasm (3.1x).
+    Consequence: per-thread, browser strips BEAT server strips on this box;
+    server wins come from thread count. Explains user browser-vs-server
+    numbers on 750M-iters (1w: browser 4.51 rows/s vs server 2.95; builds
+    26 s native vs 42 s wasm). x86 playbook item 3 (AVX2 question): answered,
+    no build-flag change warranted. Possible future lever: diff V8's loop
+    body against LLVM's for bla_drive and fix the native schedule at source
+    level.
+    wasm v14 browser numbers (Beast, 16-thread-machine, user-measured):
+      deepish 8w: 1.7-1.76 rows/s (ladder + relocation in worker, complete
+      render); 750M-iters 2w: 7.83-7.85 (white spots: no in-browser rescue
+      possible, frame min 154.3M > 128M wasm ceiling), 1w: 4.43-4.51.

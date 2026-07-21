@@ -504,12 +504,17 @@ on x86:
 2. `cargo run --release --example bench-perturb` — single-pixel vs 2-lane vs
    4-lane scalar kernels (the NEON section auto-skips on x86). Answers how much
    lane ILP x86 extracts; on ARM this ranged 1.2x (A720) to 2.2x (X925).
-3. **The AVX2 question**: rerun 1-2 with `RUSTFLAGS="-C target-cpu=native"`
-   (default x86-64 assumes only SSE2). The branchless `[f64; 4]` lane kernel in
-   `perturb_lanes_shared::<4>` is autovectorizer-friendly — if the glitch
-   engine (B) jumps, that's free 256-bit SIMD for an x86 server build (would
-   need the flag added to the build to actually ship). BLA (E) is a scalar
-   latency chain and should move little.
+3. **The AVX2 question — ANSWERED (21 Jul 2026, bench-strip-ab)**:
+   `target-cpu=native` changes NOTHING for BLA strips or builds (within
+   noise). The surprise is bigger: V8's wasm->x64 codegen beats LLVM's
+   native x64 by 1.57x on the latency-bound f64 BLA delta chain (identical
+   single-thread strips: 3.18 s native vs 2.02 s wasm on the 750M-iters
+   view) -- the ARM-era "wasm = 83-86% of native" law INVERTS for strips on
+   x86, while builds stay native-dominated (0.119 vs 0.37 us/pt, 3.1x). So
+   per-thread browser strips BEAT server strips on this box; the server's
+   advantage is thread count. No build-flag change warranted. Future lever:
+   diff V8's emitted loop against LLVM's for bla_drive and fix the native
+   schedule at source level.
 4. `node mb-wasm/bench-wasm.js` — wasm-vs-native ratio under x86 V8. On ARM,
    wasm runs ~83-86% of native for every engine; wasm SIMD is capped at 128-bit
    regardless of host, so the gap may widen on x86 wherever native got AVX2.
