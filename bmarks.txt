@@ -710,3 +710,8 @@ BMarks
       IDENTICAL. Server-level (800x600 750M-iters, threads 2, budget 100M):
       112-118 s -> 62.6 s total (1.83x), first strip 25.3 -> 20.2 s.
     Fourth hot-loop-law sighting, first one inflicted by the compiler.
+    Cross-arch control (CB, aarch64, 750M-iters @1 thread): server 4.28
+    rows/s SLP-on vs 4.21 SLP-off -- no effect (noise), confirming the ARM
+    backend never packed the chain and the flag's x86_64-only cfg scoping.
+    Beast x86 user-measured @1 thread after fix: server 2.95 -> 5.73 rows/s,
+    browser 4.53 (unchanged); server per-thread lead restored on both axes.
