@@ -39,9 +39,13 @@ mb-rust-server [URL] [OPTIONS]
   --orbit-cache N   # Reference-orbit cache budget in MB (default 128, 0 = off).
                     # Keyed by view coords; pass 2 / re-renders skip the orbit
                     # build. Real bound: max(N, largest single orbit)
-  --orbit-points N  # Reference-orbit point budget in MILLIONS (default 4).
-                    # 16 B/point; maxIterations above the budget renders the
-                    # pixels that outlive the orbit white (unresolved) instead of wrong
+  --orbit-points N  # Reference-orbit point budget in MILLIONS. Default is
+                    # RAM-aware: RAM/4 as orbit bytes (16 B/pt), clamped
+                    # [4M, 256M] pts; containers sized by their cgroup limit.
+                    # maxIterations above the budget renders the pixels that
+                    # outlive the orbit white (unresolved) instead of wrong;
+                    # with reference selection, only views with NO escaper
+                    # inside the budget ever build all of it
   # Legacy options -- apply only to the old per-job /mb-computeHP endpoint
   # (current clients use /mb-computeHP2 and pick their own thread count):
   -r, --rayon N     # Rayon threads per legacy request (default: 2)

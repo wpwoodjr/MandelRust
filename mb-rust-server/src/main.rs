@@ -25,11 +25,60 @@ static mut VERBOSE: bool = false;
 // reference-orbit point budget (--orbit-points, in millions of points).
 // 16 bytes/point: the deep-iterations lever -- maxIterations above the budget
 // resolves pixels up to it; the rest return count -2, rendered white by the
-// client (see reference_orbit).
+// client (see reference_orbit). Default is RAM-aware (see auto_orbit_budget):
+// the budget is a CEILING the selection ladder approaches in measured,
+// cancellable rungs, only reached when nothing in the frame escapes below
+// it, so a generous default costs nothing on ordinary views.
 static mut ORBIT_BUDGET_POINTS: i32 = mb_arith::DEFAULT_ORBIT_BUDGET;
 
 fn orbit_budget() -> i32 {
     unsafe { ORBIT_BUDGET_POINTS }
+}
+
+// Effective system memory: /proc/meminfo MemTotal, clamped by the cgroup
+// limit when present -- inside a container MemTotal reports the HOST, and
+// `docker run --memory 2g` shows up only in the cgroup files (v2 memory.max,
+// "max" = unlimited; v1 limit_in_bytes, ~i64::MAX = unlimited).
+fn detect_ram_bytes() -> Option<u64> {
+    let mut total: Option<u64> = None;
+    if let Ok(s) = std::fs::read_to_string("/proc/meminfo") {
+        for line in s.lines() {
+            if let Some(rest) = line.strip_prefix("MemTotal:") {
+                if let Ok(kb) = rest.trim().trim_end_matches("kB").trim().parse::<u64>() {
+                    total = Some(kb * 1024);
+                }
+            }
+        }
+    }
+    for p in ["/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"] {
+        if let Ok(s) = std::fs::read_to_string(p) {
+            if let Ok(v) = s.trim().parse::<u64>() {
+                if v > 0 && v < (1 << 60) { // huge sentinel = unlimited
+                    total = Some(total.map_or(v, |t| t.min(v)));
+                }
+            }
+        }
+    }
+    total
+}
+
+// A quarter of effective RAM spent as orbit bytes, clamped [4M, 256M] points.
+// Quarter: worst realistic steady state is ~2x budget in bytes (one orbit
+// cached -- the newest is always admitted -- plus one building), i.e. half
+// of RAM. 256M cap: escaping references are short by construction, so only
+// no-rescue views fill the budget, and their build TIME scales with depth
+// (256M pts is ~40 s at 116 digits but ~75 min at 2600) -- a default should
+// never silently commit hours; --orbit-points buys more deliberately.
+// Returns (points, provenance-for-the-banner).
+fn auto_orbit_budget() -> (i32, String) {
+    match detect_ram_bytes() {
+        Some(ram) => {
+            let pts = (ram / 4 / 16).clamp(4_000_000, 256_000_000) as i32;
+            (pts, format!("auto: {:.1} GB RAM / 4", ram as f64 / (1024.0 * 1024.0 * 1024.0)))
+        }
+        // non-Linux or unreadable /proc: a modest fixed default
+        None => (64_000_000, "default: RAM detection unavailable".to_string()),
+    }
 }
 
 fn main() {
@@ -51,12 +100,16 @@ Options:
                    second pass of a two-pass render -- skips the orbit build.
                    The newest orbit is always cached, so the real bound is
                    max(N, largest single orbit). 0 disables caching.
-  --orbit-points N Reference-orbit point budget in MILLIONS (default 4).
-                   16 bytes/point of RAM while a request is in flight (plus
-                   cache retention): 100 = 1.6 GB, 500 = 8 GB. maxIterations
-                   above the budget renders the pixels that outlive the orbit
-                   white (unresolved) instead of wrong -- raise this to resolve
-                   them.
+  --orbit-points N Reference-orbit point budget in MILLIONS. Default is
+                   RAM-aware: a quarter of system memory as orbit bytes
+                   (16 B/point), clamped to [4, 256] million points;
+                   containers are sized by their cgroup limit, not the host.
+                   maxIterations above the budget renders the pixels that
+                   outlive the orbit white (unresolved) instead of wrong;
+                   reference selection means only views with NO escaping
+                   pixel inside the budget ever build all of it. Sizing:
+                   100 = 1.6 GB, 256 = 4 GB. Assumes one deep build at a
+                   time; multi-tenant servers should size explicitly.
 
 Legacy options (apply only to the old per-job /mb-computeHP endpoint, used by
 old clients; the current client sends one streaming /mb-computeHP2 request per
@@ -78,6 +131,7 @@ image and picks its own thread count):
 
     let mut i = 1;
     let mut legacy_configured = false;
+    let mut orbit_points_set = false;
     while i < args.len() {
         match args[i].as_str() {
             "-r" | "--rayon" => {
@@ -113,7 +167,10 @@ image and picks its own thread count):
                 if i + 1 < args.len() {
                     i += 1;
                     match args[i].parse::<i32>() {
-                        Ok(m) if m >= 1 => unsafe { ORBIT_BUDGET_POINTS = m.saturating_mul(1_000_000) },
+                        Ok(m) if m >= 1 => {
+                            unsafe { ORBIT_BUDGET_POINTS = m.saturating_mul(1_000_000) };
+                            orbit_points_set = true;
+                        }
                         _ => {
                             println!("--orbit-points expects a positive size in millions of points!");
                             exit(1);
@@ -167,6 +224,15 @@ image and picks its own thread count):
     println!("                  ({cores} cores available; thread count chosen per request by the client)");
     println!("  orbit cache:    {} MB (--orbit-cache to change; 0 disables)",
         unsafe { ORBIT_CACHE_BYTES } / (1024*1024));
+    let budget_src = if orbit_points_set {
+        "--orbit-points".to_string()
+    } else {
+        let (pts, src) = auto_orbit_budget();
+        unsafe { ORBIT_BUDGET_POINTS = pts };
+        format!("{src}; --orbit-points to override")
+    };
+    println!("  orbit budget:   {}M pts, {:.1} GB peak ({budget_src})",
+        orbit_budget() / 1_000_000, orbit_budget() as f64 * 16.0 / (1024.0 * 1024.0 * 1024.0));
     if legacy_configured { println!("  legacy /mb-computeHP: {} Rayon thread(s) per request, {} engine",
         unsafe { NUM_THREADS },
         if unsafe { PERTURB } {
