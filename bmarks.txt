@@ -713,5 +713,10 @@ BMarks
     Cross-arch control (CB, aarch64, 750M-iters @1 thread): server 4.28
     rows/s SLP-on vs 4.21 SLP-off -- no effect (noise), confirming the ARM
     backend never packed the chain and the flag's x86_64-only cfg scoping.
+    (Those runs were later found DEGRADED -- Crostini had lost a processor,
+    likely the fast core; after a VM restart: browser 4.37, server 5.02 =
+    87% wasm/native, even more squarely the classic ARM ratio. The
+    quiesce-the-VM law claims another measurement; the SLP no-effect verdict
+    stands on expectation but was not re-run clean.)
     Beast x86 user-measured @1 thread after fix: server 2.95 -> 5.73 rows/s,
     browser 4.53 (unchanged); server per-thread lead restored on both axes.
