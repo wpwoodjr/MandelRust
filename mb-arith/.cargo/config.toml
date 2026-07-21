@@ -3,11 +3,12 @@
 # BLA delta chain into shuffle-laden <2 x double>, costing 1.76x on strips).
 # mb-wasm deliberately has NO such config: LLVM's wasm backend leaves this
 # loop scalar on its own, and V8 compiles it well.
-# Explicit triples, not cfg(): a cfg-scoped section was observed applying on
-# an aarch64 build (cargo cfg-in-config evaluation is unreliable across
-# versions), forcing pointless full rebuilds there. The aarch64 backend does
-# NOT pack this chain (CB @1 thread: wasm 3.41 vs native 4.28 rows/s = the
-# normal 80% ratio, no anomaly), so ARM must build with default flags.
+# Explicit triples rather than cfg(target_arch): both work, but a literal
+# triple can never surprise across cargo versions. x86_64-only because the
+# aarch64 backend does NOT pack this chain -- CB A/B @1 thread, clean VM:
+# wasm 4.37 vs native 5.02 rows/s, the normal ~87% ratio, no anomaly; and
+# an explicit RUSTFLAGS test of the flag there measured no effect -- so ARM
+# builds with default flags.
 [target.x86_64-unknown-linux-gnu]
 rustflags = ["-C", "llvm-args=-slp-threshold=999999"]
 
