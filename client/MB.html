@@ -686,7 +686,8 @@ function repaint(dontUpdateStatusToIdle) {
         const prec = (highPrecision ? digits + " digits precision" : "normal precision")
                     + ", " + zoomFactorText() + orbitBudgetText();
         if (pendingOrbitDispatch || orbitBuildProgress != null
-                || (highPrecision && state == COMPUTING_FIRST_PASS && rc === 0)) {
+                || (highPrecision && state == COMPUTING_FIRST_PASS && rc === 0
+                    && orbitPoints === 0)) {
             // the third clause covers the moments before the first progress
             // report arrives (remote: ~0.5 s): "completed 0 of N rows" was
             // flashing there. A cache-hit render may show one "searching..."
@@ -1129,6 +1130,7 @@ function startJob(dontClear) {
     orbitBuildProgress = null;
     orbitBuildTarget = null;
     orbitTruncated = false;
+    orbitPoints = 0;
     let dispatchFirstJobs = function() {
         for (let i = 0; i < Math.min(workerCount, activeHPWorkers); i++) {
             let j = jobs.pop();
