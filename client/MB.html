@@ -899,6 +899,12 @@ let orbitBuildProgress = null;
 let orbitBuildTarget = null;
 // points in the current job's (broadcast) reference orbit, for status text
 let orbitPoints = 0;
+// Main-thread copy of the last broadcast orbit. Workers hold the only other
+// copies, and changing the worker count TERMINATES them all -- without this,
+// a mid-render worker change forced a full reference search for a view whose
+// orbit identity hadn't changed. One buffer, latest view only (up to ~2 GB
+// for a ceiling orbit; the re-seed it buys costs minutes of search).
+let mainOrbitCache = null;
 // Did the current job's reference end TRUNCATED without escaping? Only then
 // are white (unresolved) pixels possible, so only then does the status line
 // mention the orbit budget -- a relocated/escaped reference resolves
@@ -1130,6 +1136,7 @@ function startJob(dontClear) {
             ]);
         }
     };
+    let skipBuild = false;
     if (USE_ORBIT_SHARING && USE_ORBIT_BROADCAST && highPrecision
             && document.getElementById("local").checked && hpBasis) {
         // BROADCAST: worker 0 builds the orbit; dispatch waits until the orbit has
@@ -1137,18 +1144,36 @@ function startJob(dontClear) {
         // orbit-before-task). Build + relay are inside jobStartTime, so the
         // rows/sec readout stays honest. If the render is stopped meanwhile,
         // jobNum changes and the stale dispatch is dropped.
+        for (let i = 0; i < workerCount; i++) {
+            workers[i].postMessage(["setup",jobNum, maxIterSlider.value,highPrecision,i,workerCount,interlaced]);
+        }
+        if (mainOrbitCache && mainOrbitCache.id === hpBasis.id) {
+            // Same view, possibly-fresh workers (worker-count changes
+            // terminate the pool and its orbit copies): re-seed from the
+            // main-thread copy -- no rebuild, no search. Workers that still
+            // have it ignore the duplicate.
+            const mc = mainOrbitCache;
+            const pts = Math.max(1, mc.meta.len - 1);
+            orbitPoints = pts;
+            const zr = mc.buf[2 * (mc.meta.len - 1)], zi = mc.buf[2 * (mc.meta.len - 1) + 1];
+            orbitTruncated = (zr * zr + zi * zi < 8) && pts < maxIterSlider.value;
+            activeHPWorkers = workersForOrbit(pts);
+            for (let i = 0; i < Math.min(workerCount, activeHPWorkers); i++) {
+                workers[i].postMessage(["orbit", mc.id, mc.meta, mc.buf]);
+            }
+            dispatchFirstJobs();
+            skipBuild = true;
+        } else {
         let myJobNum = jobNum;
         pendingOrbitDispatch = function() {
             if (myJobNum === jobNum) dispatchFirstJobs();
         };
-        for (let i = 0; i < workerCount; i++) {
-            workers[i].postMessage(["setup",jobNum, maxIterSlider.value,highPrecision,i,workerCount,interlaced]);
-        }
         // the builder always gets the one-worker-class budget; the render
         // worker count is decided when the orbit comes back (jobFinished)
         workers[0].postMessage(["buildOrbit", hpBasis.id,
             hpBasis.xmin, hpBasis.dx, hpBasis.yVal, hpBasis.dy, hpBasis.cols, hpBasis.rows,
             buildBudgetPoints()]);
+        }
     } else {
         dispatchFirstJobs();
     }
@@ -1209,6 +1234,7 @@ function jobFinished(msg) {
         // rendering worker holds a copy plus its own table, so a big
         // (no-rescue truncated) orbit reduces parallelism instead of
         // depth. Usually the orbit is small and every worker plays.
+        mainOrbitCache = { id: job[1], meta: job[2], buf: job[3] };
         const orbitPts = Math.max(1, job[2].len - 1);
         orbitPoints = orbitPts;
         // escaped iff the last stored point is outside the escape radius
