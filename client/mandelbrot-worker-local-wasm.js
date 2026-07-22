@@ -199,7 +199,10 @@ function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows, orbitBudg
             // else -- the budget is for unbounded center builds and is
             // irrelevant here (count < prefix <= budget by construction).
             // Restarting the builder drops the center prefix first.
-            t = cand.count + 1048576;
+            // Clamped to the 128M allocation ceiling so a near-ceiling
+            // candidate's extend never outgrows its reserved capacity (a
+            // Vec regrow at that size doubles: instant OOM).
+            t = Math.min(cand.count + 1048576, 128000000);
             reference_builder_start(xminPtr, dxPtr, ymaxPtr, dyPtr, len, cand.c, cand.r,
                 Math.min(maxIterations, t), metaPtr);
             refRow = cand.r;
@@ -286,7 +289,7 @@ onmessage = function(msg) {
                         // denied (the orbit + table exceed what the browser
                         // grants this worker) -- say so instead of dying mute
                         postMessage(["fatal", `Worker ${workerNumber}: high-precision compute failed (${err}). ` +
-                            `Likely out of memory: reduce the number of workers or Max Iterations.`]);
+                            `Out of memory: this view needs a bigger reference orbit than the browser tier can hold -- use the Server engine for it.`]);
                         return;
                     }
                     let o = cachedOrbit;
@@ -300,7 +303,7 @@ onmessage = function(msg) {
                             firstRow, nrows, columnCount, maxIterations, outPtr);
                     } catch (err) {
                         postMessage(["fatal", `Worker ${workerNumber}: high-precision compute failed (${err}). ` +
-                            `Likely out of memory: reduce the number of workers or Max Iterations.`]);
+                            `Out of memory: this view needs a bigger reference orbit than the browser tier can hold -- use the Server engine for it.`]);
                         return;
                     }
                     if (DEBUG) { hpMsAccum += performance.now()-_t0; hpStripAccum += 1; }
@@ -375,7 +378,7 @@ onmessage = function(msg) {
                     // always memory.grow denied. Without this catch the promise
                     // swallowed the error and the page waited forever.
                     postMessage(["fatal", `Worker ${workerNumber}: high-precision compute failed (${err}). ` +
-                        `Likely out of memory: reduce the number of workers or Max Iterations.`]);
+                        `Out of memory: this view needs a bigger reference orbit than the browser tier can hold -- use the Server engine for it.`]);
                     return;
                 }
             }

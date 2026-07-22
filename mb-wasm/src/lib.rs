@@ -316,6 +316,12 @@ pub extern "C" fn reference_builder_start(
     xmin: *const u32, dx: *const u32, ymax: *const u32, dy: *const u32, len: u32,
     ref_col: u32, ref_row: u32, capacity_points: i32, out_meta: *mut f64,
 ) {
+    // Drop any previous builder FIRST: a near-ceiling relocation reserves
+    // ~2 GB, and doing that while the old ~2 GB center prefix is still
+    // alive doubles the peak past the wasm32 heap (user repro: a 120.5M
+    // candidate found at a 121.5M prefix trapped here). Dropped first, the
+    // candidate's reservation fits the center's freed block.
+    REF_BUILDER.with(|c| *c.borrow_mut() = None);
     let len = len as usize;
     let xmin = unsafe { std::slice::from_raw_parts(xmin, len) };
     let dx = unsafe { std::slice::from_raw_parts(dx, len) };
