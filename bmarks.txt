@@ -742,3 +742,8 @@ BMarks
     (51-digit view, maxIter 1M, node, single worker): per-strip tables
     0.84 s vs cached whole-image table 0.22 s = 3.8x, checksums identical.
     Mirrors the server's shared-table A/B; both tiers now switch at 1M.
+    Scale check at 1200x1400 (175 strips, same 1M orbit): 2.75 s vs 0.98 s
+    = 2.8x -- margin narrows with image size exactly as the model predicts
+    (wider strips amortize per-strip builds; larger frame span shortens the
+    cached table's skips) but stays decisive: the 1M threshold is robust
+    across image sizes, no image-aware term needed.
