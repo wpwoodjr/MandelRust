@@ -484,6 +484,17 @@ Few builds AND fast lookups AND all-core scaling — what big bands only half-do
   tables, less bandwidth churn). On the 8-core Chromebook, clean 8w wins (a
   session suggesting otherwise was contaminated by a busy Crostini VM — on
   big.LITTLE, quiesce background VMs and trust repeated runs, not single ones).
+  V15 (client-only, no wasm change): BROADCAST builds are decoupled from
+  render parallelism -- worker 0's ladder always gets the one-worker-class
+  budget (128M-pt ceiling; only it holds memory during the build), and when
+  the orbit comes back the client sizes the RENDER set via workersForOrbit()
+  (orbit + per-worker table model vs the 4 GB allowance): small orbits (the
+  usual case under reference selection) render on every worker -- full depth
+  AND full parallelism; a no-rescue truncated deep prefix keeps its depth
+  (fewer white px) and parallelism auto-reduces, with the status line and
+  console saying so. Worker count is a speed knob again, not a depth knob;
+  the orbit cache key also stops depending on worker count. Non-broadcast
+  sharing keeps the divided per-worker budgets.
   An early "8GB machines page on 4M-maxIter views (halve workers)" finding was
   RETRACTED for the CB 17 Jul 2026: it actually has 16GB (~3GB of tables can't
   page that), and the max-memory configuration (4M-pt orbit, ~305 MB table per

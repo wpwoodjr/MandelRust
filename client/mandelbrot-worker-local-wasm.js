@@ -161,6 +161,7 @@ function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows, orbitBudg
     // measuring chunk: learn the depth's build rate, then time-scale the trigger
     let t0 = performance.now();
     let points = reference_builder_extend(Math.min(maxIterations, MEASURE_CHUNK_POINTS));
+    postMessage(["buildProgress", imageId, points]);
     let usPerPt = points > 0 ? (performance.now() - t0) * 1000 / points : 0;
     let t = Math.min(budget, SELECT_TRIGGER_POINTS);
     if (usPerPt > 0) {
@@ -170,7 +171,19 @@ function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows, orbitBudg
     for (;;) {
         let before = points;
         let e0 = performance.now();
-        points = reference_builder_extend(Math.min(maxIterations, Math.max(t, 2)));
+        // extend in slices sized to ~2 s of MEASURED build time, so the
+        // page's progress readout ticks smoothly even through a single long
+        // extend (e.g. the candidate build) at any depth
+        let target = Math.min(maxIterations, Math.max(t, 2));
+        let slice = usPerPt > 0
+            ? Math.min(8388608, Math.max(262144, Math.round(2e6 / usPerPt)))
+            : 4194304;
+        for (;;) {
+            let prev = points;
+            points = reference_builder_extend(Math.min(target, points + slice));
+            postMessage(["buildProgress", imageId, points]);
+            if (points >= target || points === prev) break; // done, escaped, or capped
+        }
         if (points > before) usPerPt = (performance.now() - e0) * 1000 / (points - before);
         if (reference_builder_escaped() || points >= maxIterations || relocated) {
             break; // finished reference: escaped, full-length interior, or the candidate
@@ -189,6 +202,7 @@ function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows, orbitBudg
                 Math.min(maxIterations, t), metaPtr);
             refRow = cand.r;
             points = 0;
+            postMessage(["buildProgress", imageId, 0]); // candidate build starts at zero
             relocated = true; // next extend runs to its escape, then we break
             continue;
         }

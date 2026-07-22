@@ -303,10 +303,10 @@
   </style>
 </style>
 
-<script src="BigDecimal-all-last.min.js?v=dd39b2b401"></script>
-<script src="slider.js?v=dd39b2b401"></script>
-<script src="touch.js?v=dd39b2b401"></script>
-<script src="percentage-complete.js?v=dd39b2b401"></script>
+<script src="BigDecimal-all-last.min.js?v=64f8d0118c"></script>
+<script src="slider.js?v=64f8d0118c"></script>
+<script src="touch.js?v=64f8d0118c"></script>
+<script src="percentage-complete.js?v=64f8d0118c"></script>
 <script>
 
 "use strict";
@@ -465,7 +465,7 @@ var log2of10 = Math.log(10)/Math.log(2);
 // URLs is what stops a cached worker from outliving the binary it drives.
 // Stamped from the assets' contents by stamp-assets.sh at build time -- do not
 // edit by hand. Distinct from EXPECTED_WASM_VERSION, which pins the wasm ABI.
-const ASSET_VERSION = "dd39b2b401";
+const ASSET_VERSION = "64f8d0118c";
 
 let compute_mandelbrot;
 WebAssembly
@@ -633,11 +633,21 @@ function orbitBudgetText() {
     }
     const m = (v) => (v % 1000000 === 0 ? (v/1000000) + "M" : (v/1000000).toFixed(1) + "M");
     if (document.getElementById("local").checked) {
-        const budget = orbitBudgetPoints();
-        if (budget >= maxIterSlider.value) {
-            return "";
+        // broadcast mode: worker 0 builds at the one-worker-class budget
+        // regardless of worker count (v15), so the depth warning keys on
+        // THAT; the render auto-sizes its worker set to the orbit instead
+        const broadcast = USE_ORBIT_SHARING && USE_ORBIT_BROADCAST;
+        const budget = broadcast ? buildBudgetPoints() : orbitBudgetPoints();
+        let txt = "";
+        if (budget < maxIterSlider.value) {
+            txt = ", orbit budget " + m(budget) + " (unresolved px white"
+                + (broadcast ? ")" : "; fewer workers go deeper)");
         }
-        return ", orbit budget " + m(budget) + " (unresolved px white; fewer workers go deeper)";
+        if (broadcast && activeHPWorkers < workerCount) {
+            txt += ", rendering on " + activeHPWorkers + " of " + workerCount
+                + " workers (orbit memory)";
+        }
+        return txt;
     }
     // remote: the server's budget applies (advertised by the health check)
     if (serverOrbitBudget && serverOrbitBudget < maxIterSlider.value) {
@@ -663,9 +673,19 @@ function repaint(dontUpdateStatusToIdle) {
         }
         const prec = (highPrecision ? digits + " digits precision" : "normal precision")
                     + ", " + zoomFactorText() + orbitBudgetText();
-        statusText.statusMessage.updateText(pass + prec +
-                    "... completed " + rc + " of " + ch + " rows at " + rpsText);
-        statusText.statusHeader.updateText(pass + prec + ", " + (rc/ch*100).toFixed(0) + "%");
+        if (pendingOrbitDispatch) {
+            // the reference search runs before any strip can: show it live
+            const bp = orbitBuildProgress != null
+                ? ": " + (orbitBuildProgress / 1e6).toFixed(1) + " M pts"
+                : "...";
+            statusText.statusMessage.updateText(pass + prec +
+                        "... building reference orbit" + bp);
+            statusText.statusHeader.updateText(pass + prec + ", building orbit" + bp);
+        } else {
+            statusText.statusMessage.updateText(pass + prec +
+                        "... completed " + rc + " of " + ch + " rows at " + rpsText);
+            statusText.statusHeader.updateText(pass + prec + ", " + (rc/ch*100).toFixed(0) + "%");
+        }
     } else if (dontUpdateStatusToIdle !== true) {
         statusText.statusMessage.updateText("Idle (" + rpsText + ", " + zoomFactorText() + ")");
         statusText.statusHeader.updateText("Idle (" + rpsText + " " + canvas.width + "X" + canvas.height + ", " + zoomFactorText() + ")");
@@ -780,24 +800,51 @@ const ORBIT_RAM_BUDGET_BYTES = 4 * 1024 * 1024 * 1024; // across all workers
 // 2.4 GB was never actually allocatable -- a latent trap, unexercised until
 // the v14 ladder pre-reserved it.)
 const ORBIT_WORKER_CEILING_POINTS = 128000000;
+// Per-worker memory model (measured, not just the orbit -- ignoring the
+// BLA table undercounted by ~6x and OOM-killed 32-worker deep renders):
+//   orbit: 16 B/pt
+//   table: ~96 B/pt (entries + lazy relax tier) up to the 4M-pt table
+//          prefix, then ~403 MB + ~1.5 B/pt of sparse tail beyond it
+function perWorkerOrbitBytes(pts) {
+    const PREFIX = 4194304;
+    if (pts <= PREFIX) return pts * (16 + 96);
+    return PREFIX * (16 + 96) + (pts - PREFIX) * (16 + 1.5);
+}
 function orbitBudgetPoints() {
-    // Per-worker memory model (measured, not just the orbit -- ignoring the
-    // BLA table undercounted by ~6x and OOM-killed 32-worker deep renders):
-    //   orbit: 16 B/pt
-    //   table: ~96 B/pt (entries + lazy relax tier) up to the 4M-pt table
-    //          prefix, then ~403 MB + ~1.5 B/pt of sparse tail beyond it
+    // budget for a worker that builds its OWN orbit (non-broadcast sharing,
+    // and remote-fallback paths): the allowance divides by worker count
     const share = ORBIT_RAM_BUDGET_BYTES / workerCount;
     const PREFIX = 4194304;
     let pts = Math.floor(share / (16 + 96));
     if (pts > PREFIX) {
-        const prefixBytes = PREFIX * (16 + 96);
-        pts = Math.floor(PREFIX + (share - prefixBytes) / (16 + 1.5));
+        pts = Math.floor(PREFIX + (share - PREFIX * (16 + 96)) / (16 + 1.5));
     }
-    // floor at the classic 4M (pre-deep-iterations memory profile; high worker
-    // counts on deep views were always near the edge -- reduce workers to go
-    // deeper), ceiling at the wasm32 address space
+    // floor at the classic 4M (pre-deep-iterations memory profile), ceiling
+    // at the wasm32 address space
     return Math.max(4000000, Math.min(ORBIT_WORKER_CEILING_POINTS, pts));
 }
+// BROADCAST mode decouples build depth from worker count: only worker 0
+// builds (the others hold nothing during the build), so the ladder always
+// gets the one-worker-class budget regardless of the worker setting. After
+// the build, workersForOrbit() sizes the RENDER to the orbit that actually
+// resulted -- usually small (reference selection), so usually every worker
+// participates; a no-rescue deep prefix keeps its depth (fewer white px)
+// and parallelism auto-reduces instead. Worker count is a speed knob again,
+// not a depth knob.
+function buildBudgetPoints() {
+    return ORBIT_WORKER_CEILING_POINTS; // one worker's share exceeds the ceiling
+}
+// How many workers can afford a copy of an orbit of `pts` points (each
+// rendering worker holds the orbit AND its own whole-image BLA table).
+function workersForOrbit(pts) {
+    const w = Math.floor(ORBIT_RAM_BUDGET_BYTES / perWorkerOrbitBytes(pts));
+    return Math.max(1, Math.min(workerCount, w));
+}
+// Render-phase worker cap for the current HP job (broadcast mode; reset per
+// job, lowered only when the built orbit is too big for every worker to
+// copy -- Infinity means "no cap decided", so the status never claims a
+// reduction before an orbit has actually arrived).
+let activeHPWorkers = Infinity;
 
 // Orbit identity is CONTENT-keyed (a hash of the basis coords + maxIter), so
 // re-rendering the same view -- second passes, palette changes, repeat visits
@@ -826,6 +873,9 @@ function basisId(xminA, dxA, yA, dyA, rows, cols, maxIter) {
 let hpBasis = null;
 // Broadcast: deferred first dispatch, released when the orbit has been relayed.
 let pendingOrbitDispatch = null;
+// Live reference-build progress (points so far), posted by the building
+// worker's ladder; null when no build is in flight.
+let orbitBuildProgress = null;
 
 // Local HP job size scales with parallelism: a lone worker has no balancing
 // problem and gets the most engine-efficient big blocks, while many workers on
@@ -961,7 +1011,7 @@ function startJob(dontClear) {
             convert(yValImageArray, yVal, chunks+1);
             imageId = basisId(xminArray, dxArray, yValImageArray, dyArray,
                               rows, columns, maxIterSlider.value)
-                      + "-b" + orbitBudgetPoints(); // budget changes orbit content
+                      + "-b" + (USE_ORBIT_BROADCAST ? buildBudgetPoints() : orbitBudgetPoints()); // budget changes orbit content
             hpBasis = { id: imageId, xmin: xminArray, dx: dxArray, dy: dyArray,
                         yVal: yValImageArray, rows: rows, cols: columns };
         }
@@ -1033,8 +1083,10 @@ function startJob(dontClear) {
     }
 
     jobStartTime = Date.now();
+    activeHPWorkers = Infinity; // no cap until this job's orbit arrives
+    orbitBuildProgress = null;
     let dispatchFirstJobs = function() {
-        for (let i = 0; i < workerCount; i++) {
+        for (let i = 0; i < Math.min(workerCount, activeHPWorkers); i++) {
             let j = jobs.pop();
             if (!j) {   // more workers than jobs (very short canvas): leave the rest idle
                 break;
@@ -1062,9 +1114,11 @@ function startJob(dontClear) {
         for (let i = 0; i < workerCount; i++) {
             workers[i].postMessage(["setup",jobNum, maxIterSlider.value,highPrecision,i,workerCount,interlaced]);
         }
+        // the builder always gets the one-worker-class budget; the render
+        // worker count is decided when the orbit comes back (jobFinished)
         workers[0].postMessage(["buildOrbit", hpBasis.id,
             hpBasis.xmin, hpBasis.dx, hpBasis.yVal, hpBasis.dy, hpBasis.cols, hpBasis.rows,
-            orbitBudgetPoints()]);
+            buildBudgetPoints()]);
     } else {
         dispatchFirstJobs();
     }
@@ -1076,7 +1130,8 @@ function startJob(dontClear) {
     running = true;
     document.getElementById("stop").disabled = false;
     var prec = highPrecision ? "high precision, " + digits + " digits" : "normal precision";
-    statusText.updateText("Pass 1, " + prec + "...");
+    statusText.updateText("Pass 1, " + prec
+        + (pendingOrbitDispatch ? ", building reference orbit..." : "..."));
     if (! zoomTimeout) {
         repaintTimeout = setTimeout(repaint, repaintInitialTimer);
     }
@@ -1105,12 +1160,31 @@ function jobFinished(msg) {
     // worker (each postMessage structured-clones the ~12MB f64 array), then
     // release the deferred first dispatch. Per-worker FIFO ordering guarantees
     // the orbit lands before any task that needs it.
+    if (job[0] === "buildProgress") {
+        if (hpBasis && job[1] === hpBasis.id) {
+            orbitBuildProgress = job[2];
+        }
+        return;
+    }
     if (job[0] === "orbit") {
-        // let t0 = performance.now();
-        for (let i = 1; i < workers.length; i++) {
+        orbitBuildProgress = null;
+        // A stale orbit (view changed mid-build; the builder can't be
+        // interrupted inside a wasm call) must not resize or feed anyone:
+        // the new job's buildOrbit is already queued behind it on worker 0.
+        if (!hpBasis || job[1] !== hpBasis.id) {
+            return;
+        }
+        // Size the RENDER to the orbit that actually resulted: every
+        // rendering worker holds a copy plus its own table, so a big
+        // (no-rescue truncated) orbit reduces parallelism instead of
+        // depth. Usually the orbit is small and every worker plays.
+        activeHPWorkers = workersForOrbit(Math.max(1, job[2].len - 1));
+        if (activeHPWorkers < workerCount) {
+            console.log(`[mb] ${job[2].len - 1} pt orbit: rendering on ${activeHPWorkers} of ${workerCount} workers (memory)`);
+        }
+        for (let i = 1; i < activeHPWorkers; i++) {
             workers[i].postMessage([ "orbit", job[1], job[2], job[3] ]);
         }
-        // console.log(`orbit broadcast: ${job[2].len} pts to ${workers.length-1} workers in ${(performance.now()-t0).toFixed(0)} ms`);
         if (pendingOrbitDispatch) {
             let dispatch = pendingOrbitDispatch;
             pendingOrbitDispatch = null;
@@ -1260,7 +1334,8 @@ function startSecondPass() {
         //jobs.reverse();     // keep original order (don't need to since now we're waiting for all rows to finish before drawing)
     }
 
-    for (var i = 0; i < workerCount; i++) {
+    let passWorkers = (highPrecision && hpBasis) ? Math.min(workerCount, activeHPWorkers) : workerCount;
+    for (var i = 0; i < passWorkers; i++) {
         var j = jobs.pop();
         if (!j) {   // more workers than jobs (very short canvas): leave the rest idle
             break;
