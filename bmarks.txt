@@ -752,4 +752,9 @@ BMarks
     1.6x @100k, 1.3x @50k, checksums identical, never inverts. Thresholds
     on BOTH tiers now ZERO (always cache/share); per-strip tables remain
     only in the non-sharing entry points. Server identity re-verified at a
-    250k orbit through the real endpoint.
+    250k orbit through the real endpoint. Mechanics pinned by the limiting
+    case: ONE 480-row strip times identically both ways (0.38 vs 0.37 s --
+    one table build each); the gap is proportional to strip-calls minus one,
+    fully present at 1 worker, vanishing at one-strip-per-worker. Worker
+    count enters only by dividing the strips (plus the server's concurrent-
+    build bus contention on top).
