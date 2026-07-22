@@ -736,3 +736,9 @@ BMarks
     Also: RAM-aware default
     orbit budget shipped (clamp(RAM/4 as orbit bytes, 4M, 256M); Beast auto
     = 256M / 3.8 GB peak; cgroup-aware for containers).
+
+22 Jul 2026 (later) - BROWSER TABLE-CACHE THRESHOLD 2M -> 1M (measured,
+    bench-table-cache.js pattern): 60 x 8-row strips at a 1M-pt orbit
+    (51-digit view, maxIter 1M, node, single worker): per-strip tables
+    0.84 s vs cached whole-image table 0.22 s = 3.8x, checksums identical.
+    Mirrors the server's shared-table A/B; both tiers now switch at 1M.

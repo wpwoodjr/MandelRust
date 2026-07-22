@@ -467,7 +467,12 @@ pub extern "C" fn compute_strip_with_orbit(
     // table also removes the per-strip build cost. Small orbits keep
     // per-strip tables: tight dc_max (longest skips), tiny churn,
     // bit-identical to previous behavior.
-    const TABLE_CACHE_MIN_ORBIT: u32 = 2_000_000;
+    // Threshold measured on both tiers (22 Jul 2026): at a 1M-pt orbit,
+    // per-strip tables cost 0.84 s vs 0.22 s cached for a 60-strip node
+    // sequence (3.8x, identical outputs) -- mirroring the server's shared-
+    // table A/B (bmarks). Sub-1M orbits keep per-strip tables: ms builds,
+    // tightest dc_max, unmeasured but the stakes are sub-0.5 s renders.
+    const TABLE_CACHE_MIN_ORBIT: u32 = 1_000_000;
     if orbit_len > TABLE_CACHE_MIN_ORBIT {
         use std::cell::RefCell;
         type TableKey = (usize, u32, u64, i64, u64, i64, u64, i64, u32, u32);
