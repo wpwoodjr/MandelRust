@@ -600,12 +600,33 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                 // (worker: `if (line.length == 0) continue`); try_send never
                 // blocks (a full channel just skips a beat).
                 let progress_last = std::sync::atomic::AtomicUsize::new(0);
+                // candidate build target (certified escape count); -1 = the
+                // open-ended center search. Read by the hook for meta lines.
+                let cand_target = std::sync::atomic::AtomicI64::new(-1);
+                let ctl_t0 = std::time::Instant::now();
+                let meta_last_ms = std::sync::atomic::AtomicU64::new(0);
                 let ctl_fn = |pts: usize| -> bool {
                     if unsafe { VERBOSE } {
                         let last = progress_last.load(std::sync::atomic::Ordering::Relaxed);
                         if pts >= last + 10_000_000 {
                             progress_last.store(pts, std::sync::atomic::Ordering::Relaxed);
                             println!("  orbit build: {} M pts...", pts / 1_000_000);
+                        }
+                    }
+                    {
+                        // ~2 progress lines per second keeps the client's
+                        // status live without spamming the stream
+                        let now = ctl_t0.elapsed().as_millis() as u64;
+                        let last = meta_last_ms.load(std::sync::atomic::Ordering::Relaxed);
+                        if now >= last + 500 {
+                            meta_last_ms.store(now, std::sync::atomic::Ordering::Relaxed);
+                            let t = cand_target.load(std::sync::atomic::Ordering::Relaxed);
+                            let line = if t >= 0 {
+                                format!("{{\"buildProgress\":{pts},\"target\":{t}}}\n")
+                            } else {
+                                format!("{{\"buildProgress\":{pts}}}\n")
+                            };
+                            let _ = tx.try_send(Ok(web::Bytes::from(line)));
                         }
                     }
                     let _ = tx.try_send(Ok(web::Bytes::from_static(b"\n")));
@@ -725,6 +746,7 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                         // speckle slack, nothing else (count < prefix <=
                         // budget by construction; the budget is for
                         // unbounded center builds and is irrelevant here)
+                        cand_target.store(count as i64, std::sync::atomic::Ordering::Relaxed);
                         let cap = count.saturating_add(1_048_576);
                         let (orbit, dips, dx_fe, dy_fe, dcx0, _c2, row_ref) = perturb_setup_fe64_at(
                             &xmin, &dx, &ymax, &dy, chunks, pr, pc, max_iter, cap, ctl);
@@ -764,6 +786,16 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
                 (c, false)
             }
         };
+        // outcome meta line: the orbit's size and whether it escaped -- the
+        // client's status keys "white pixels possible" on this instead of
+        // guessing from the budget. Sent on cache hits too.
+        {
+            let line = format!("{{\"orbitPoints\":{},\"escaped\":{}}}\n",
+                cached.orbit.len() - 1, orbit_escaped(&cached.orbit));
+            if tx.blocking_send(Ok(web::Bytes::from(line))).is_err() {
+                return;
+            }
+        }
         if unsafe { VERBOSE } {
             // one line per HP2 request: enough to see at a glance whether the
             // client is sending basis+offsets and whether the cache is hitting

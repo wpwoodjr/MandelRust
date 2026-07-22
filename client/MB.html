@@ -303,10 +303,10 @@
   </style>
 </style>
 
-<script src="BigDecimal-all-last.min.js?v=db9c00d430"></script>
-<script src="slider.js?v=db9c00d430"></script>
-<script src="touch.js?v=db9c00d430"></script>
-<script src="percentage-complete.js?v=db9c00d430"></script>
+<script src="BigDecimal-all-last.min.js?v=8f72599701"></script>
+<script src="slider.js?v=8f72599701"></script>
+<script src="touch.js?v=8f72599701"></script>
+<script src="percentage-complete.js?v=8f72599701"></script>
 <script>
 
 "use strict";
@@ -465,7 +465,7 @@ var log2of10 = Math.log(10)/Math.log(2);
 // URLs is what stops a cached worker from outliving the binary it drives.
 // Stamped from the assets' contents by stamp-assets.sh at build time -- do not
 // edit by hand. Distinct from EXPECTED_WASM_VERSION, which pins the wasm ABI.
-const ASSET_VERSION = "db9c00d430";
+const ASSET_VERSION = "8f72599701";
 
 let compute_mandelbrot;
 WebAssembly
@@ -658,10 +658,13 @@ function orbitBudgetText() {
         }
         return txt;
     }
-    // remote: the server's budget applies (advertised by the health check)
-    if (serverOrbitBudget && serverOrbitBudget < maxIterSlider.value) {
-        return ", server orbit budget " + m(serverOrbitBudget) +
-               " (unresolved px white; restart server with a bigger --orbit-points)";
+    // remote: outcome-based (the server streams the orbit's fate)
+    if (orbitBuildProgress != null) {
+        return ""; // mid-search: outcome unknown, say nothing yet
+    }
+    if (orbitTruncated) {
+        return ", " + m(serverOrbitBudget || orbitPoints) + " server orbit budget exceeded"
+            + " (unresolved pixels white; restart server with a bigger --orbit-points)";
     }
     return "";
 }
@@ -682,7 +685,12 @@ function repaint(dontUpdateStatusToIdle) {
         }
         const prec = (highPrecision ? digits + " digits precision" : "normal precision")
                     + ", " + zoomFactorText() + orbitBudgetText();
-        if (pendingOrbitDispatch) {
+        if (pendingOrbitDispatch || orbitBuildProgress != null
+                || (highPrecision && state == COMPUTING_FIRST_PASS && rc === 0)) {
+            // the third clause covers the moments before the first progress
+            // report arrives (remote: ~0.5 s): "completed 0 of N rows" was
+            // flashing there. A cache-hit render may show one "searching..."
+            // tick before its strips land -- harmless.
             // the reference search runs before any strip can: show it live,
             // and distinguish the open-ended center search from the
             // known-length relocated-candidate build
@@ -1219,6 +1227,17 @@ function jobFinished(msg) {
         if (hpBasis && job[1] === hpBasis.id) {
             orbitBuildProgress = job[2];
             orbitBuildTarget = job[3]; // non-null: relocated build, known length
+        }
+        return;
+    }
+    // Remote: the server reported its orbit's outcome (size + escaped) --
+    // adopt it into the same status machinery the local tier uses.
+    if (job[0] === "orbitMeta") {
+        if (hpBasis && job[1] === hpBasis.id) {
+            orbitPoints = job[2];
+            orbitTruncated = !job[3] && job[2] < maxIterSlider.value;
+            orbitBuildProgress = null;
+            orbitBuildTarget = null;
         }
         return;
     }

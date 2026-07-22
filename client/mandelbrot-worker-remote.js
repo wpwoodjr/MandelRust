@@ -1,6 +1,7 @@
 let jobNumber, workerNumber;
 const retryLimit = 7;
 let interlacedDrawing = false;
+let hp2ImageId; // current view's orbit identity, for meta postMessages
 
 function doIterationCounts(coords, url, retryCount, thisJobNum) {
     let iterationCounts;
@@ -101,6 +102,16 @@ function doIterationCountsHP2(coords, thisJobNum, retryCount) {
                 buf = buf.slice(nl + 1);
                 if (line.length == 0) continue;
                 const strip = JSON.parse(line);
+                // meta lines (wantMeta): build progress and orbit outcome
+                if (strip.buildProgress !== undefined) {
+                    postMessage(["buildProgress", hp2ImageId, strip.buildProgress,
+                        strip.target !== undefined ? strip.target : null]);
+                    continue;
+                }
+                if (strip.orbitPoints !== undefined) {
+                    postMessage(["orbitMeta", hp2ImageId, strip.orbitPoints, !!strip.escaped]);
+                    continue;
+                }
                 if (rowsDone[strip.firstRow]) continue;   // retry duplicate
                 for (let i = 0; i < strip.nrows; i++) rowsDone[strip.firstRow + i] = 1;
                 postMessage([ thisJobNum, coords.firstRow + strip.firstRow,
@@ -176,6 +187,7 @@ onmessage = function(msg) {
             // the server's orbit cache key on the basis, so pass 2 (and repeated
             // renders of the same view) skip the orbit build.
             let imageRows = data[8];
+            let imageId = data[9];
             let imageCols = data[10];
             let ox = data[11], oy = data[12];
             let body = {
@@ -186,6 +198,7 @@ onmessage = function(msg) {
                 // refinement shows as roaming speckle instead of a sweep
                 threads: threadCount, interleaved: interlacedDrawing && !ox && !oy
             };
+            hp2ImageId = imageId;
             if (imageRows !== undefined) {
                 body.basisRows = imageRows;
                 body.basisColumns = imageCols;
