@@ -193,11 +193,12 @@ function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows, orbitBudg
         let roundSecs = (performance.now() - r0) / 1000;
         if (cand) {
             console.log(`[mb w${workerNumber}] center unresolved at ${points} pts: relocating to px (${cand.c}, ${cand.r}), escapes at ${cand.count}`);
-            // the probe certified the escape count, so target THAT (+ slack
-            // for probe speckle), never the budget -- a budget-sized
-            // reservation can exceed the wasm32 heap. Restarting the builder
-            // drops the center prefix before the candidate allocates.
-            t = Math.min(budget, cand.count + 1048576);
+            // the probe CERTIFIED the escape count, so the candidate build
+            // is inherently bounded: target count + speckle slack, nothing
+            // else -- the budget is for unbounded center builds and is
+            // irrelevant here (count < prefix <= budget by construction).
+            // Restarting the builder drops the center prefix first.
+            t = cand.count + 1048576;
             reference_builder_start(xminPtr, dxPtr, ymaxPtr, dyPtr, len, cand.c, cand.r,
                 Math.min(maxIterations, t), metaPtr);
             refRow = cand.r;
