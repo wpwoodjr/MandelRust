@@ -161,7 +161,8 @@ function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows, orbitBudg
     // measuring chunk: learn the depth's build rate, then time-scale the trigger
     let t0 = performance.now();
     let points = reference_builder_extend(Math.min(maxIterations, MEASURE_CHUNK_POINTS));
-    postMessage(["buildProgress", imageId, points]);
+    let candTarget = null; // set on relocation: the certified escape count
+    postMessage(["buildProgress", imageId, points, candTarget]);
     let usPerPt = points > 0 ? (performance.now() - t0) * 1000 / points : 0;
     let t = Math.min(budget, SELECT_TRIGGER_POINTS);
     if (usPerPt > 0) {
@@ -181,7 +182,7 @@ function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows, orbitBudg
         for (;;) {
             let prev = points;
             points = reference_builder_extend(Math.min(target, points + slice));
-            postMessage(["buildProgress", imageId, points]);
+            postMessage(["buildProgress", imageId, points, candTarget]);
             if (points >= target || points === prev) break; // done, escaped, or capped
         }
         if (points > before) usPerPt = (performance.now() - e0) * 1000 / (points - before);
@@ -203,7 +204,8 @@ function buildOrbit(imageId, xmin, dx, ymax, dy, basisCols, basisRows, orbitBudg
                 Math.min(maxIterations, t), metaPtr);
             refRow = cand.r;
             points = 0;
-            postMessage(["buildProgress", imageId, 0]); // candidate build starts at zero
+            candTarget = cand.count; // the status can show "X of Y M pts"
+            postMessage(["buildProgress", imageId, 0, candTarget]);
             relocated = true; // next extend runs to its escape, then we break
             continue;
         }

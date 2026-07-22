@@ -303,10 +303,10 @@
   </style>
 </style>
 
-<script src="BigDecimal-all-last.min.js?v=63e2f14319"></script>
-<script src="slider.js?v=63e2f14319"></script>
-<script src="touch.js?v=63e2f14319"></script>
-<script src="percentage-complete.js?v=63e2f14319"></script>
+<script src="BigDecimal-all-last.min.js?v=db9c00d430"></script>
+<script src="slider.js?v=db9c00d430"></script>
+<script src="touch.js?v=db9c00d430"></script>
+<script src="percentage-complete.js?v=db9c00d430"></script>
 <script>
 
 "use strict";
@@ -465,7 +465,7 @@ var log2of10 = Math.log(10)/Math.log(2);
 // URLs is what stops a cached worker from outliving the binary it drives.
 // Stamped from the assets' contents by stamp-assets.sh at build time -- do not
 // edit by hand. Distinct from EXPECTED_WASM_VERSION, which pins the wasm ABI.
-const ASSET_VERSION = "63e2f14319";
+const ASSET_VERSION = "db9c00d430";
 
 let compute_mandelbrot;
 WebAssembly
@@ -637,15 +637,24 @@ function orbitBudgetText() {
         // regardless of worker count (v15), so the depth warning keys on
         // THAT; the render auto-sizes its worker set to the orbit instead
         const broadcast = USE_ORBIT_SHARING && USE_ORBIT_BROADCAST;
-        const budget = broadcast ? buildBudgetPoints() : orbitBudgetPoints();
         let txt = "";
-        if (budget < maxIterSlider.value) {
-            txt = ", orbit budget " + m(budget) + " (unresolved px white"
-                + (broadcast ? ")" : "; fewer workers go deeper)");
-        }
-        if (broadcast && activeHPWorkers < workerCount) {
-            txt += ", rendering on " + activeHPWorkers + " of " + workerCount
-                + " workers (orbit memory)";
+        if (broadcast) {
+            // outcome-based: mention the budget only when the reference
+            // actually ended truncated (white px possible); a relocated or
+            // escaped reference resolves everything -- say nothing
+            if (orbitTruncated) {
+                txt = ", " + m(buildBudgetPoints()) + " orbit budget exceeded (unresolved pixels white)";
+            }
+            if (activeHPWorkers < workerCount && activeHPWorkers !== Infinity) {
+                // each rendering worker holds its own copy of the orbit and
+                // its BLA table (no shared memory without SAB): say the cost
+                const gb = perWorkerOrbitBytes(orbitPoints) / (1024 * 1024 * 1024);
+                txt += ", rendering on " + activeHPWorkers + " of " + workerCount
+                    + " workers (" + gb.toFixed(1) + " GB orbit+table per worker)";
+            }
+        } else if (orbitBudgetPoints() < maxIterSlider.value) {
+            txt = ", orbit budget " + m(orbitBudgetPoints())
+                + " (unresolved px white; fewer workers go deeper)";
         }
         return txt;
     }
@@ -674,13 +683,22 @@ function repaint(dontUpdateStatusToIdle) {
         const prec = (highPrecision ? digits + " digits precision" : "normal precision")
                     + ", " + zoomFactorText() + orbitBudgetText();
         if (pendingOrbitDispatch) {
-            // the reference search runs before any strip can: show it live
-            const bp = orbitBuildProgress != null
-                ? ": " + (orbitBuildProgress / 1e6).toFixed(1) + " M pts"
-                : "...";
-            statusText.statusMessage.updateText(pass + prec +
-                        "... building reference orbit" + bp);
-            statusText.statusHeader.updateText(pass + prec + ", building orbit" + bp);
+            // the reference search runs before any strip can: show it live,
+            // and distinguish the open-ended center search from the
+            // known-length relocated-candidate build
+            let phase, bp;
+            if (orbitBuildTarget != null) {
+                phase = "building relocated reference";
+                bp = ": " + (orbitBuildProgress / 1e6).toFixed(1)
+                    + " of " + (orbitBuildTarget / 1e6).toFixed(1) + " M pts";
+            } else {
+                phase = "searching for reference orbit";
+                bp = orbitBuildProgress != null
+                    ? ": " + (orbitBuildProgress / 1e6).toFixed(1) + " M pts"
+                    : "...";
+            }
+            statusText.statusMessage.updateText(pass + prec + "... " + phase + bp);
+            statusText.statusHeader.updateText(pass + prec + ", " + phase + bp);
         } else {
             statusText.statusMessage.updateText(pass + prec +
                         "... completed " + rc + " of " + ch + " rows at " + rpsText);
@@ -876,6 +894,16 @@ let pendingOrbitDispatch = null;
 // Live reference-build progress (points so far), posted by the building
 // worker's ladder; null when no build is in flight.
 let orbitBuildProgress = null;
+// Non-null while the RELOCATED reference builds: its certified escape count
+// (the search phase has no known endpoint; the candidate build does).
+let orbitBuildTarget = null;
+// points in the current job's (broadcast) reference orbit, for status text
+let orbitPoints = 0;
+// Did the current job's reference end TRUNCATED without escaping? Only then
+// are white (unresolved) pixels possible, so only then does the status line
+// mention the orbit budget -- a relocated/escaped reference resolves
+// everything and the budget is irrelevant to it.
+let orbitTruncated = false;
 
 // Local HP job size scales with parallelism: a lone worker has no balancing
 // problem and gets the most engine-efficient big blocks, while many workers on
@@ -1085,6 +1113,8 @@ function startJob(dontClear) {
     jobStartTime = Date.now();
     activeHPWorkers = Infinity; // no cap until this job's orbit arrives
     orbitBuildProgress = null;
+    orbitBuildTarget = null;
+    orbitTruncated = false;
     let dispatchFirstJobs = function() {
         for (let i = 0; i < Math.min(workerCount, activeHPWorkers); i++) {
             let j = jobs.pop();
@@ -1163,6 +1193,7 @@ function jobFinished(msg) {
     if (job[0] === "buildProgress") {
         if (hpBasis && job[1] === hpBasis.id) {
             orbitBuildProgress = job[2];
+            orbitBuildTarget = job[3]; // non-null: relocated build, known length
         }
         return;
     }
@@ -1178,7 +1209,12 @@ function jobFinished(msg) {
         // rendering worker holds a copy plus its own table, so a big
         // (no-rescue truncated) orbit reduces parallelism instead of
         // depth. Usually the orbit is small and every worker plays.
-        activeHPWorkers = workersForOrbit(Math.max(1, job[2].len - 1));
+        const orbitPts = Math.max(1, job[2].len - 1);
+        orbitPoints = orbitPts;
+        // escaped iff the last stored point is outside the escape radius
+        const zr = job[3][2 * (job[2].len - 1)], zi = job[3][2 * (job[2].len - 1) + 1];
+        orbitTruncated = (zr * zr + zi * zi < 8) && orbitPts < maxIterSlider.value;
+        activeHPWorkers = workersForOrbit(orbitPts);
         if (activeHPWorkers < workerCount) {
             console.log(`[mb] ${job[2].len - 1} pt orbit: rendering on ${activeHPWorkers} of ${workerCount} workers (memory)`);
         }
