@@ -1,20 +1,37 @@
 Implement V3 glitch engine in server ???
 Try SIMD on x86: 2× f64x2 vectors = 4 lanes — SIMD width and two independent chains wasm on x86?
-FP issues at 300 digits
 One heads-up from GitHub: it reports 4 moderate vulnerabilities in dependencies on the master branch (dependabot alerts — likely old actix/serde versions in Cargo.lock). Not urgent for a
   local-use server, worth a cargo update pass someday.
 Always use HP?
-Show zoom level
 Strips share one table per band (server only?)
-Bump maxiter - now is 4M
 Undo zoom is wrong if change window size between zoom and undo zoom
 Use GPU for BLA FP stuff
 If the full-fe plateau ever becomes the thing you feel most, there are two known levers, both unimplemented: a "scaled f64"
   variant of the head loop (iterate plain f64 mantissas under a batch exponent, rescaling periodically — Kalles Fraktaler's
   trick, most of fe's range at f64 speed), or extending the handoff with a cheap tail re-entry check so it stays legal
   deeper. Given ~311+ digit views are already exotic territory, I'd leave that until it bothers you in practice.
-Import / export of real: im:
+Import / export of real: im:, re, imag, location.*:, neg im
+Status bar for Fit Window vs WxH
+The economics: ~256M (center, resumed — resumability saved the 84M re-derive, ~13 s) + ~256M (candidate) ≈ 512M points ≈ 77
+  s of build at this depth, plus four quick probe passes. Compare the old behavior at your flags: one 600M-point truncated
+  center — similar build time (~90 s) but 9.6 GB held, and pixels with counts in (600M, 750M] rendered white. The relocated
+  result matches the old full-750M-budget render (which needed 12 GB) at a third of the memory.
+  So can we extend the memory caps in certain situations?
+Help not accessible after full screen
+SAB moves the browser's parallelism ceiling, not its depth ceiling.
 
+>Bump maxiter - now is 4M; bumped to 1B
+>Can do auto-reduce of worker count on WASM?  Based on actual orbit count?
+>Bump palette length for 750M view etc
+xWould WASM64 help?
+>BTW the broswer draws the strips in reverse order to the server now.
+xIt also draws smaller strips at the end.
+>BMark deepish for lowest reference count
+>Increase truncation by 2x instead of 4x
+xResume probes from last stopping point?
+>Show zoom level
+>FP issues at 300 digits
+>Sometimes the server seems to go out to lunch, like if its working on something else then start a new render
 >BLA
 >Middle wheel zooms at cursor
 >left click/drag pans, right click does rectangle

@@ -16,6 +16,6 @@
    <divisionPoint position='0.8333' color='0.5385;0.8259;0.8177'/>
    <divisionPoint position='1' color='0.7909;0.9961;0.763'/>
 </palette>
-<palette_mapping length='2500000' offset='0'/>
-<max_iterations value='4000000'/>
+<palette_mapping length='2500000' offset='750000'/>
+<max_iterations value='750000000'/>
 </mandelbrot_settings_2>
