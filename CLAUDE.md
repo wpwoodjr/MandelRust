@@ -294,7 +294,11 @@ table keeps full level resolution over a 4M-point prefix (bit-identical to
 the old whole-orbit tables within it) and only 64+-point skips beyond
 (~1.25 B/pt); the scan's start level is a TAIL const generic because even a
 branchless runtime check cost ~2-3.5% under V8 (hot-loop law, third
-sighting). Big orbits (> 8M pts) share ONE whole-image table across a
+sighting). Big orbits (> 1M pts; was 8M until measured A/Bs on the
+51-digit view, 32 threads, pixel-identical: 4M orbit 3.9 s -> 0.7 s warm,
+1M orbit 0.4 s -> 0.1 s -- concurrent per-strip table builds contend for
+the memory bus; sub-1M stays per-strip, unmeasured) share ONE
+whole-image table across a
 server request's threads — per-strip tables multiply by thread count and
 OOM-killed a 32-thread 128M-orbit run at ~475 MB each. UI maxIterations cap
 is now 1e9 (i32 counts wall at ~2.1e9 is the next ceiling). first-render

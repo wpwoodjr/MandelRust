@@ -720,3 +720,19 @@ BMarks
     stands on expectation but was not re-run clean.)
     Beast x86 user-measured @1 thread after fix: server 2.95 -> 5.73 rows/s,
     browser 4.53 (unchanged); server per-thread lead restored on both axes.
+
+22 Jul 2026 - SERVER SHARED-TABLE THRESHOLD 8M -> 2M (measured): the
+    shared whole-image table path was dead code below 8M orbits, so every
+    server render ever benchmarked ran per-strip tables. A/B on the
+    51-digit 4M-orbit view (640x480, 32 threads, cache-warm, env-knob
+    MB_SHARED_TABLE_MIN_ORBIT): per-strip 3.9 s vs shared 0.7 s = 5.6x,
+    outputs pixel-identical; cold 7.2 s vs 0.9 s. Concurrent ~300 MB
+    per-strip table builds contend for the memory bus -- bigger effect than
+    the browser's single-worker 2.3x for the same class. Sub-2M orbits keep
+    per-strip tables (ms builds, tightest dc_max). Follow-up A/B at a 1M
+    orbit (maxIter 1M, same view): per-strip 0.4 s vs shared 0.1 s warm =
+    4x, identical -- threshold shipped at 1M; sub-1M left per-strip,
+    unmeasured (sub-0.5 s renders, below harness resolution).
+    Also: RAM-aware default
+    orbit budget shipped (clamp(RAM/4 as orbit bytes, 4M, 256M); Beast auto
+    = 256M / 3.8 GB peak; cgroup-aware for containers).
