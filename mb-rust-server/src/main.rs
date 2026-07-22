@@ -816,16 +816,16 @@ async fn compute_mandelbrot_hp2(coords: web::Json<MandelbrotCoordsHP2>) -> HttpR
         // multiply memory by the thread count -- ~475 MB each at a 128M-point
         // orbit OOM-killed a 32-thread run. Below the threshold, per-strip
         // tables keep today's behavior bit for bit.
-        // Threshold measured, not guessed (A/Bs, 22 Jul 2026, 51-digit
-        // view, 32 threads, cache-warm, pixel-identical outputs): at a 4M
-        // orbit, per-strip 3.9 s vs shared 0.7 s (5.6x); at 1M, 0.4 s vs
-        // 0.1 s (4x) -- concurrent per-strip table builds contend for the
-        // memory bus. Below 1M per-strip stays, UNMEASURED (renders there
-        // are sub-0.5 s and the harness can't resolve it) but plausible:
-        // tiny builds, tightest dc_max, and pixel cost dominates.
+        // Zero = ALWAYS share. Measured, twice over (22 Jul 2026,
+        // pixel-identical outputs everywhere): server A/Bs gave per-strip
+        // 3.9 s vs shared 0.7 s at a 4M orbit (5.6x, 32 threads -- the
+        // concurrent per-strip builds contend for the memory bus) and 4x
+        // at 1M; a node sweep then showed the cached/shared strategy
+        // winning at EVERY size down to 50k pts (1.3x), never inverting --
+        // the tight per-strip dc_max never nets a win.
         // MB_SHARED_TABLE_MIN_ORBIT overrides for re-benching.
         let shared_min: usize = std::env::var("MB_SHARED_TABLE_MIN_ORBIT").ok()
-            .and_then(|v| v.parse().ok()).unwrap_or(1_000_000);
+            .and_then(|v| v.parse().ok()).unwrap_or(0);
         let shared_table = if cached.orbit.len() > shared_min {
             Some(bla_image_table(&cached.orbit, cached.dx_fe, cached.dy_fe,
                 dcx0_eff, dcy_off, cached.row_ref, rows, columns))

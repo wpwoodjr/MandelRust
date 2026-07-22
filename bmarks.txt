@@ -745,5 +745,11 @@ BMarks
     Scale check at 1200x1400 (175 strips, same 1M orbit): 2.75 s vs 0.98 s
     = 2.8x -- margin narrows with image size exactly as the model predicts
     (wider strips amortize per-strip builds; larger frame span shortens the
-    cached table's skips) but stays decisive: the 1M threshold is robust
-    across image sizes, no image-aware term needed.
+    cached table's skips) but stays decisive.
+    FULL SWEEP (same harness, all-interior px = the skip-dominated workload
+    where per-strip's tight dc_max has its BEST case): cached beats
+    per-strip at EVERY orbit size -- 3.9x @1M, 3.4x @500k, 2.3x @250k,
+    1.6x @100k, 1.3x @50k, checksums identical, never inverts. Thresholds
+    on BOTH tiers now ZERO (always cache/share); per-strip tables remain
+    only in the non-sharing entry points. Server identity re-verified at a
+    250k orbit through the real endpoint.
